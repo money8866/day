@@ -1,0 +1,137 @@
+{
+ "date": "20261028",
+ "snapshot": "2026-10-28 15:40:00",
+ "rows": [
+  {
+   "rank": 5,
+   "name": "空心杯电机",
+   "symbol": "pt02GN2242",
+   "zdf": 10.67,
+   "rankdelta": 0,
+   "members": 5,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 13,
+   "name": "人形机器人",
+   "symbol": "pt02GN2238",
+   "zdf": 4.12,
+   "rankdelta": 1,
+   "members": 461,
+   "zt": 17,
+   "zt_names": [
+    "五洲新春",
+    "徕木股份",
+    "松霖科技",
+    "杰克科技"
+   ],
+   "max_lbc": 3
+  },
+  {
+   "rank": 15,
+   "name": "机器人概念",
+   "symbol": "pt02003640",
+   "zdf": 3.12,
+   "rankdelta": 1,
+   "members": 1228,
+   "zt": 31,
+   "zt_names": [
+    "富瀚微",
+    "山东矿机",
+    "博杰股份",
+    "盈方微"
+   ],
+   "max_lbc": 5
+  },
+  {
+   "rank": 17,
+   "name": "宇树科技概念",
+   "symbol": "pt02GN2360",
+   "zdf": 2.88,
+   "rankdelta": 5,
+   "members": 17,
+   "zt": 0,
+   "zt_names": [],
+   "max_lbc": 0
+  },
+  {
+   "rank": 19,
+   "name": "TMT",
+   "symbol": "pt02GN2369",
+   "zdf": 2.67,
+   "rankdelta": 2,
+   "members": 1220,
+   "zt": 16,
+   "zt_names": [
+    "百纳千成",
+    "掌阅科技",
+    "富瀚微",
+    "科森科技"
+   ],
+   "max_lbc": 2
+  },
+  {
+   "rank": 35,
+   "name": "共封装光模块(CPO）",
+   "symbol": "pt02GN2211",
+   "zdf": 3.95,
+   "rankdelta": 0,
+   "members": 205,
+   "zt": 4,
+   "zt_names": [
+    "世运电路",
+    "光华科技",
+    "方正科技",
+    "振邦智能"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 38,
+   "name": "物理AI",
+   "symbol": "pt02GN2442",
+   "zdf": 2.97,
+   "rankdelta": 2,
+   "members": 12,
+   "zt": 1,
+   "zt_names": [
+    "豪恩汽电"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 42,
+   "name": "商业航天",
+   "symbol": "pt02GN2306",
+   "zdf": 3.09,
+   "rankdelta": 1,
+   "members": 310,
+   "zt": 5,
+   "zt_names": [
+    "上海沪工",
+    "世运电路",
+    "铖昌科技",
+    "江顺科技"
+   ],
+   "max_lbc": 2
+  },
+  {
+   "rank": 47,
+   "name": "PCB概念",
+   "symbol": "pt02101284",
+   "zdf": 3.91,
+   "rankdelta": 2,
+   "members": 234,
+   "zt": 9,
+   "zt_names": [
+    "方正科技",
+    "富佳股份",
+    "世运电路",
+    "光华科技"
+   ],
+   "max_lbc": 3
+  }
+ ]
+}

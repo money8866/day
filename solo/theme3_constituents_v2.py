@@ -5,7 +5,9 @@ theme3_constituents_v2.py
 =========================
 针对 theme3.json 中所有二级主题（themes）生成成分股列表。
 
-- 主题配置来源：theme3.json（13 个一级目录 / 共 70 个子主题，V2 字段）
+- 主题配置来源：theme3.json（14 个一级目录 / 共 74 个子主题，V2 字段）
+  注意：THEME_FLAT_MAP 由 sync_flat_map.py 从 CATEGORIES 程序化同步，勿手工编辑；
+        MANUAL_CONCEPT_BOARDS 已迁移到 theme3.json 顶层键（代码内保留默认值兜底）。
 - 东财板块接口 + 缓存：复用 theme_trend_sentiment_score.py 的
     * get_dc_members()  -> 调 Tushare dc_index/dc_member 拉东财板块成分股
     * match_theme_stocks() -> 按 industry / concept / keywords 匹配
@@ -20,6 +22,7 @@ theme3_constituents_v2.py
 使用： python theme3_constituents_v2.py
 """
 import os
+import re
 import sys
 import json
 import csv
@@ -41,6 +44,23 @@ CACHE_DIR = tts.CACHE_DIR
 
 THEME3_PATH = os.path.join(BASE_DIR, "theme3.json")
 
+# 纯 ASCII 标签（英文缩写/型号类）
+_ASCII_RE_FULL = re.compile(r"^[A-Za-z0-9+\-]+$")
+
+# 手工补强表默认值（已迁移至 theme3.json 顶层键 MANUAL_CONCEPT_BOARDS，
+# 运行时优先读配置，配置缺失时回退到这里）
+DEFAULT_MANUAL_CONCEPT = {
+    "AI应用": ["人工智能", "AI应用", "AI智能体", "多模态AI", "ChatGPT概念", "AIGC概念", "数字人"],
+    "AI模型与AI Agent": ["人工智能", "AI应用", "AI智能体", "多模态AI", "ChatGPT概念", "AIGC概念"],
+    "AI算力芯片": ["AI芯片", "算力概念", "GPU概念", "人工智能", "半导体概念", "先进封装"],
+    "光模块与CPO": ["CPO概念", "光通信模块", "光纤概念", "光通信", "5G概念"],
+    "数据中心网络": ["东数西算", "算力概念", "云计算", "数字经济"],
+    "数据中心散热": ["液冷概念", "算力概念", "数据中心", "绿色电力"],
+    "高速铜连接": ["铜缆高速连接", "连接器", "算力概念"],
+    "行星滚柱丝杠": ["人形机器人", "减速器", "工业母机", "高端装备"],
+    "核聚变": ["核能核电", "高温超导", "军工"],
+}
+
 # =====================================================================
 # V2 字段 -> 旧字段（供 match_theme_stocks 用）的桥接函数
 #
@@ -55,11 +75,14 @@ THEME3_PATH = os.path.join(BASE_DIR, "theme3.json")
 #   core_companies[], leader_companies[]
 # =====================================================================
 
-def build_v2_bridge_factory(dc_df):
+def build_v2_bridge_factory(dc_df, manual_concept: dict = None):
     """基于 dc_df 构建一个桥接函数：运行时把 V2 字段映射成东财板块名。
 
     theme3.json 中不保存 industry/concept/keywords 等匹配字段，
     全部在这里动态生成。
+    manual_concept: 手工补强表 {theme_name: [东财概念板块名]}，
+                    优先读 theme3.json 顶层键 MANUAL_CONCEPT_BOARDS，
+                    未提供时回退到下方内置默认值。
     """
     # 所有东财板块名（分行业 / 概念）——标准化为不带罗马数字的形式
     INDUSTRY_BOARDS = set()
@@ -78,12 +101,46 @@ def build_v2_bridge_factory(dc_df):
     IND_NORM = {_norm(n): n for n in INDUSTRY_BOARDS}
     CON_NORM = {_norm(n): n for n in CONCEPT_BOARDS}
 
+    # 板块成员数（用于剔除过于宽泛的 Gate 白名单板块）
+    BOARD_MEMBER_CNT = defaultdict(int)
+    if dc_df is not None and len(dc_df):
+        for bn, cc in zip(dc_df["concept_name"].astype(str), dc_df["con_code"].astype(str)):
+            BOARD_MEMBER_CNT[_norm(bn)] += 1
+
     # 噪声词：在多个主题中出现但不代表真实主题归属的词
     INDUSTRY_NOISE = {"半导体", "消费电子", "医药", "白酒", "煤炭", "新能源", "军工", "电子", "房地产", "银行", "保险", "券商"}
     CONCEPT_NOISE = {"消费电子", "新能源车", "新能源", "医药医疗风格"}
+    # 纯行业名（做 concept 匹配时只会拖进 电子后视镜/电子纸 等无关板块，
+    # 但"半导体/新能源/消费电子"是有效概念锚点，保留）
+    CONCEPT_TOKEN_BLOCKLIST = {"电子", "医药", "白酒", "煤炭", "军工", "房地产", "银行", "保险", "券商"}
+    # 超大板块阈值：成员数 >= 该值的板块太泛，不配做 DNA Gate 白名单
+    GATE_MAX_BOARD_MEMBERS = 400
 
     def _match_boards(tokens, boards_norm, noise_set, topn, min_len=2):
         """给 token 集合打分，挑出最像东财板块名的 N 个。"""
+        # 纯 ASCII token（如 AR/DRAM/PVD）必须按"词边界"出现在板块名里，
+        # 防止子串误命中：AR -> cAR-T细胞疗法、PVD -> PVDF概念
+        _ASCII_RE = re.compile(r"^[A-Za-z0-9+\-]+$")
+
+        def _ascii_hit(needle, haystack):
+            if needle not in haystack:
+                return False
+            for m in re.finditer(re.escape(needle), haystack, re.IGNORECASE):
+                s, e = m.start(), m.end()
+                before = haystack[s - 1] if s > 0 else ""
+                after = haystack[e] if e < len(haystack) else ""
+                if before.isascii() and before.isalpha():
+                    continue
+                if after.isascii() and after.isalpha():
+                    continue
+                return True
+            return False
+
+        def _sub_hit(tn, board_norm):
+            if _ASCII_RE.match(tn):
+                return _ascii_hit(tn, board_norm)
+            return tn in board_norm
+
         scored = []
         for board_norm, board_orig in boards_norm.items():
             score = 0
@@ -95,7 +152,7 @@ def build_v2_bridge_factory(dc_df):
                 if tn == board_norm:
                     score += 100
                     reasons.append(f"={tn}")
-                elif len(tn) >= 2 and tn in board_norm:
+                elif _sub_hit(tn, board_norm):
                     bonus = 10 + len(tn)
                     if tn in noise_set:
                         bonus = max(2, bonus // 4)
@@ -117,7 +174,7 @@ def build_v2_bridge_factory(dc_df):
             # 仅依赖噪声词命中的、且已经有 2 个以上结果的，不再选入
             token_hits = {_norm(t) for t in tokens if len(_norm(t)) >= 2}
             non_noise_hit = any(
-                (t == n or t in n or n in t) and t not in noise_set
+                (t == n or _sub_hit(t, n) or _sub_hit(n, t)) and t not in noise_set
                 for t in token_hits
             )
             if not non_noise_hit and len(picked) >= 2:
@@ -140,27 +197,23 @@ def build_v2_bridge_factory(dc_df):
         all_tokens = ind_soft + ind_roles + tag_tokens + weak_tokens + sem_tokens
         # industry 用"更像行业名"的 token：industry_soft_constraints / industry_roles 的键
         industry_tokens = {_norm(t) for t in (ind_soft + ind_roles) if 2 <= len(_norm(t)) <= 10}
-        # concept 用 business / weak / semantic
-        concept_tokens = {_norm(t) for t in all_tokens if 2 <= len(_norm(t)) <= 10}
+        # concept 用 business / weak / semantic。
+        # P1 修复：剔除纯行业名（"电子"会把 电子后视镜/电子纸 等无关概念板块
+        # 拖进来）；行业词对 industry 匹配仍然有效。若剔除后为空则回退不过滤。
+        concept_tokens = {
+            _norm(t) for t in all_tokens
+            if 2 <= len(_norm(t)) <= 10 and _norm(t) not in CONCEPT_TOKEN_BLOCKLIST
+        }
+        if not concept_tokens:
+            concept_tokens = {_norm(t) for t in all_tokens if 2 <= len(_norm(t)) <= 10}
 
         industry_list = _match_boards(industry_tokens, IND_NORM, INDUSTRY_NOISE, topn=6)
         concept_list = _match_boards(concept_tokens, CON_NORM, CONCEPT_NOISE, topn=8)
 
         # 手工补强：对于几个专业标签难以映射的主题，注入已知的东财概念板块名
-        # key 可以是 theme_name，也可以是 business_dna_tags 里的关键子串
-        MANUAL_CONCEPT = {
-            "AI应用": ["人工智能", "AI应用", "AI智能体", "多模态AI", "ChatGPT概念", "AIGC概念", "数字人"],
-            "AI模型与AI Agent": ["人工智能", "AI应用", "AI智能体", "多模态AI", "ChatGPT概念", "AIGC概念"],
-            "AI算力芯片": ["AI芯片", "算力概念", "GPU概念", "人工智能", "半导体概念", "先进封装"],
-            "光模块与CPO": ["CPO概念", "光通信模块", "光纤概念", "光通信", "5G概念"],
-            "数据中心网络": ["东数西算", "算力概念", "云计算", "数字经济"],
-            "数据中心散热": ["液冷概念", "算力概念", "数据中心", "绿色电力"],
-            "高速铜连接": ["铜缆高速连接", "连接器", "算力概念"],
-            "行星滚柱丝杠": ["人形机器人", "减速器", "工业母机", "高端装备"],
-            "核聚变": ["核能核电", "高温超导", "军工"],
-        }
+        # （表本体已迁移至 theme3.json 顶层键 MANUAL_CONCEPT_BOARDS，见 sync_flat_map.py）
         theme_name = cfg.get("theme_name", "")
-        extra = MANUAL_CONCEPT.get(theme_name, [])
+        extra = (manual_concept or DEFAULT_MANUAL_CONCEPT).get(theme_name, [])
         if extra:
             for b in extra:
                 # 只保留确实存在于东财概念板块的名（用 norm 匹配）
@@ -178,14 +231,60 @@ def build_v2_bridge_factory(dc_df):
         # ===== 新增: DNA Gate Concept 强约束 =====
         # 对于 semantic_business_hybrid 模式，必须匹配至少1个 business_dna_tags
         # 映射到的东财概念板块名，才真正进入该主题（防止行业溢出）
+        #
+        # P0 修复（两极分化问题）：
+        #   1) 门槛按字符类型区分：中文标签放宽到 >=2 字（充电桩/折叠屏/船舶
+        #      这类 2-3 字核心标签此前全被 4 字门槛跳过，导致 Gate 白名单为空
+        #      或过窄）；纯 ASCII 标签仍要求 >=4 字符（避免 PVD -> PVDF概念）。
+        #   2) 降级链：dna 标签映射不到任何板块时，依次用 weak_positive_tags、
+        #      core_semantic 兜底重建 Gate；仍为空则不启用 Gate（列表为空）。
         mode = (cfg.get("matching_strategy", {}) or {}).get("mode", "")
+
+        def _gate_tokens(source):
+            """Gate 候选 token：中英文均 >=2 字；ASCII 误命中由 _match_boards
+            的词边界规则拦截（PVD 不会命中 PVDF概念）。"""
+            out = set()
+            for x in source:
+                tn = _norm(x)
+                if len(tn) >= 2:
+                    out.add(tn)
+            return out
+
         dna_concept_required = []
         if mode == "semantic_business_hybrid" and tag_tokens:
-            # 增加 token 最小长度到 4，避免短词如 "PVD" 被误匹配成 "PVDF概念"
-            dna_concept_required = _match_boards(
-                {_norm(t) for t in tag_tokens if 4 <= len(_norm(t)) <= 15},
-                CON_NORM, CONCEPT_NOISE, topn=10
-            )
+
+            def _drop_generic(boards):
+                """剔除成员数过多的宽泛板块（太泛不配做 DNA 证据）。"""
+                return [b for b in boards
+                        if BOARD_MEMBER_CNT.get(_norm(b), 0) < GATE_MAX_BOARD_MEMBERS]
+
+            # 分级构建 Gate 白名单（合并式，防止单板块窄白名单误杀核心成分）：
+            #   1) 首选 business_dna_tags 映射；只要映射到 >=1 个板块即采用
+            #      （小而准的板块如"脑机接口"61只，本身就是完美 Gate，不强行扩容）
+            #   2) 标签映射为空时：合并 weak_positive_tags + core_semantic + 主题名
+            #   3) 并入 MANUAL_CONCEPT 手工板块（需通过宽泛板块过滤）
+            #   4) 仍为空：Gate 退化为 concept_list 本身
+            #      （含义变为"必须有概念板块重叠"，仅拦截纯行业溢出）
+            #   始终剔除成员数 >= GATE_MAX_BOARD_MEMBERS 的宽泛板块。
+            gate_boards = _drop_generic(_match_boards(
+                _gate_tokens(tag_tokens), CON_NORM, CONCEPT_NOISE, topn=10
+            ))
+            if not gate_boards:
+                gate_boards = _drop_generic(_match_boards(
+                    _gate_tokens(tag_tokens + weak_tokens + sem_tokens + [theme_name]),
+                    CON_NORM, CONCEPT_NOISE, topn=10
+                ))
+                if gate_boards:
+                    print(f"    [GateMerge] {theme_name}: DNA 标签映射为空，"
+                          f"合并 weak/semantic/主题名 重建 Gate（{len(gate_boards)} 个板块）")
+            for b in (manual_concept or DEFAULT_MANUAL_CONCEPT).get(theme_name, []):
+                if _norm(b) in CON_NORM and b not in gate_boards and _drop_generic([b]):
+                    gate_boards.append(b)
+            if not gate_boards:
+                gate_boards = list(dict.fromkeys(concept_list))
+                print(f"    [GateLoose0] {theme_name}: Gate 退化为 concept_list "
+                      f"（{len(gate_boards)} 个板块）")
+            dna_concept_required = gate_boards
 
         return {
             "industry": industry_list,
@@ -518,6 +617,23 @@ def load_theme3_flat() -> dict:
     return flat
 
 
+def load_manual_concept() -> dict:
+    """读取 theme3.json 顶层键 MANUAL_CONCEPT_BOARDS；缺失时回退内置默认值。"""
+    try:
+        with open(THEME3_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        manual = data.get("MANUAL_CONCEPT_BOARDS")
+        if isinstance(manual, dict) and manual:
+            print(f"[Config] MANUAL_CONCEPT_BOARDS: 从 theme3.json 读取 "
+                  f"({len(manual)} 个主题)")
+            return manual
+    except Exception as e:
+        print(f"[Config] MANUAL_CONCEPT_BOARDS 读取失败({e})，使用内置默认值")
+    print(f"[Config] MANUAL_CONCEPT_BOARDS: 使用内置默认值 "
+          f"({len(DEFAULT_MANUAL_CONCEPT)} 个主题)")
+    return DEFAULT_MANUAL_CONCEPT
+
+
 # =====================================================================
 # 主流程
 # =====================================================================
@@ -554,7 +670,8 @@ def main():
         print(f"     其中行业板块成员 {n_ind} 条，概念板块成员 {n_con} 条")
 
     # ---------- Step 3: V2 字段 -> 旧字段（运行时动态映射东财板块名）----------
-    v2_to_old = build_v2_bridge_factory(dc_df)
+    manual_concept = load_manual_concept()
+    v2_to_old = build_v2_bridge_factory(dc_df, manual_concept=manual_concept)
     old_style = {}
     for tname, cfg in theme3_flat.items():
         old_style[tname] = v2_to_old(cfg)

@@ -1,0 +1,8216 @@
+{
+  "CATEGORIES": {
+    "AI": {
+      "name": "AI",
+      "desc": "人工智能全产业链，从算力基础设施到应用终端",
+      "themes": {
+        "AI应用": {
+          "theme_name": "AI应用",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "企业级AI软件与智能体",
+            "通用大模型与垂类行业应用",
+            "办公/搜索/编程等生产力AI"
+          ],
+          "industry_roles": {
+            "大模型与智能体平台": 0.3,
+            "企业软件与ERP": 0.25,
+            "IT服务与系统集成": 0.2,
+            "行业信息化软件": 0.15,
+            "数字媒体与内容": 0.1
+          },
+          "business_dna_tags": [
+            "Agent",
+            "大模型",
+            "RAG",
+            "Copilot",
+            "企业智能体",
+            "AI搜索",
+            "AI办公",
+            "AI编程"
+          ],
+          "weak_positive_tags": [
+            "软件外包",
+            "传统软件",
+            "云服务",
+            "SaaS"
+          ],
+          "negative_pressure_tags": {
+            "游戏": -0.7,
+            "短剧视频": -0.6,
+            "芯片制造": -0.4,
+            "PCB": -0.3
+          },
+          "industry_soft_constraints": {
+            "软件开发": 0.5,
+            "IT服务Ⅱ": 0.3,
+            "数字媒体": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "大模型平台或通用AI应用头部",
+            "中军": "办公/搜索/编程等头部AI软件",
+            "补涨": "垂类行业软件或系统集成"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "AI文化娱乐": {
+          "theme_name": "AI文化娱乐",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "AI视频/短剧/游戏内容生成",
+            "数字人与虚拟偶像",
+            "动漫/影视IP制作工具"
+          ],
+          "industry_roles": {
+            "视频与短剧": 0.3,
+            "游戏": 0.25,
+            "动漫与影视": 0.2,
+            "IP运营": 0.15,
+            "数字人/元宇宙": 0.1
+          },
+          "business_dna_tags": [
+            "AI短剧",
+            "文生视频",
+            "Sora",
+            "Runway",
+            "Midjourney",
+            "数字人",
+            "AIGC",
+            "虚拟偶像",
+            "互动娱乐"
+          ],
+          "weak_positive_tags": [
+            "出版传媒",
+            "广告营销",
+            "影视院线"
+          ],
+          "negative_pressure_tags": {
+            "GPU/算力芯片": -0.3,
+            "创新药": -0.8,
+            "新能源": -0.7
+          },
+          "industry_soft_constraints": {
+            "数字媒体": 0.4,
+            "影视院线": 0.3,
+            "出版": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "短剧/视频平台或头部游戏",
+            "中军": "IP运营与影视制作",
+            "补涨": "广告营销/出版传媒延伸"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "AI模型与AI Agent": {
+          "theme_name": "AI模型与AI Agent",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "大模型训练与推理技术",
+            "AI智能体与自动化工作流",
+            "多模态与端到端AI系统"
+          ],
+          "industry_roles": {
+            "大模型训练平台": 0.35,
+            "Agent中间件": 0.25,
+            "企业AI应用": 0.25,
+            "AI研发外包": 0.15
+          },
+          "business_dna_tags": [
+            "大模型",
+            "LLM",
+            "Agent",
+            "MCP",
+            "Copilot",
+            "Function Call",
+            "Prompt",
+            "RAG"
+          ],
+          "weak_positive_tags": [
+            "SaaS软件",
+            "客服系统",
+            "企业信息化"
+          ],
+          "negative_pressure_tags": {
+            "GPU芯片制造": -0.3,
+            "光模块": -0.3,
+            "游戏": -0.6,
+            "消费电子": -0.5
+          },
+          "industry_soft_constraints": {
+            "软件开发": 0.6,
+            "IT服务Ⅱ": 0.4
+          },
+          "stock_role_mapping": {
+            "龙头": "自研大模型或通用Agent平台",
+            "中军": "Agent中间件或企业AI软件",
+            "补涨": "行业信息化/传统软件AI转型"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "AI算力芯片": {
+          "theme_name": "AI算力芯片",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "GPU/NPU/TPU等AI训练推理芯片",
+            "AI加速卡与HBM内存",
+            "先进封装与制程"
+          ],
+          "industry_roles": {
+            "AI芯片设计": 0.4,
+            "先进封装代工": 0.3,
+            "芯片制造配套": 0.3
+          },
+          "business_dna_tags": [
+            "GPU芯片",
+            "AI加速芯片",
+            "NPU",
+            "AI加速卡",
+            "HBM内存",
+            "AI推理芯片",
+            "国产GPU",
+            "Chiplet"
+          ],
+          "weak_positive_tags": [
+            "光模块",
+            "服务器整机",
+            "电子制造"
+          ],
+          "negative_pressure_tags": {
+            "消费电子终端": -0.6,
+            "手机SoC": -0.5,
+            "家电": -0.5,
+            "汽车芯片": -0.3
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.6,
+            "电子制造": 0.2,
+            "通信设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "AI芯片全球头部或自研GPU/NPU",
+            "中军": "AI加速卡/HBM封装/代工",
+            "补涨": "国产替代AI芯片/单点封装设备"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "光模块与CPO": {
+          "theme_name": "光模块与CPO",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "800G/1.6T高速光模块",
+            "CPO共封装光学技术",
+            "硅光子与光引擎"
+          ],
+          "industry_roles": {
+            "光模块封装": 0.35,
+            "光芯片/硅光芯片": 0.25,
+            "CPO/光引擎": 0.25,
+            "光纤连接器件": 0.15
+          },
+          "business_dna_tags": [
+            "光模块",
+            "800G",
+            "1.6T光模块",
+            "CPO",
+            "共封装光学",
+            "硅光子",
+            "光引擎",
+            "光通信芯片",
+            "EML",
+            "VCSEL"
+          ],
+          "weak_positive_tags": [
+            "光纤",
+            "交换机",
+            "数据中心"
+          ],
+          "negative_pressure_tags": {
+            "消费电子终端": -0.7,
+            "手机产业链": -0.6,
+            "家电": -0.5,
+            "汽车电子": -0.4
+          },
+          "industry_soft_constraints": {
+            "通信设备": 0.5,
+            "光通信": 0.3,
+            "通信电子": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "800G/1.6T光模块全球头部",
+            "中军": "光芯片/CPO/硅光",
+            "补涨": "光纤跳线/光无源器件/辅材"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "数据中心网络": {
+          "theme_name": "数据中心网络",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "AI服务器与GPU集群",
+            "数据中心交换机与路由器",
+            "数据中心电源与电力设备"
+          ],
+          "industry_roles": {
+            "AI服务器整机": 0.35,
+            "网络交换设备": 0.25,
+            "数据中心电源": 0.2,
+            "机柜与基础设施": 0.2
+          },
+          "business_dna_tags": [
+            "AI服务器",
+            "交换机",
+            "路由器",
+            "数据中心电源",
+            "UPS",
+            "机柜",
+            "服务器ODM",
+            "GPU服务器",
+            "算力服务器"
+          ],
+          "weak_positive_tags": [
+            "PCB",
+            "连接器",
+            "服务器电源"
+          ],
+          "negative_pressure_tags": {
+            "消费电子终端": -0.7,
+            "手机": -0.6,
+            "家电": -0.5,
+            "汽车电子": -0.4
+          },
+          "industry_soft_constraints": {
+            "计算机设备": 0.4,
+            "通信设备": 0.3,
+            "电力设备": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "AI服务器/交换机全球头部",
+            "中军": "ODM/电源/机柜",
+            "补涨": "服务器配件/连接/散热单点"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "数据中心散热": {
+          "theme_name": "数据中心散热",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "数据中心液冷散热系统",
+            "服务器风扇与温控",
+            "绿色数据中心与能效"
+          ],
+          "industry_roles": {
+            "液冷系统": 0.35,
+            "散热模组": 0.25,
+            "温控设备": 0.2,
+            "CDU/冷却机组": 0.2
+          },
+          "business_dna_tags": [
+            "液冷服务器",
+            "液冷散热",
+            "冷板",
+            "CDU",
+            "冷却机组",
+            "散热模组",
+            "风扇",
+            "温控",
+            "热管",
+            "数据中心温控"
+          ],
+          "weak_positive_tags": [
+            "服务器",
+            "电力设备",
+            "IDC运营"
+          ],
+          "negative_pressure_tags": {
+            "消费电子终端": -0.7,
+            "手机": -0.6,
+            "家电": -0.5,
+            "汽车电子": -0.4
+          },
+          "industry_soft_constraints": {
+            "电力设备": 0.5,
+            "通用设备": 0.3,
+            "计算机设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "液冷系统整体解决方案头部",
+            "中军": "液冷模组/CDU/温控设备",
+            "补涨": "散热材料/风扇/单点配件"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "高速铜连接": {
+          "theme_name": "高速铜连接",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "高速背板连接器",
+            "AI服务器内部铜互联",
+            "光铜混合连接方案"
+          ],
+          "industry_roles": {
+            "高速连接器": 0.4,
+            "背板/线缆": 0.3,
+            "精密制造": 0.3
+          },
+          "business_dna_tags": [
+            "高速连接器",
+            "背板连接器",
+            "铜缆",
+            "高速铜缆",
+            "AI服务器连接",
+            "连接器",
+            "精密连接件",
+            "IO连接器",
+            "SFP"
+          ],
+          "weak_positive_tags": [
+            "服务器",
+            "通信设备",
+            "PCB"
+          ],
+          "negative_pressure_tags": {
+            "消费电子终端": -0.7,
+            "手机": -0.6,
+            "家电": -0.5,
+            "汽车连接器": -0.3
+          },
+          "industry_soft_constraints": {
+            "电子制造": 0.4,
+            "通信设备": 0.3,
+            "计算机设备": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "高速背板连接器全球头部",
+            "中军": "AI服务器铜缆/连接方案",
+            "补涨": "单点精密连接件/辅材"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "数据中心瓶颈硬件链": {
+          "theme_name": "数据中心瓶颈硬件链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "数据中心热管理与液冷系统",
+            "高压直流电源与配电模块",
+            "IDC运营与服务器散热配套"
+          ],
+          "industry_roles": {
+            "液冷温控设备": 0.3,
+            "电源模块与UPS": 0.25,
+            "数据中心运营": 0.2,
+            "母线铜排与连接": 0.15,
+            "散热材料与导热": 0.1
+          },
+          "business_dna_tags": [
+            "冷板式液冷",
+            "浸没式液冷",
+            "高压直流",
+            "UPS",
+            "电源模块",
+            "液冷板",
+            "热管",
+            "PUE优化"
+          ],
+          "weak_positive_tags": [
+            "电力设备",
+            "工业电子",
+            "磁性元件",
+            "铜加工"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.7,
+            "家电整机": -0.6,
+            "手机产业链": -0.5,
+            "GPU芯片设计": -0.3
+          },
+          "industry_soft_constraints": {
+            "电源设备": 0.4,
+            "计算机设备": 0.3,
+            "工业金属": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "液冷系统或高压直流电源头部",
+            "中军": "IDC运营商或大型电源/散热企业",
+            "补涨": "导热材料/电磁兼容/精密结构件"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "AI终端": {
+          "theme_name": "AI终端",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "AI PC/AI手机等端侧智能设备",
+            "MR/AR/VR可穿戴硬件",
+            "端侧AI芯片与传感器"
+          ],
+          "industry_roles": {
+            "消费电子制造": 0.3,
+            "可穿戴与MR硬件": 0.25,
+            "端侧AI芯片": 0.2,
+            "光学镜头与显示": 0.15,
+            "结构件与组装": 0.1
+          },
+          "business_dna_tags": [
+            "AI PC",
+            "AI手机",
+            "MR",
+            "AR",
+            "VR",
+            "端侧大模型",
+            "折叠屏",
+            "智能穿戴",
+            "光学镜头"
+          ],
+          "weak_positive_tags": [
+            "消费电子",
+            "小家电",
+            "汽车电子",
+            "面板"
+          ],
+          "negative_pressure_tags": {
+            "传统白电": -0.6,
+            "纯PCB制造": -0.3,
+            "纯算力芯片": -0.3,
+            "医药生物": -0.8
+          },
+          "industry_soft_constraints": {
+            "消费电子": 0.5,
+            "光学光电子": 0.3,
+            "半导体": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "终端品牌或核心器件",
+            "中军": "MR/AI硬件链主",
+            "补涨": "结构件/传感器/连接"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "人形机器人": {
+      "name": "人形机器人",
+      "desc": "人形机器人全产业链：执行器、减速器、电机、传感器、灵巧手、整机",
+      "themes": {
+        "人形机器人整机与集成": {
+          "theme_name": "人形机器人整机与集成",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "双足人型机器人整机品牌",
+            "系统集成与场景应用",
+            "工业/服务人形整机"
+          ],
+          "industry_roles": {
+            "人形机器人整机制造": 0.4,
+            "系统集成与应用": 0.3,
+            "场景运营与租赁": 0.2,
+            "工业/服务机器人": 0.1
+          },
+          "business_dna_tags": [
+            "人形机器人",
+            "双足机器人",
+            "具身机器人",
+            "整机",
+            "系统集成",
+            "工业人形",
+            "服务人形",
+            "场景应用",
+            "机器人租赁"
+          ],
+          "weak_positive_tags": [
+            "自动化设备",
+            "人工智能",
+            "机器视觉"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.6,
+            "煤炭石油": -0.5,
+            "白酒": -0.4
+          },
+          "industry_soft_constraints": {
+            "自动化设备": 0.6,
+            "通用设备": 0.2,
+            "软件开发": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "人形机器人整机龙头",
+            "中军": "系统集成商或工业应用",
+            "补涨": "服务/租赁/场景应用"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "伺服电机与运动控制": {
+          "theme_name": "伺服电机与运动控制",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "高性能伺服电机/驱动",
+            "运动控制卡与总线",
+            "力矩控制与力觉"
+          ],
+          "industry_roles": {
+            "伺服电机与驱动": 0.4,
+            "运动控制卡/PLC": 0.3,
+            "力矩控制与力觉": 0.2,
+            "编码器与反馈": 0.1
+          },
+          "business_dna_tags": [
+            "伺服",
+            "伺服电机",
+            "驱动器",
+            "运动控制",
+            "运动控制卡",
+            "PLC",
+            "力矩控制",
+            "力觉",
+            "编码器",
+            "总线",
+            "EtherCAT"
+          ],
+          "weak_positive_tags": [
+            "工业自动化",
+            "数控机床",
+            "机器人制造"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.6,
+            "煤炭石油": -0.5,
+            "消费电子终端": -0.4
+          },
+          "industry_soft_constraints": {
+            "电机Ⅱ": 0.4,
+            "自动化设备": 0.4,
+            "通用设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "伺服驱动龙头或运动控制",
+            "中军": "高端伺服/力矩控制",
+            "补涨": "编码器/总线配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "执行器总成": {
+          "theme_name": "执行器总成",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "人形机器人关节执行器",
+            "伺服/谐波/行星减速",
+            "直线/旋转执行器"
+          ],
+          "industry_roles": {
+            "关节执行器总成": 0.4,
+            "伺服电机与驱动器": 0.25,
+            "减速器集成": 0.2,
+            "传感器与编码器": 0.15
+          },
+          "business_dna_tags": [
+            "执行器",
+            "关节模组",
+            "伺服电机",
+            "驱动器",
+            "编码器",
+            "旋转执行器",
+            "直线执行器",
+            "一体化关节",
+            "模组",
+            "关节电机"
+          ],
+          "weak_positive_tags": [
+            "精密机械",
+            "自动化设备",
+            "伺服系统"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.7,
+            "煤炭石油": -0.6,
+            "消费电子": -0.5
+          },
+          "industry_soft_constraints": {
+            "自动化设备": 0.5,
+            "通用设备": 0.3,
+            "电机Ⅱ": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "执行器总成或关节模组龙头",
+            "中军": "伺服电机与驱动器",
+            "补涨": "编码器/传感器配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "灵巧手": {
+          "theme_name": "灵巧手",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "多指灵巧手与抓握",
+            "欠驱动/腱传动手",
+            "触觉与力觉手指"
+          ],
+          "industry_roles": {
+            "多指灵巧手整机": 0.4,
+            "微型执行器与腱传动": 0.3,
+            "触觉与力觉传感": 0.2,
+            "抓取规划与算法": 0.1
+          },
+          "business_dna_tags": [
+            "灵巧手",
+            "多指手",
+            "腱传动",
+            "欠驱动",
+            "仿人手",
+            "抓握",
+            "触觉手指",
+            "微执行器",
+            "抓取算法"
+          ],
+          "weak_positive_tags": [
+            "精密机械",
+            "微电机",
+            "传感器"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.7,
+            "煤炭石油": -0.6,
+            "消费电子终端": -0.4
+          },
+          "industry_soft_constraints": {
+            "自动化设备": 0.5,
+            "通用设备": 0.3,
+            "电机Ⅱ": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "多指灵巧手或仿人手机构",
+            "中军": "微型执行器与腱传动",
+            "补涨": "触觉/力觉传感配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "精密减速器": {
+          "theme_name": "精密减速器",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "谐波减速器",
+            "RV减速器",
+            "行星减速器与人形机器人关节应用"
+          ],
+          "industry_roles": {
+            "谐波减速器": 0.35,
+            "RV减速器": 0.3,
+            "行星减速器": 0.2,
+            "精密齿轮与轴承": 0.15
+          },
+          "business_dna_tags": [
+            "谐波",
+            "减速器",
+            "RV减速器",
+            "行星减速器",
+            "精密齿轮",
+            "轴承",
+            "齿轮箱",
+            "谐波减速器",
+            "精密传动",
+            "关节减速器"
+          ],
+          "weak_positive_tags": [
+            "工业自动化",
+            "精密制造",
+            "机床"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.5,
+            "医药": -0.6,
+            "煤炭石油": -0.5
+          },
+          "industry_soft_constraints": {
+            "通用设备": 0.5,
+            "自动化设备": 0.3,
+            "机床": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "谐波/RV减速器龙头",
+            "中军": "行星减速器或精密齿轮",
+            "补涨": "轴承/精密加工配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "行星滚柱丝杠": {
+          "theme_name": "行星滚柱丝杠",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "行星滚柱丝杠与直线执行器",
+            "高负载精密直线传动",
+            "人形机器人腿部与腰部关节"
+          ],
+          "industry_roles": {
+            "行星滚柱丝杠": 0.4,
+            "滚珠丝杠与精密传动": 0.3,
+            "直线执行器与模组": 0.2,
+            "精密加工与热处理": 0.1
+          },
+          "business_dna_tags": [
+            "行星滚柱丝杠",
+            "滚珠丝杠",
+            "精密丝杠",
+            "直线执行器",
+            "线性模组",
+            "精密传动",
+            "高负载",
+            "精密加工",
+            "热处理"
+          ],
+          "weak_positive_tags": [
+            "精密机械",
+            "机床",
+            "自动化设备"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.7,
+            "煤炭石油": -0.6,
+            "消费电子": -0.5
+          },
+          "industry_soft_constraints": {
+            "通用设备": 0.5,
+            "机床": 0.3,
+            "自动化设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "行星滚柱丝杠或精密传动",
+            "中军": "滚珠丝杠与精密传动",
+            "补涨": "精密加工/热处理配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "低空经济": {
+      "name": "低空经济",
+      "desc": "低空经济全产业链：飞行器制造→运营服务→基础设施→数据控制",
+      "themes": {
+        "低空基础设施": {
+          "theme_name": "低空基础设施",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "城市空中交通起降场与保障系统",
+            "低空空管与通信导航系统",
+            "无人机运行基础设施网络"
+          ],
+          "industry_roles": {
+            "基础设施建设与起降场": 0.35,
+            "通信网络与导航": 0.25,
+            "能源补给与充电换电": 0.2,
+            "空管与空域管理系统": 0.2
+          },
+          "business_dna_tags": [
+            "起降场",
+            "停机坪",
+            "起降设施",
+            "低空雷达",
+            "空管系统",
+            "通信导航",
+            "UTM",
+            "低空通信",
+            "无人机机场",
+            "充电网络",
+            "城市空域管理"
+          ],
+          "weak_positive_tags": [
+            "通信设备",
+            "智慧城市",
+            "交通信息化",
+            "电力设备"
+          ],
+          "negative_pressure_tags": {
+            "军工武器导弹": -0.6,
+            "消费电子终端": -0.4,
+            "医药": -0.5
+          },
+          "industry_soft_constraints": {
+            "基础建设": 0.25,
+            "通信服务": 0.25,
+            "电力设备": 0.2,
+            "通用设备": 0.15,
+            "机场": 0.15
+          },
+          "stock_role_mapping": {
+            "龙头": "低空基础设施或空管系统",
+            "中军": "通信导航/起降场建设",
+            "补涨": "充电网络/空域管理配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "低空数据与控制": {
+          "theme_name": "低空数据与控制",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "低空通信网络与数据链",
+            "无人机飞控与导航芯片",
+            "UTM飞行管理与调度平台"
+          ],
+          "industry_roles": {
+            "低空通信数据链与导航": 0.35,
+            "飞控与导航芯片": 0.3,
+            "UTM与飞行调度": 0.2,
+            "低空地理与测绘": 0.15
+          },
+          "business_dna_tags": [
+            "飞控",
+            "飞控芯片",
+            "导航芯片",
+            "北斗",
+            "低空通信",
+            "数据链",
+            "UTM",
+            "无人机交通管理",
+            "低空测绘",
+            "地理信息",
+            "卫星导航"
+          ],
+          "weak_positive_tags": [
+            "通信设备",
+            "半导体",
+            "软件开发"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.5,
+            "煤炭石油": -0.5,
+            "白酒": -0.3
+          },
+          "industry_soft_constraints": {
+            "通信设备": 0.35,
+            "软件开发": 0.25,
+            "半导体": 0.2,
+            "军工电子": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "飞控芯片或UTM平台",
+            "中军": "低空通信数据链",
+            "补涨": "北斗/地理信息/测绘"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "低空运营服务": {
+          "theme_name": "低空运营服务",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "低空物流/巡检/农林作业运营",
+            "飞行培训与通航服务",
+            "低空基础设施运营"
+          ],
+          "industry_roles": {
+            "低空物流与配送运营": 0.35,
+            "电力/能源/应急巡检": 0.25,
+            "农林植保作业": 0.2,
+            "飞行培训/通航服务": 0.2
+          },
+          "business_dna_tags": [
+            "低空物流",
+            "无人机物流",
+            "电力巡检",
+            "能源巡检",
+            "应急巡检",
+            "农林植保",
+            "飞行培训",
+            "通航运营",
+            "低空运营",
+            "无人机服务"
+          ],
+          "weak_positive_tags": [
+            "物流",
+            "电力公用",
+            "农林牧渔"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.5,
+            "煤炭石油": -0.4,
+            "白酒": -0.3,
+            "消费电子": -0.4
+          },
+          "industry_soft_constraints": {
+            "物流": 0.3,
+            "航空运输": 0.25,
+            "软件开发": 0.2,
+            "汽车零部件": 0.15,
+            "电力": 0.1
+          },
+          "stock_role_mapping": {
+            "龙头": "低空物流或大型巡检运营",
+            "中军": "农林植保/飞行培训",
+            "补涨": "低空基础设施运营"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "低空飞行器制造": {
+          "theme_name": "低空飞行器制造",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "eVTOL电动垂直起降",
+            "工业/消费级无人机",
+            "通航飞机与飞行器制造"
+          ],
+          "industry_roles": {
+            "eVTOL与城市空中交通": 0.35,
+            "无人机整机": 0.3,
+            "通航飞机制造": 0.2,
+            "复合材料与结构件": 0.15
+          },
+          "business_dna_tags": [
+            "eVTOL",
+            "电动垂直起降",
+            "UAM",
+            "城市空中交通",
+            "无人机",
+            "工业无人机",
+            "消费级无人机",
+            "通航飞机",
+            "航空器",
+            "飞行器",
+            "飞行汽车"
+          ],
+          "weak_positive_tags": [
+            "航空制造",
+            "碳纤维",
+            "军工航空"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.6,
+            "煤炭石油": -0.5,
+            "消费电子终端": -0.4
+          },
+          "industry_soft_constraints": {
+            "航空装备": 0.35,
+            "军工电子": 0.25,
+            "通用设备": 0.15,
+            "汽车零部件": 0.15,
+            "机械设备": 0.1
+          },
+          "stock_role_mapping": {
+            "龙头": "eVTOL或无人机整机龙头",
+            "中军": "通航飞机或大型无人机",
+            "补涨": "复合材料/结构件配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "军工": {
+      "name": "国防军工",
+      "desc": "国防军工产业链：装备、航天、电子、材料",
+      "themes": {
+        "军工": {
+          "theme_name": "军工",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "军机/舰船/导弹等主战装备",
+            "军工电子与相控阵雷达",
+            "军用发动机与复合材料"
+          ],
+          "industry_roles": {
+            "航空航天装备": 0.25,
+            "航海与舰船装备": 0.2,
+            "军工电子与雷达": 0.2,
+            "航空发动机": 0.15,
+            "地面装备与弹药": 0.1,
+            "军用复合材料": 0.1
+          },
+          "business_dna_tags": [
+            "战斗机",
+            "运输机",
+            "直升机",
+            "教练机",
+            "航空发动机",
+            "涡扇",
+            "涡轴",
+            "燃气轮机",
+            "无人机",
+            "军用无人机",
+            "导弹",
+            "精确制导",
+            "雷达",
+            "相控阵雷达",
+            "电子对抗",
+            "电子战",
+            "军工电子",
+            "军用芯片",
+            "红外探测",
+            "热成像",
+            "装甲车",
+            "坦克",
+            "火炮",
+            "弹药",
+            "火控系统",
+            "航空母舰",
+            "驱逐舰",
+            "护卫舰",
+            "潜艇",
+            "舰船动力",
+            "复合材料",
+            "钛合金",
+            "高温合金",
+            "隐身材料",
+            "吸波材料",
+            "航天器",
+            "卫星",
+            "火箭发动机",
+            "固体火箭",
+            "液体火箭",
+            "军事通信",
+            "数据链",
+            "军用计算机",
+            "军用软件",
+            "军贸",
+            "军工改革",
+            "资产证券化"
+          ],
+          "weak_positive_tags": [
+            "民用航空",
+            "船舶制造",
+            "高端装备"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.6,
+            "医药": -0.7,
+            "传统能源": -0.5,
+            "白酒": -0.4
+          },
+          "industry_soft_constraints": {
+            "航天装备Ⅱ": 0.2,
+            "航空装备Ⅱ": 0.2,
+            "军工电子Ⅱ": 0.2,
+            "地面兵装Ⅱ": 0.2,
+            "航海装备Ⅱ": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "总装厂或发动机主机厂",
+            "中军": "军工电子/导弹/舰船系统",
+            "补涨": "高温合金/钛合金/隐身材料/配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "军工电子与信息化": {
+          "theme_name": "军工电子与信息化",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "军用芯片/FPGA/射频",
+            "相控阵雷达与电子战",
+            "数据链与军事通信"
+          ],
+          "industry_roles": {
+            "军用芯片与FPGA": 0.3,
+            "相控阵雷达与TR组件": 0.3,
+            "数据链与军事通信": 0.2,
+            "红外与光电探测": 0.2
+          },
+          "business_dna_tags": [
+            "军工电子",
+            "军用芯片",
+            "FPGA",
+            "TR组件",
+            "相控阵",
+            "雷达",
+            "电子战",
+            "数据链",
+            "军事通信",
+            "红外探测",
+            "光电",
+            "军用计算机",
+            "军工软件"
+          ],
+          "weak_positive_tags": [
+            "民用射频",
+            "通信设备",
+            "半导体设计"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.5,
+            "医药": -0.7,
+            "传统能源": -0.5
+          },
+          "industry_soft_constraints": {
+            "军工电子Ⅱ": 0.6,
+            "半导体": 0.2,
+            "通信设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "军用芯片或雷达系统总装",
+            "中军": "TR组件/红外/射频",
+            "补涨": "数据链/通信/电源配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "核聚变": {
+          "theme_name": "核聚变",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "可控核聚变与托卡马克",
+            "超导磁体与第一壁",
+            "氚增殖与偏滤器材料"
+          ],
+          "industry_roles": {
+            "超导磁体技术": 0.3,
+            "第一壁与偏滤器": 0.25,
+            "托卡马克装置与工程": 0.2,
+            "高温超导材料": 0.15,
+            "等离子体加热与诊断": 0.1
+          },
+          "business_dna_tags": [
+            "托卡马克",
+            "人造太阳",
+            "聚变能源",
+            "超导磁体",
+            "第一壁",
+            "偏滤器",
+            "氚",
+            "聚变堆",
+            "CFETR",
+            "高温超导"
+          ],
+          "weak_positive_tags": [
+            "核电裂变",
+            "特种金属",
+            "真空技术"
+          ],
+          "negative_pressure_tags": {
+            "传统化石能源": -0.5,
+            "消费电子": -0.7,
+            "医药": -0.8
+          },
+          "industry_soft_constraints": {
+            "其他电源设备Ⅱ": 0.5,
+            "工业金属": 0.3,
+            "通用设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "超导磁体或第一壁材料领先",
+            "中军": "聚变工程参与单位",
+            "补涨": "高温超导/真空设备/诊断配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "船舶制造": {
+          "theme_name": "船舶制造",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "LNG船/集装箱船/油轮高端制造",
+            "军舰/航母/驱逐舰建造",
+            "绿色船舶与双燃料动力"
+          ],
+          "industry_roles": {
+            "大型造船总装": 0.35,
+            "高端船舶(LNG/集装箱)": 0.25,
+            "舰船动力主机": 0.2,
+            "船舶配套与海工": 0.2
+          },
+          "business_dna_tags": [
+            "船舶",
+            "造船",
+            "LNG船",
+            "集装箱船",
+            "油轮",
+            "散货船",
+            "军舰",
+            "航母",
+            "驱逐舰",
+            "护卫舰",
+            "船用发动机",
+            "船用主机",
+            "船舶动力",
+            "绿色船舶",
+            "双燃料",
+            "造船订单",
+            "船坞",
+            "海工装备"
+          ],
+          "weak_positive_tags": [
+            "海工装备",
+            "军工航海",
+            "港口设备"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.7,
+            "医药": -0.7,
+            "新能源整车": -0.3,
+            "白酒": -0.4
+          },
+          "industry_soft_constraints": {
+            "船舶制造": 0.6,
+            "航海装备Ⅱ": 0.4
+          },
+          "stock_role_mapping": {
+            "龙头": "大型船舶总装龙头",
+            "中军": "LNG/高端船型配套",
+            "补涨": "主机/动力/设备配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "半导体": {
+      "name": "半导体",
+      "desc": "半导体全产业链：设备、材料、设计、制造、封测",
+      "themes": {
+        "先进封装": {
+          "theme_name": "先进封装",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "Chiplet/3D封装/CoWoS",
+            "ABF载板与IC载板",
+            "凸块/扇出/TSV等先进工艺"
+          ],
+          "industry_roles": {
+            "封测代工": 0.35,
+            "封装基板/ABF": 0.25,
+            "凸块与Bumping": 0.15,
+            "封装设备与材料": 0.15,
+            "测试与探针": 0.1
+          },
+          "business_dna_tags": [
+            "CoWoS",
+            "Chiplet",
+            "3D封装",
+            "SiP",
+            "TSV",
+            "Bumping",
+            "扇出型",
+            "PLP",
+            "ABF载板",
+            "引线框架"
+          ],
+          "weak_positive_tags": [
+            "PCB制造",
+            "被动元件",
+            "精密结构件"
+          ],
+          "negative_pressure_tags": {
+            "光刻机/刻蚀": -0.4,
+            "手机终端": -0.6,
+            "白电": -0.7,
+            "医药": -0.8
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.5,
+            "电子制造": 0.3,
+            "自动化设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "封测代工头部",
+            "中军": "ABF载板/大型封测厂",
+            "补涨": "引线框架/探针台/测试设备"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "功率半导体": {
+          "theme_name": "功率半导体",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "碳化硅/氮化镓第三代半导体",
+            "IGBT/MOSFET功率器件",
+            "车规级功率模块"
+          ],
+          "industry_roles": {
+            "SiC/GaN材料与器件": 0.3,
+            "IGBT模块": 0.25,
+            "MOSFET与电源芯片": 0.2,
+            "车规级功率": 0.15,
+            "智能功率模块IPM": 0.1
+          },
+          "business_dna_tags": [
+            "SiC",
+            "碳化硅",
+            "GaN",
+            "氮化镓",
+            "IGBT",
+            "MOSFET",
+            "功率器件",
+            "第三代半导体",
+            "宽禁带",
+            "车规级"
+          ],
+          "weak_positive_tags": [
+            "新能源车电子",
+            "工业自动化",
+            "光伏逆变器"
+          ],
+          "negative_pressure_tags": {
+            "纯设计类芯片": -0.3,
+            "消费电子": -0.5,
+            "医药": -0.7
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.5,
+            "电子": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "SiC/IGBT头部",
+            "中军": "车规级功率模块厂商",
+            "补涨": "MOSFET/驱动IC/IPM"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "半导体材料": {
+          "theme_name": "半导体材料",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "硅片/光刻胶/电子特气",
+            "前驱体/靶材/抛光材料",
+            "晶圆制造关键化学品国产替代"
+          ],
+          "industry_roles": {
+            "电子化学品": 0.3,
+            "硅片晶圆制造": 0.2,
+            "特种气体": 0.15,
+            "靶材": 0.15,
+            "抛光液/抛光垫": 0.1,
+            "光刻胶配套": 0.1
+          },
+          "business_dna_tags": [
+            "光刻胶",
+            "ArF",
+            "KrF",
+            "电子特气",
+            "硅片",
+            "靶材",
+            "CMP",
+            "抛光液",
+            "前驱体",
+            "湿电子化学品"
+          ],
+          "weak_positive_tags": [
+            "化工原料",
+            "特种金属",
+            "精细化工"
+          ],
+          "negative_pressure_tags": {
+            "半导体设备": -0.4,
+            "消费电子": -0.6,
+            "传统煤化工": -0.5,
+            "医药": -0.7
+          },
+          "industry_soft_constraints": {
+            "电子化学品Ⅱ": 0.4,
+            "化学原料": 0.3,
+            "半导体材料": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "光刻胶/电子特气/硅片头部",
+            "中军": "靶材/前驱体/湿电子化学品",
+            "补涨": "CMP材料/特种电子配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "半导体设备": {
+          "theme_name": "半导体设备",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "晶圆制造前道设备国产替代",
+            "刻蚀/薄膜沉积/光刻机",
+            "量测/检测/涂胶显影后道设备"
+          ],
+          "industry_roles": {
+            "前道设备制造": 0.35,
+            "量测与检测设备": 0.2,
+            "后道封装设备": 0.15,
+            "零部件与真空系统": 0.15,
+            "湿法清洗与热处理": 0.15
+          },
+          "business_dna_tags": [
+            "刻蚀设备",
+            "PVD",
+            "CVD",
+            "ALD",
+            "涂胶显影",
+            "量测",
+            "缺陷检测",
+            "热处理",
+            "离子注入"
+          ],
+          "weak_positive_tags": [
+            "高端装备",
+            "精密机械",
+            "真空技术"
+          ],
+          "negative_pressure_tags": {
+            "光刻胶/电子特气": -0.4,
+            "消费电子终端": -0.7,
+            "家电": -0.6,
+            "医药": -0.8
+          },
+          "industry_soft_constraints": {
+            "自动化设备": 0.6,
+            "半导体": 0.4
+          },
+          "stock_role_mapping": {
+            "龙头": "刻蚀/薄膜沉积头部",
+            "中军": "量测/涂胶显影/热处理",
+            "补涨": "零部件/真空泵/电源模块"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "存储芯片": {
+          "theme_name": "存储芯片",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "DRAM/NAND/3D NAND国产替代",
+            "HBM高带宽内存",
+            "存储控制器与接口"
+          ],
+          "industry_roles": {
+            "存储芯片设计": 0.35,
+            "存储制造与晶圆": 0.25,
+            "HBM与高带宽": 0.2,
+            "存储控制器": 0.1,
+            "存储模组与封测": 0.1
+          },
+          "business_dna_tags": [
+            "DRAM",
+            "NAND",
+            "3D NAND",
+            "HBM",
+            "Nor Flash",
+            "MCU",
+            "存储控制器",
+            "CXL"
+          ],
+          "weak_positive_tags": [
+            "封测",
+            "PCB",
+            "模组制造"
+          ],
+          "negative_pressure_tags": {
+            "光刻机设备": -0.3,
+            "消费电子品牌": -0.5,
+            "传统家电": -0.6,
+            "医药": -0.7
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.6,
+            "电子": 0.4
+          },
+          "stock_role_mapping": {
+            "龙头": "DRAM/NAND设计或制造",
+            "中军": "MCU/存储控制芯片",
+            "补涨": "模组/封测/接口"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "晶圆代工与IDM": {
+          "theme_name": "晶圆代工与IDM",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "晶圆制造代工Foundry",
+            "成熟制程扩产与国产替代",
+            "IDM一体化企业"
+          ],
+          "industry_roles": {
+            "晶圆代工企业": 0.4,
+            "IDM综合制造": 0.3,
+            "特种工艺代工": 0.15,
+            "功率/模拟代工": 0.15
+          },
+          "business_dna_tags": [
+            "Foundry",
+            "IDM",
+            "晶圆代工",
+            "成熟制程",
+            "先进制程",
+            "28nm",
+            "BCD",
+            "CIS",
+            "MEMS"
+          ],
+          "weak_positive_tags": [
+            "半导体设备",
+            "半导体材料"
+          ],
+          "negative_pressure_tags": {
+            "纯芯片设计": -0.2,
+            "消费电子终端": -0.6,
+            "医药": -0.7,
+            "传统能源": -0.6
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.7,
+            "电子": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "大型晶圆代工/IDM",
+            "中军": "特色工艺代工厂",
+            "补涨": "功率/模拟代工与扩产配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "芯片设计": {
+          "theme_name": "芯片设计",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "数字/模拟/射频/FPGA全品类芯片设计",
+            "EDA工具与IP授权",
+            "国产替代芯片"
+          ],
+          "industry_roles": {
+            "数字与SOC设计": 0.3,
+            "模拟/电源/射频": 0.25,
+            "FPGA与可编程": 0.15,
+            "EDA与IP": 0.15,
+            "蓝牙/WiFi/物联网": 0.15
+          },
+          "business_dna_tags": [
+            "EDA",
+            "FPGA",
+            "ASIC",
+            "SoC",
+            "IP授权",
+            "RISC-V",
+            "模拟芯片",
+            "射频",
+            "MCU",
+            "GPU"
+          ],
+          "weak_positive_tags": [
+            "软件工具",
+            "消费电子芯片"
+          ],
+          "negative_pressure_tags": {
+            "晶圆代工制造": -0.3,
+            "家电整机": -0.6,
+            "医药": -0.8,
+            "能源开采": -0.7
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.7,
+            "软件开发": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "通用大芯片/高端模拟/射频头部",
+            "中军": "国产MCU/Power/传感器设计",
+            "补涨": "EDA/IP/细分领域设计"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "商业航天": {
+      "name": "商业航天",
+      "desc": "商业航天全产业链：上游制造发射→中游卫星运营→下游应用服务",
+      "themes": {
+        "卫星制造与发射": {
+          "theme_name": "卫星制造与发射",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "卫星平台与载荷制造",
+            "商业火箭与可回收",
+            "卫星互联网与低轨星座"
+          ],
+          "industry_roles": {
+            "卫星平台与制造": 0.3,
+            "商业火箭与发射服务": 0.3,
+            "低轨星座与卫星互联网": 0.2,
+            "卫星载荷与元器件": 0.2
+          },
+          "business_dna_tags": [
+            "卫星",
+            "卫星制造",
+            "商业火箭",
+            "可回收火箭",
+            "低轨卫星",
+            "LEO",
+            "卫星互联网",
+            "星座",
+            "载荷",
+            "星载芯片",
+            "卫星平台"
+          ],
+          "weak_positive_tags": [
+            "航天军工",
+            "半导体",
+            "通信"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.6,
+            "煤炭石油": -0.5,
+            "消费电子终端": -0.4
+          },
+          "industry_soft_constraints": {
+            "航天装备Ⅱ": 0.5,
+            "军工电子Ⅱ": 0.3,
+            "通信设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "卫星制造或商业火箭龙头",
+            "中军": "低轨星座/卫星互联网",
+            "补涨": "载荷/星载芯片配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "卫星应用": {
+          "theme_name": "卫星应用",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "直连手机/直连消费终端",
+            "车规与智能驾驶卫星应用",
+            "应急与海洋/林业等行业应用"
+          ],
+          "industry_roles": {
+            "卫星直连终端与消费应用": 0.35,
+            "车规与智能驾驶卫星": 0.25,
+            "行业应用(应急/海洋/林业)": 0.25,
+            "卫星物联网": 0.15
+          },
+          "business_dna_tags": [
+            "卫星直连",
+            "卫星手机",
+            "直连终端",
+            "车规卫星",
+            "车载卫星",
+            "卫星物联网",
+            "NTN",
+            "非地面网络",
+            "应急通信",
+            "海洋遥感",
+            "林业应用"
+          ],
+          "weak_positive_tags": [
+            "消费电子",
+            "车联网",
+            "通信设备"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.5,
+            "煤炭石油": -0.4,
+            "白酒": -0.3
+          },
+          "industry_soft_constraints": {
+            "通信设备": 0.4,
+            "消费电子": 0.3,
+            "软件开发": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "卫星直连终端或车规应用",
+            "中军": "行业应用解决方案",
+            "补涨": "物联网/芯片/终端配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "卫星运营": {
+          "theme_name": "卫星运营",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "卫星通信运营与服务",
+            "遥感卫星数据与应用",
+            "卫星导航与位置服务"
+          ],
+          "industry_roles": {
+            "卫星通信运营": 0.35,
+            "遥感数据与应用": 0.3,
+            "卫星导航与位置服务": 0.25,
+            "地面站与测控": 0.1
+          },
+          "business_dna_tags": [
+            "卫星运营",
+            "卫星通信",
+            "遥感",
+            "地理信息",
+            "北斗",
+            "GNSS",
+            "位置服务",
+            "卫星数据",
+            "地面站",
+            "测控",
+            "卫星互联网服务"
+          ],
+          "weak_positive_tags": [
+            "通信运营",
+            "软件",
+            "测绘地理"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.6,
+            "煤炭石油": -0.4,
+            "白酒": -0.3
+          },
+          "industry_soft_constraints": {
+            "通信服务": 0.7,
+            "IT服务Ⅱ": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "卫星通信或北斗运营龙头",
+            "中军": "遥感数据与地理信息",
+            "补涨": "地面站/测控配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "新能源": {
+      "name": "新能源",
+      "desc": "新能源电力产业链：发电、储能、电网、新能源车",
+      "themes": {
+        "光伏产业链": {
+          "theme_name": "光伏产业链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "N型TOPCon/BC电池/叠层技术",
+            "硅料/硅片/电池片/组件",
+            "逆变器与支架跟踪"
+          ],
+          "industry_roles": {
+            "硅料与硅片": 0.2,
+            "电池片技术": 0.25,
+            "组件与胶膜/玻璃": 0.2,
+            "逆变器": 0.2,
+            "支架与跟踪": 0.15
+          },
+          "business_dna_tags": [
+            "光伏",
+            "TOPCon",
+            "BC电池",
+            "HJT",
+            "钙钛矿",
+            "叠层",
+            "硅料",
+            "石英坩埚",
+            "光伏玻璃",
+            "胶膜",
+            "金刚线"
+          ],
+          "weak_positive_tags": [
+            "储能",
+            "新能源运营",
+            "工业金属"
+          ],
+          "negative_pressure_tags": {
+            "风电整机": -0.3,
+            "消费电子": -0.6,
+            "医药": -0.7,
+            "传统能源": -0.5
+          },
+          "industry_soft_constraints": {
+            "光伏设备": 0.5,
+            "电力": 0.3,
+            "有色金属": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "一体化组件或逆变器头部",
+            "中军": "新型电池片/胶膜/玻璃龙头",
+            "补涨": "辅材/支架/设备"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "固态电池": {
+          "theme_name": "固态电池",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "半固态/全固态电池",
+            "硫化物/氧化物电解质",
+            "锂金属负极与高镍正极"
+          ],
+          "industry_roles": {
+            "固态电池制造": 0.3,
+            "硫化物/氧化物电解质": 0.25,
+            "高镍正极与富锂锰基": 0.2,
+            "锂金属/硅碳负极": 0.15,
+            "聚合物电解质": 0.1
+          },
+          "business_dna_tags": [
+            "全固态",
+            "半固态",
+            "硫化物",
+            "氧化物",
+            "聚合物电解质",
+            "锂金属负极",
+            "高镍",
+            "富锂锰基",
+            "固态电解质",
+            "LLZO",
+            "LATP"
+          ],
+          "weak_positive_tags": [
+            "锂电材料",
+            "新能源车",
+            "储能"
+          ],
+          "negative_pressure_tags": {
+            "传统燃油车": -0.7,
+            "煤炭/石油": -0.6,
+            "医药": -0.7,
+            "消费电子": -0.5
+          },
+          "industry_soft_constraints": {
+            "电池": 0.5,
+            "电池化学品": 0.3,
+            "能源金属": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "固态电池中试线或半固态量产",
+            "中军": "高镍正极/固态电解质材料",
+            "补涨": "锂金属负极/硅碳/粘结剂"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "新型储能": {
+          "theme_name": "新型储能",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "电化学储能/工商业储能",
+            "PCS/逆变器",
+            "钠离子电池与液流电池"
+          ],
+          "industry_roles": {
+            "电化学储能系统": 0.3,
+            "PCS与逆变器": 0.25,
+            "钠电与液流电池": 0.2,
+            "温控与消防": 0.15,
+            "BMS/EMS": 0.1
+          },
+          "business_dna_tags": [
+            "储能",
+            "工商业储能",
+            "大型储能",
+            "PCS",
+            "BMS",
+            "EMS",
+            "钠离子电池",
+            "液流电池",
+            "电化学储能",
+            "虚拟电厂配套"
+          ],
+          "weak_positive_tags": [
+            "新能源车电池",
+            "光伏逆变器",
+            "电力运营"
+          ],
+          "negative_pressure_tags": {
+            "传统火电煤炭": -0.5,
+            "消费电子": -0.6,
+            "医药": -0.7
+          },
+          "industry_soft_constraints": {
+            "电池": 0.4,
+            "电网设备": 0.3,
+            "电力设备": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "大型储能系统集成商",
+            "中军": "PCS/温控/钠电材料",
+            "补涨": "BMS/消防/电力电子配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "电力链": {
+          "theme_name": "电力链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "火电/水电/核电等传统电源",
+            "电网设备与特高压",
+            "电力市场化与容量电价"
+          ],
+          "industry_roles": {
+            "火电运营": 0.25,
+            "水电/核电": 0.2,
+            "电网设备与特高压": 0.25,
+            "输变电设备": 0.15,
+            "配网与电力电子": 0.15
+          },
+          "business_dna_tags": [
+            "火电",
+            "煤电",
+            "超超临界",
+            "水电",
+            "核电",
+            "特高压",
+            "电网",
+            "电力市场化",
+            "容量电价",
+            "调峰"
+          ],
+          "weak_positive_tags": [
+            "煤炭",
+            "工业机械",
+            "通用设备"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.7,
+            "医药": -0.8,
+            "半导体设计": -0.5,
+            "银行": -0.3
+          },
+          "industry_soft_constraints": {
+            "电力": 0.4,
+            "火力发电": 0.3,
+            "电网设备": 0.2,
+            "风电设备": 0.1
+          },
+          "stock_role_mapping": {
+            "龙头": "大型电力运营集团",
+            "中军": "水电/核电核心运营商",
+            "补涨": "输变电/配网设备厂商"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "电网数字化": {
+          "theme_name": "电网数字化",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "虚拟电厂与源网荷储协调",
+            "配网自动化与调度",
+            "电力物联网与数字电网"
+          ],
+          "industry_roles": {
+            "调度自动化与软件": 0.35,
+            "配网自动化设备": 0.25,
+            "电力物联网": 0.2,
+            "柔性直流与电力电子": 0.2
+          },
+          "business_dna_tags": [
+            "虚拟电厂",
+            "配网改造",
+            "数字电网",
+            "调度自动化",
+            "能源互联网",
+            "配电自动化",
+            "柔性直流",
+            "电力物联网"
+          ],
+          "weak_positive_tags": [
+            "工业软件",
+            "工业自动化",
+            "通信设备"
+          ],
+          "negative_pressure_tags": {
+            "火电煤炭开采": -0.4,
+            "医药": -0.7,
+            "消费电子": -0.5
+          },
+          "industry_soft_constraints": {
+            "电网设备": 0.5,
+            "软件开发": 0.3,
+            "自动化设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "调度/继保/电力软件",
+            "中军": "配网自动化与物联网设备",
+            "补涨": "传感器/电力信息安全"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "风电产业链": {
+          "theme_name": "风电产业链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "海上风电与深远海",
+            "风机大型化与大兆瓦",
+            "齿轮箱/主轴/塔筒/海缆"
+          ],
+          "industry_roles": {
+            "风机整机": 0.3,
+            "海缆与传输": 0.2,
+            "叶片/齿轮箱/主轴": 0.25,
+            "塔筒与基础": 0.15,
+            "漂浮式与深远海": 0.1
+          },
+          "business_dna_tags": [
+            "风电",
+            "海上风电",
+            "风机",
+            "大型化",
+            "叶片",
+            "齿轮箱",
+            "轴承",
+            "法兰",
+            "塔筒",
+            "海缆",
+            "漂浮式"
+          ],
+          "weak_positive_tags": [
+            "海工装备",
+            "船舶制造",
+            "电力运营"
+          ],
+          "negative_pressure_tags": {
+            "光伏组件": -0.3,
+            "消费电子": -0.6,
+            "医药": -0.7,
+            "传统能源": -0.4
+          },
+          "industry_soft_constraints": {
+            "风电设备": 0.6,
+            "电力": 0.2,
+            "船舶制造": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "风机整机龙头",
+            "中军": "海缆/轴承/叶片",
+            "补涨": "塔筒/法兰/海工装备"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "新能源汽车": {
+      "name": "新能源汽车",
+      "desc": "电动化交通产业：整车制造→动力系统→智能化→充换电→材料链",
+      "themes": {
+        "充换电与能源补给": {
+          "theme_name": "充换电与能源补给",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "超快充/800V充电网络",
+            "换电站与运营",
+            "光储充一体化"
+          ],
+          "industry_roles": {
+            "充电桩/站制造": 0.3,
+            "超快充与模块": 0.25,
+            "换电站运营": 0.25,
+            "V2G/光储充": 0.2
+          },
+          "business_dna_tags": [
+            "充电桩",
+            "充电站",
+            "快充",
+            "超充",
+            "换电",
+            "换电站",
+            "充电模块",
+            "充电枪",
+            "V2G",
+            "光储充"
+          ],
+          "weak_positive_tags": [
+            "储能",
+            "电力运营",
+            "电力电子"
+          ],
+          "negative_pressure_tags": {
+            "燃油车": -0.5,
+            "医药": -0.7,
+            "消费电子": -0.5
+          },
+          "industry_soft_constraints": {
+            "电力": 0.4,
+            "电源设备": 0.3,
+            "通用设备": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "大型充电/换电设备商",
+            "中军": "充电模块/运营平台",
+            "补涨": "配网接入/充电枪/光储充集成"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "动力系统": {
+          "theme_name": "动力系统",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "动力电池与BMS",
+            "电机电控与电驱",
+            "SiC/GaN高压平台"
+          ],
+          "industry_roles": {
+            "动力电池": 0.35,
+            "电驱与电机": 0.25,
+            "电控与BMS": 0.2,
+            "高压平台与SiC": 0.2
+          },
+          "business_dna_tags": [
+            "电池",
+            "动力电池",
+            "锂电池",
+            "磷酸铁锂",
+            "三元锂",
+            "电机",
+            "电驱",
+            "电控",
+            "BMS",
+            "SiC",
+            "800V高压"
+          ],
+          "weak_positive_tags": [
+            "新能源车电子",
+            "IGBT",
+            "储能电池"
+          ],
+          "negative_pressure_tags": {
+            "传统燃油发动机": -0.6,
+            "消费电子": -0.5,
+            "医药": -0.7,
+            "半导体设计公司": -0.3
+          },
+          "industry_soft_constraints": {
+            "电池": 0.4,
+            "汽车零部件": 0.3,
+            "电机Ⅱ": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "大型动力电池厂",
+            "中军": "电驱/电机/电控厂商",
+            "补涨": "电池辅材/热管理/碳化硅器件"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "新能源汽车整车制造": {
+          "theme_name": "新能源汽车整车制造",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "新能源乘用车整车品牌",
+            "商用车电动化与出口",
+            "增程/纯电/插混平台"
+          ],
+          "industry_roles": {
+            "新能源乘用车": 0.4,
+            "新能源商用车": 0.25,
+            "汽车平台与出口": 0.2,
+            "经销商与渠道": 0.15
+          },
+          "business_dna_tags": [
+            "新能源汽车",
+            "电动车",
+            "纯电动",
+            "插混",
+            "增程式",
+            "出口",
+            "乘用车",
+            "商用车"
+          ],
+          "weak_positive_tags": [
+            "汽车零部件",
+            "汽车电子",
+            "汽车经销"
+          ],
+          "negative_pressure_tags": {
+            "燃油车品牌": -0.5,
+            "消费电子": -0.5,
+            "医药": -0.7
+          },
+          "industry_soft_constraints": {
+            "汽车整车": 0.7,
+            "汽车零部件": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "头部新势力或大型自主",
+            "中军": "商用车/出口/合资新能源",
+            "补涨": "经销渠道/平台公司"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "新能源汽车智能化": {
+          "theme_name": "新能源汽车智能化",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "高阶智驾NOA与城市NOA",
+            "激光雷达/毫米波/摄像头",
+            "座舱芯片与车规OS"
+          ],
+          "industry_roles": {
+            "智驾域控制器与芯片": 0.3,
+            "激光雷达与传感器": 0.25,
+            "智能座舱": 0.2,
+            "车规软件与OS": 0.15,
+            "V2X与车路协同": 0.1
+          },
+          "business_dna_tags": [
+            "自动驾驶",
+            "NOA",
+            "城市NOA",
+            "激光雷达",
+            "毫米波",
+            "摄像头",
+            "域控制器",
+            "智驾芯片",
+            "座舱芯片",
+            "车规OS",
+            "BEV",
+            "Transformer"
+          ],
+          "weak_positive_tags": [
+            "消费电子",
+            "半导体",
+            "工业软件"
+          ],
+          "negative_pressure_tags": {
+            "传统燃油车": -0.5,
+            "医药": -0.7,
+            "传统火电": -0.5
+          },
+          "industry_soft_constraints": {
+            "汽车零部件": 0.4,
+            "软件开发": 0.3,
+            "半导体": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "激光雷达或智驾域控头部",
+            "中军": "座舱/驾驶芯片Tier1",
+            "补涨": "摄像头/毫米波/线束"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "新能源汽车材料链": {
+          "theme_name": "新能源汽车材料链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "锂/钴/镍/锰能源金属",
+            "正极/负极/电解液/隔膜",
+            "铜箔铝箔与结构件"
+          ],
+          "industry_roles": {
+            "能源金属开采": 0.3,
+            "正极材料": 0.25,
+            "负极与硅碳": 0.2,
+            "电解液与锂盐": 0.15,
+            "隔膜/铜箔铝箔": 0.1
+          },
+          "business_dna_tags": [
+            "锂矿",
+            "碳酸锂",
+            "氢氧化锂",
+            "钴",
+            "镍",
+            "锰",
+            "正极材料",
+            "负极材料",
+            "电解液",
+            "隔膜",
+            "铜箔",
+            "铝箔",
+            "PVDF"
+          ],
+          "weak_positive_tags": [
+            "有色金属",
+            "化工材料",
+            "铜加工"
+          ],
+          "negative_pressure_tags": {
+            "整车品牌": -0.4,
+            "消费电子": -0.5,
+            "医药": -0.7
+          },
+          "industry_soft_constraints": {
+            "能源金属": 0.4,
+            "化学原料": 0.3,
+            "有色金属": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "锂矿/正极头部",
+            "中军": "负极/电解液/隔膜龙头",
+            "补涨": "PVDF/导电剂/结构件"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "消费": {
+      "name": "消费",
+      "desc": "消费产业链：必选消费、新消费、消费电子、汽车",
+      "themes": {
+        "家电家装": {
+          "theme_name": "家电家装",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "白电/厨电/小家电",
+            "以旧换新与出口",
+            "家居建材与装修链"
+          ],
+          "industry_roles": {
+            "白电(空调/冰箱/洗衣机)": 0.35,
+            "厨电与小家电": 0.25,
+            "家居建材": 0.2,
+            "装修与装饰": 0.1,
+            "家电出口制造": 0.1
+          },
+          "business_dna_tags": [
+            "白电",
+            "空调",
+            "冰箱",
+            "洗衣机",
+            "厨电",
+            "小家电",
+            "智能家居",
+            "以旧换新",
+            "家电出口",
+            "家居",
+            "建材",
+            "装修",
+            "装饰"
+          ],
+          "weak_positive_tags": [
+            "家具",
+            "建材",
+            "消费零售"
+          ],
+          "negative_pressure_tags": {
+            "半导体": -0.5,
+            "医药": -0.5,
+            "新能源车": -0.4
+          },
+          "industry_soft_constraints": {
+            "白色家电": 0.4,
+            "小家电": 0.3,
+            "家居装饰": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "大型白电集团",
+            "中军": "厨电/小家电龙头",
+            "补涨": "家居建材/装修链"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "必选消费红利链": {
+          "theme_name": "必选消费红利链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "食品饮料/乳业/调味品等高股息龙头",
+            "农业与农产品加工",
+            "商超与食品制造"
+          ],
+          "industry_roles": {
+            "食品饮料龙头": 0.35,
+            "乳业": 0.2,
+            "调味品与食品制造": 0.2,
+            "农业与农副": 0.15,
+            "商超零售": 0.1
+          },
+          "business_dna_tags": [
+            "食品饮料",
+            "乳业",
+            "奶粉",
+            "调味品",
+            "酱油",
+            "食用油",
+            "米面",
+            "肉禽",
+            "水产",
+            "农业",
+            "高股息消费",
+            "商超",
+            "零售"
+          ],
+          "weak_positive_tags": [
+            "白酒",
+            "家电",
+            "医药零售"
+          ],
+          "negative_pressure_tags": {
+            "半导体": -0.5,
+            "新能源车": -0.4,
+            "军工": -0.4
+          },
+          "industry_soft_constraints": {
+            "食品饮料": 0.4,
+            "农业": 0.3,
+            "零售": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "食品饮料乳业龙头",
+            "中军": "调味品/米面/农副",
+            "补涨": "商超零售或高股息农业"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "情绪消费成长链": {
+          "theme_name": "情绪消费成长链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "连锁餐饮/茶饮/零食",
+            "免税与旅游零售",
+            "网红消费与电商渠道"
+          ],
+          "industry_roles": {
+            "连锁餐饮茶饮": 0.35,
+            "旅游与免税零售": 0.25,
+            "休闲食品/零食连锁": 0.2,
+            "美妆个护": 0.1,
+            "电商与MCN": 0.1
+          },
+          "business_dna_tags": [
+            "连锁餐饮",
+            "奶茶",
+            "咖啡",
+            "零食",
+            "免税",
+            "旅游",
+            "美妆",
+            "个护",
+            "电商",
+            "MCN",
+            "网红经济",
+            "直播带货",
+            "消费复苏"
+          ],
+          "weak_positive_tags": [
+            "白酒",
+            "商业零售",
+            "影视娱乐"
+          ],
+          "negative_pressure_tags": {
+            "半导体": -0.5,
+            "医药": -0.5,
+            "军工": -0.4,
+            "传统能源": -0.3
+          },
+          "industry_soft_constraints": {
+            "餐饮": 0.4,
+            "零售": 0.3,
+            "旅游Ⅱ": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "连锁餐饮或免税龙头",
+            "中军": "零食连锁/旅游",
+            "补涨": "美妆/电商配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "智能驾驶": {
+          "theme_name": "智能驾驶",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "汽车智能化/智驾/座舱",
+            "车载电子与车规芯片",
+            "汽车软件与域控制器"
+          ],
+          "industry_roles": {
+            "智驾与域控制器": 0.35,
+            "智能座舱": 0.25,
+            "车规芯片与传感器": 0.2,
+            "车载软件与OS": 0.1,
+            "车路协同/V2X": 0.1
+          },
+          "business_dna_tags": [
+            "智能驾驶",
+            "自动驾驶",
+            "NOA",
+            "域控制器",
+            "智驾芯片",
+            "智能座舱",
+            "车载芯片",
+            "车规级",
+            "车载OS",
+            "车联网",
+            "V2X",
+            "车路协同",
+            "OTA",
+            "毫米波雷达",
+            "激光雷达",
+            "摄像头"
+          ],
+          "weak_positive_tags": [
+            "汽车零部件",
+            "汽车电子",
+            "半导体"
+          ],
+          "negative_pressure_tags": {
+            "消费电子终端": -0.4,
+            "医药": -0.5,
+            "煤炭石油": -0.5
+          },
+          "industry_soft_constraints": {
+            "汽车零部件": 0.5,
+            "软件开发": 0.3,
+            "半导体": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "智驾域控或座舱龙头",
+            "中军": "车规芯片/车载软件",
+            "补涨": "传感器/线束/配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "消费电子": {
+          "theme_name": "消费电子",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "智能手机/PC/平板/可穿戴",
+            "AI终端/MR/AI眼镜",
+            "苹果链/安卓链创新"
+          ],
+          "industry_roles": {
+            "智能手机链": 0.3,
+            "MR/VR/AR/可穿戴": 0.25,
+            "消费电子零部件": 0.25,
+            "AI终端硬件": 0.2
+          },
+          "business_dna_tags": [
+            "智能手机",
+            "AI手机",
+            "AI PC",
+            "MR",
+            "VR",
+            "AR",
+            "可穿戴",
+            "折叠屏",
+            "苹果链",
+            "安卓链",
+            "消费电子零部件",
+            "显示面板",
+            "摄像头",
+            "结构件",
+            "被动元件"
+          ],
+          "weak_positive_tags": [
+            "半导体",
+            "面板",
+            "精密制造",
+            "光学光电子"
+          ],
+          "negative_pressure_tags": {
+            "传统家电": -0.4,
+            "医药": -0.5,
+            "煤炭": -0.5
+          },
+          "industry_soft_constraints": {
+            "消费电子": 0.6,
+            "光学光电子": 0.2,
+            "电子制造": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "消费电子制造龙头或苹果链",
+            "中军": "MR/可穿戴/AI硬件",
+            "补涨": "被动元件/结构件/配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "白酒": {
+          "theme_name": "白酒",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "高端/次高端/区域白酒",
+            "白酒渠道与动销",
+            "品牌力与提价能力"
+          ],
+          "industry_roles": {
+            "高端白酒": 0.4,
+            "次高端白酒": 0.3,
+            "区域白酒": 0.2,
+            "白酒渠道与配套": 0.1
+          },
+          "business_dna_tags": [
+            "白酒",
+            "高端白酒",
+            "次高端",
+            "酱酒",
+            "浓香型",
+            "清香型",
+            "品牌白酒",
+            "白酒渠道",
+            "宴席消费",
+            "送礼"
+          ],
+          "weak_positive_tags": [
+            "食品饮料",
+            "商业零售",
+            "餐饮"
+          ],
+          "negative_pressure_tags": {
+            "半导体": -0.5,
+            "新能源": -0.4,
+            "医药": -0.3,
+            "军工": -0.4
+          },
+          "industry_soft_constraints": {
+            "白酒": 0.7,
+            "食品饮料": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "高端白酒龙头",
+            "中军": "次高端白酒",
+            "补涨": "区域白酒或渠道配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "物理AI": {
+      "name": "物理AI",
+      "desc": "物理AI（具身智能）：大模型赋予机器人感知、决策与操作能力",
+      "themes": {
+        "传感器": {
+          "theme_name": "传感器",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "MEMS/惯性/力觉/触觉传感器",
+            "毫米波/超声波/激光",
+            "温度/压力/气体工业传感"
+          ],
+          "industry_roles": {
+            "MEMS与惯性传感器": 0.3,
+            "激光/毫米波雷达": 0.25,
+            "力觉/触觉传感器": 0.2,
+            "工业传感器": 0.15,
+            "图像与视觉传感器": 0.1
+          },
+          "business_dna_tags": [
+            "传感器",
+            "MEMS",
+            "惯性测量",
+            "IMU",
+            "六维力",
+            "力矩传感器",
+            "触觉传感器",
+            "激光雷达",
+            "毫米波",
+            "超声波",
+            "工业传感器",
+            "压力传感",
+            "温度传感",
+            "气体传感"
+          ],
+          "weak_positive_tags": [
+            "半导体设计",
+            "消费电子",
+            "汽车电子"
+          ],
+          "negative_pressure_tags": {
+            "传统煤炭": -0.6,
+            "医药": -0.6,
+            "白酒": -0.4
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.4,
+            "电子制造": 0.3,
+            "自动化设备": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "MEMS/工业传感器龙头",
+            "中军": "激光/毫米波/力觉厂商",
+            "补涨": "触觉/气体/视觉配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "具身智能大模型": {
+          "theme_name": "具身智能大模型",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "物理世界通用人工智能/具身AGI",
+            "机器人基础大模型与多模态",
+            "视觉-语言-动作统一模型"
+          ],
+          "industry_roles": {
+            "具身大模型平台": 0.35,
+            "多模态与视觉语言": 0.25,
+            "机器人智能体": 0.2,
+            "运动控制与强化学习": 0.2
+          },
+          "business_dna_tags": [
+            "具身智能",
+            "物理AI",
+            "具身大模型",
+            "机器人GPT",
+            "VLA",
+            "视觉语言动作",
+            "多模态",
+            "机器人智能体",
+            "通用人工智能",
+            "AGI",
+            "强化学习",
+            "基础模型"
+          ],
+          "weak_positive_tags": [
+            "AI大模型",
+            "机器人制造",
+            "机器视觉"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.5,
+            "医药": -0.7,
+            "传统能源": -0.5,
+            "白酒": -0.4
+          },
+          "industry_soft_constraints": {
+            "软件开发": 0.4,
+            "IT服务Ⅱ": 0.3,
+            "自动化设备": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "具身大模型平台或通用AI龙头",
+            "中军": "多模态/机器人智能体",
+            "补涨": "运动控制/强化学习应用"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "数字孪生与工业仿真": {
+          "theme_name": "数字孪生与工业仿真",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "工业数字孪生与仿真软件",
+            "CAE/EDA级物理仿真",
+            "工厂数字化与工业软件"
+          ],
+          "industry_roles": {
+            "工业仿真与CAE": 0.35,
+            "数字孪生平台": 0.3,
+            "工厂数字化/MES": 0.2,
+            "工业数据与可视化": 0.15
+          },
+          "business_dna_tags": [
+            "数字孪生",
+            "工业仿真",
+            "CAE",
+            "工厂数字化",
+            "MES",
+            "工业软件",
+            "物理仿真",
+            "可视化",
+            "工业大数据",
+            "仿真引擎"
+          ],
+          "weak_positive_tags": [
+            "工业软件",
+            "工业自动化",
+            "云计算"
+          ],
+          "negative_pressure_tags": {
+            "消费游戏": -0.5,
+            "医药": -0.6,
+            "煤炭石油": -0.5
+          },
+          "industry_soft_constraints": {
+            "软件开发": 0.5,
+            "IT服务Ⅱ": 0.3,
+            "自动化设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "工业仿真或数字孪生平台",
+            "中军": "工厂数字化/MES",
+            "补涨": "工业数据/可视化配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "机器视觉与3D感知": {
+          "theme_name": "机器视觉与3D感知",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "工业/服务机器人视觉系统",
+            "3D视觉/深度相机/激光",
+            "SLAM与环境感知"
+          ],
+          "industry_roles": {
+            "机器视觉系统": 0.35,
+            "3D视觉/深度相机": 0.3,
+            "SLAM与定位": 0.2,
+            "图像传感器与摄像头": 0.15
+          },
+          "business_dna_tags": [
+            "机器视觉",
+            "3D视觉",
+            "深度相机",
+            "激光雷达",
+            "视觉定位",
+            "SLAM",
+            "环境感知",
+            "图像传感器",
+            "视觉算法",
+            "视觉检测"
+          ],
+          "weak_positive_tags": [
+            "安防监控",
+            "半导体图像传感器",
+            "工业自动化"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.7,
+            "煤炭石油": -0.6,
+            "消费电子纯终端": -0.4
+          },
+          "industry_soft_constraints": {
+            "自动化设备": 0.4,
+            "光学光电子": 0.3,
+            "软件开发": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "机器视觉系统龙头",
+            "中军": "3D视觉/深度相机厂商",
+            "补涨": "SLAM/图像传感器配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "边缘计算与AI芯片": {
+          "theme_name": "边缘计算与AI芯片",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "边缘AI推理芯片",
+            "FPGA/ASIC/NPU嵌入式加速",
+            "端侧大模型与小模型"
+          ],
+          "industry_roles": {
+            "边缘AI芯片": 0.35,
+            "嵌入式FPGA/ASIC": 0.25,
+            "端侧大模型与推理": 0.2,
+            "边缘计算网关与模组": 0.2
+          },
+          "business_dna_tags": [
+            "边缘计算",
+            "边缘AI",
+            "AI芯片",
+            "NPU",
+            "FPGA",
+            "ASIC",
+            "端侧推理",
+            "端侧大模型",
+            "边缘网关",
+            "嵌入式AI",
+            "低功耗AI"
+          ],
+          "weak_positive_tags": [
+            "半导体设计",
+            "通信模组",
+            "工业自动化"
+          ],
+          "negative_pressure_tags": {
+            "GPU/算力中心": -0.3,
+            "医药": -0.7,
+            "煤炭石油": -0.6
+          },
+          "industry_soft_constraints": {
+            "半导体": 0.5,
+            "软件开发": 0.3,
+            "通信设备": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "边缘AI芯片或FPGA厂商",
+            "中军": "端侧大模型与推理",
+            "补涨": "边缘网关/模组配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "生物医药": {
+      "name": "生物医药",
+      "desc": "大健康产业：创新药、CXO、医疗器械、生物技术",
+      "themes": {
+        "CXO周期修复链": {
+          "theme_name": "CXO周期修复链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "CRO/CDMO海外订单回暖",
+            "创新药研发外包复苏",
+            "产能利用率修复"
+          ],
+          "industry_roles": {
+            "CDMO与生产外包": 0.35,
+            "CRO研发服务": 0.3,
+            "临床CRO": 0.15,
+            "API与中间体CDMO": 0.1,
+            "安评毒理": 0.1
+          },
+          "business_dna_tags": [
+            "CXO",
+            "CRO",
+            "CDMO",
+            "订单回暖",
+            "海外订单",
+            "研发外包",
+            "产能利用率",
+            "CMC",
+            "IND申报",
+            "临床前",
+            "安评",
+            "GLP实验室"
+          ],
+          "weak_positive_tags": [
+            "原料药",
+            "精细化工",
+            "实验室耗材"
+          ],
+          "negative_pressure_tags": {
+            "创新药Biotech": -0.3,
+            "消费电子": -0.7,
+            "煤炭石油": -0.6
+          },
+          "industry_soft_constraints": {
+            "医疗服务": 0.5,
+            "化学制药": 0.5
+          },
+          "stock_role_mapping": {
+            "龙头": "大型CDMO或综合CRO",
+            "中军": "临床CRO或安评",
+            "补涨": "API/中间体/实验室耗材"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "中药": {
+          "theme_name": "中药",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "品牌中药与保密品种",
+            "中药配方颗粒与创新药",
+            "国家基药与医保目录"
+          ],
+          "industry_roles": {
+            "品牌中成药": 0.35,
+            "中药配方颗粒": 0.25,
+            "中药创新药": 0.15,
+            "中药饮片与药材": 0.15,
+            "中药出海": 0.1
+          },
+          "business_dna_tags": [
+            "中药",
+            "中成药",
+            "中药材",
+            "配方颗粒",
+            "中药创新药",
+            "中药OTC",
+            "品牌中药",
+            "保密品种",
+            "国家基药",
+            "医保目录",
+            "中药现代化",
+            "中药出海"
+          ],
+          "weak_positive_tags": [
+            "医药商业",
+            "保健品",
+            "农林牧渔"
+          ],
+          "negative_pressure_tags": {
+            "创新药生物药": -0.3,
+            "消费电子": -0.6,
+            "能源开采": -0.6
+          },
+          "industry_soft_constraints": {
+            "中药Ⅱ": 0.6,
+            "中药生产": 0.4
+          },
+          "stock_role_mapping": {
+            "龙头": "品牌中药保密品种",
+            "中军": "配方颗粒或OTC",
+            "补涨": "中药材/中药创新药/出海"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "创新医药主线": {
+          "theme_name": "创新医药主线",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "创新药ADC/GLP-1/双抗等新一代生物药",
+            "license-out出海授权",
+            "临床数据与NDA/BLA"
+          ],
+          "industry_roles": {
+            "创新药与Biotech": 0.35,
+            "ADC/双抗/GLP-1": 0.25,
+            "mRNA/核酸药物": 0.15,
+            "License-out与合作": 0.15,
+            "First-in-class/最佳同类": 0.1
+          },
+          "business_dna_tags": [
+            "创新药",
+            "ADC",
+            "GLP-1",
+            "PD-1",
+            "单抗",
+            "双抗",
+            "mRNA",
+            "抗体药物",
+            "临床数据",
+            "NDA",
+            "BLA",
+            "出海授权",
+            "license-out",
+            "突破性疗法"
+          ],
+          "weak_positive_tags": [
+            "CXO",
+            "CDMO",
+            "医疗器械"
+          ],
+          "negative_pressure_tags": {
+            "仿制药": -0.5,
+            "中药饮片": -0.3,
+            "保健品": -0.5,
+            "消费电子": -0.7,
+            "能源开采": -0.6
+          },
+          "industry_soft_constraints": {
+            "化学制药": 0.5,
+            "生物制品": 0.5
+          },
+          "stock_role_mapping": {
+            "龙头": "大药企或ADC/GLP-1头部",
+            "中军": "Biotech或临床阶段创新",
+            "补涨": "license-out/合作企业"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "医疗AI智能化": {
+          "theme_name": "医疗AI智能化",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "AI制药与分子模拟",
+            "医学影像AI辅助诊断",
+            "数字病理与大模型医疗应用"
+          ],
+          "industry_roles": {
+            "AI制药与研发": 0.35,
+            "医学影像AI": 0.3,
+            "数字病理": 0.2,
+            "医疗大模型": 0.15
+          },
+          "business_dna_tags": [
+            "AI医疗",
+            "AI制药",
+            "药物发现",
+            "分子模拟",
+            "医疗大模型",
+            "AI诊断",
+            "影像识别",
+            "数字病理",
+            "R&D AI"
+          ],
+          "weak_positive_tags": [
+            "医疗器械",
+            "创新药",
+            "软件开发"
+          ],
+          "negative_pressure_tags": {
+            "传统医院服务": -0.4,
+            "医药零售": -0.5,
+            "消费电子": -0.6,
+            "煤炭石油": -0.7
+          },
+          "industry_soft_constraints": {
+            "软件开发": 0.4,
+            "医疗器械": 0.4,
+            "IT服务Ⅱ": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "AI制药平台或影像AI头部",
+            "中军": "医疗设备+AI集成",
+            "补涨": "医院信息化/数字病理配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "医疗器械": {
+          "theme_name": "医疗器械",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "高端影像设备与进口替代",
+            "高值耗材与骨科/心脏介入",
+            "IVD体外诊断与PET-CT/MRI"
+          ],
+          "industry_roles": {
+            "影像设备(CT/MRI/PET)": 0.25,
+            "高值耗材(骨科/支架)": 0.25,
+            "IVD体外诊断": 0.2,
+            "眼科/牙科": 0.15,
+            "监护生命支持": 0.15
+          },
+          "business_dna_tags": [
+            "医疗器械",
+            "高值耗材",
+            "医疗设备",
+            "IVD",
+            "体外诊断",
+            "CT",
+            "MRI",
+            "PET-CT",
+            "超声",
+            "内窥镜",
+            "手术机器人",
+            "骨科植入",
+            "心脏支架",
+            "人工关节",
+            "起搏器",
+            "眼科",
+            "OK镜",
+            "ICL",
+            "牙科",
+            "种植牙"
+          ],
+          "weak_positive_tags": [
+            "创新药",
+            "医疗服务",
+            "精密制造"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.5,
+            "煤炭石油": -0.6,
+            "传统纺织": -0.7
+          },
+          "industry_soft_constraints": {
+            "医疗器械": 1.0
+          },
+          "stock_role_mapping": {
+            "龙头": "大型影像设备或综合器械",
+            "中军": "IVD龙头/高值耗材",
+            "补涨": "专科(眼科/牙科/机器人)"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "合成生物": {
+          "theme_name": "合成生物",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "合成生物学与微生物改造",
+            "生物基材料与可降解",
+            "工业生物技术发酵工程"
+          ],
+          "industry_roles": {
+            "合成生物平台": 0.3,
+            "生物基材料": 0.25,
+            "工业发酵工程": 0.2,
+            "PLA/PHA可降解": 0.15,
+            "特种氨基酸/长链二元酸": 0.1
+          },
+          "business_dna_tags": [
+            "合成生物",
+            "生物制造",
+            "工业生物技术",
+            "生物基材料",
+            "生物可降解",
+            "PLA",
+            "PHA",
+            "生物发酵",
+            "发酵工程",
+            "菌种改造",
+            "酶工程",
+            "细胞工厂",
+            "CO2固定",
+            "生物合成"
+          ],
+          "weak_positive_tags": [
+            "精细化工",
+            "农产品加工",
+            "食品工业"
+          ],
+          "negative_pressure_tags": {
+            "石油化工传统路线": -0.4,
+            "创新药研发": -0.3,
+            "消费电子": -0.6
+          },
+          "industry_soft_constraints": {
+            "生物制品": 0.4,
+            "农化制品": 0.3,
+            "食品加工": 0.15,
+            "化学原料": 0.15
+          },
+          "stock_role_mapping": {
+            "龙头": "合成生物平台或工业发酵头部",
+            "中军": "长链二元酸/氨基酸/特种发酵",
+            "补涨": "菌种/酶工程/生物制造配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "脑机接口": {
+          "theme_name": "脑机接口",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "侵入式/非侵入式脑电信号采集",
+            "神经调控与神经反馈",
+            "脑控设备与植入式芯片"
+          ],
+          "industry_roles": {
+            "脑电采集与设备": 0.3,
+            "植入式BCI芯片": 0.25,
+            "神经调控治疗": 0.25,
+            "脑控应用": 0.2
+          },
+          "business_dna_tags": [
+            "脑机接口",
+            "BCI",
+            "神经接口",
+            "脑电信号",
+            "神经调控",
+            "神经反馈",
+            "脑科学",
+            "脑控",
+            "植入式芯片",
+            "脑电设备"
+          ],
+          "weak_positive_tags": [
+            "医疗器械",
+            "神经科药物",
+            "AI芯片"
+          ],
+          "negative_pressure_tags": {
+            "传统医院服务": -0.4,
+            "消费品": -0.6,
+            "煤炭石油": -0.7
+          },
+          "industry_soft_constraints": {
+            "医疗器械": 0.5,
+            "生物制品": 0.3,
+            "软件开发": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "脑电设备/植入式BCI领先",
+            "中军": "神经调控设备厂商",
+            "补涨": "配套传感器/电极/耗材"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "资源": {
+      "name": "资源",
+      "desc": "资源品与周期股：有色、稀土、煤炭、钢铁、贵金属",
+      "themes": {
+        "有色资源": {
+          "theme_name": "有色资源",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "铜/铝/锌/铅等工业金属",
+            "新能源金属锂/钴/镍/稀土",
+            "金/银/铂等贵金属"
+          ],
+          "industry_roles": {
+            "工业金属(铜/铝)": 0.25,
+            "新能源金属(锂/钴/镍)": 0.3,
+            "稀土永磁": 0.2,
+            "贵金属(金/银)": 0.15,
+            "金属加工与铜材": 0.1
+          },
+          "business_dna_tags": [
+            "铜矿",
+            "铜矿带",
+            "电解铝",
+            "氧化铝",
+            "铜箔",
+            "铝箔",
+            "铜杆",
+            "铝材",
+            "钴",
+            "镍",
+            "稀土",
+            "钨",
+            "钼",
+            "锂",
+            "黄金",
+            "白银",
+            "铂",
+            "大宗商品",
+            "矿产",
+            "矿产开发",
+            "矿采选"
+          ],
+          "weak_positive_tags": [
+            "钢铁",
+            "煤炭",
+            "化工",
+            "机械制造"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.5,
+            "医药": -0.6,
+            "白酒": -0.3,
+            "房地产": -0.4
+          },
+          "industry_soft_constraints": {
+            "工业金属": 0.5,
+            "能源金属": 0.3,
+            "贵金属": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "大型铜矿/电解铝/稀土集团",
+            "中军": "锂/钴/镍/黄金龙头",
+            "补涨": "金属加工/铜箔/铝箔/钨钼"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "煤炭链": {
+          "theme_name": "煤炭链",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "动力煤/焦煤/焦炭生产",
+            "煤炭开采与洗选",
+            "煤化工与煤电一体化"
+          ],
+          "industry_roles": {
+            "动力煤开采": 0.3,
+            "焦煤与焦炭": 0.25,
+            "煤化工与甲醇": 0.2,
+            "煤炭运输与港口": 0.15,
+            "煤电一体化": 0.1
+          },
+          "business_dna_tags": [
+            "煤炭",
+            "动力煤",
+            "焦煤",
+            "焦炭",
+            "煤矿",
+            "煤化工",
+            "甲醇",
+            "煤制烯烃",
+            "洗选煤",
+            "煤电",
+            "煤炭运输"
+          ],
+          "weak_positive_tags": [
+            "火电",
+            "钢铁",
+            "化工"
+          ],
+          "negative_pressure_tags": {
+            "新能源": -0.5,
+            "半导体": -0.6,
+            "医药": -0.7,
+            "消费电子": -0.6
+          },
+          "industry_soft_constraints": {
+            "煤炭开采": 0.6,
+            "煤化工": 0.2,
+            "火力发电": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "大型煤企集团",
+            "中军": "焦煤焦炭或煤化工",
+            "补涨": "煤炭运输/洗选/港口配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "稀土永磁": {
+          "theme_name": "稀土永磁",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "稀土氧化物分离与冶炼",
+            "钕铁硼/钐钴永磁材料",
+            "稀土磁材在电机/风电/消费电子应用"
+          ],
+          "industry_roles": {
+            "稀土矿与分离": 0.35,
+            "高性能钕铁硼": 0.3,
+            "磁材应用与器件": 0.2,
+            "稀土回收": 0.15
+          },
+          "business_dna_tags": [
+            "稀土",
+            "钕铁硼",
+            "钐钴",
+            "永磁",
+            "稀土矿",
+            "轻稀土",
+            "中重稀土",
+            "磁材",
+            "磁性材料",
+            "稀土氧化物",
+            "镨钕",
+            "镝铽"
+          ],
+          "weak_positive_tags": [
+            "新能源车电机",
+            "风电",
+            "工业电机"
+          ],
+          "negative_pressure_tags": {
+            "消费电子终端": -0.4,
+            "医药": -0.7,
+            "煤炭石油": -0.5
+          },
+          "industry_soft_constraints": {
+            "有色金属": 0.7,
+            "能源金属": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "大型稀土集团或磁材龙头",
+            "中军": "高性能钕铁硼",
+            "补涨": "稀土回收/磁材器件配套"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "贵金属与黄金": {
+          "theme_name": "贵金属与黄金",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "黄金开采与冶炼",
+            "白银/铂系金属",
+            "黄金饰品与投资",
+            "央行动态与去美元化"
+          ],
+          "industry_roles": {
+            "黄金开采与冶炼": 0.4,
+            "黄金饰品与零售": 0.25,
+            "白银与铂系金属": 0.2,
+            "黄金回收与投资": 0.15
+          },
+          "business_dna_tags": [
+            "黄金",
+            "金矿",
+            "白银",
+            "铂",
+            "钯",
+            "贵金属",
+            "金饰品",
+            "金条",
+            "黄金ETF",
+            "去美元化",
+            "避险"
+          ],
+          "weak_positive_tags": [
+            "珠宝零售",
+            "有色金属",
+            "银行"
+          ],
+          "negative_pressure_tags": {
+            "半导体": -0.5,
+            "医药": -0.6,
+            "新能源车": -0.4,
+            "白酒": -0.3
+          },
+          "industry_soft_constraints": {
+            "贵金属": 0.5,
+            "有色金属": 0.3,
+            "饰品": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "大型黄金矿业集团",
+            "中军": "黄金饰品或白银",
+            "补涨": "黄金回收/铂系/投资品"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "钢铁": {
+          "theme_name": "钢铁",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "长材/板材/特钢",
+            "铁矿石与炼钢上游",
+            "特钢与高端装备用钢"
+          ],
+          "industry_roles": {
+            "长材与建筑用钢": 0.25,
+            "板材与制造用钢": 0.25,
+            "特钢与高端": 0.25,
+            "铁矿石与原料": 0.15,
+            "不锈钢": 0.1
+          },
+          "business_dna_tags": [
+            "钢铁",
+            "钢材",
+            "板材",
+            "长材",
+            "螺纹钢",
+            "热轧",
+            "冷轧",
+            "特钢",
+            "不锈钢",
+            "铁矿石",
+            "焦煤",
+            "焦炭",
+            "高炉",
+            "电炉钢"
+          ],
+          "weak_positive_tags": [
+            "煤炭",
+            "基建",
+            "机械装备",
+            "造船"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.7,
+            "半导体": -0.6,
+            "消费电子": -0.5,
+            "白酒": -0.3
+          },
+          "industry_soft_constraints": {
+            "钢铁": 0.7,
+            "普钢": 0.15,
+            "特钢": 0.15
+          },
+          "stock_role_mapping": {
+            "龙头": "大型钢铁集团或特钢龙头",
+            "中军": "板材/长材区域龙头",
+            "补涨": "特钢细分/不锈钢/铁合金"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "化工": {
+      "name": "化工",
+      "desc": "化工产业链：基础化工、精细化工、化肥农药、化工新材料",
+      "themes": {
+        "基础化工": {
+          "theme_name": "基础化工",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "基础化学品与大宗化工",
+            "精细化工与新材料",
+            "化肥农药与农化"
+          ],
+          "industry_roles": {
+            "大宗化工品": 0.3,
+            "精细化工": 0.25,
+            "化肥与农药": 0.2,
+            "化学原料": 0.15,
+            "化工新材料": 0.1
+          },
+          "business_dna_tags": [
+            "化工",
+            "纯碱",
+            "烧碱",
+            "PVC",
+            "涤纶",
+            "MDI",
+            "钛白粉",
+            "化肥",
+            "农药",
+            "草甘膦",
+            "精细化工",
+            "化工新材料"
+          ],
+          "weak_positive_tags": [
+            "农业",
+            "纺织",
+            "建筑材料"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.5,
+            "医药生物": -0.4,
+            "半导体": -0.3,
+            "白酒": -0.3
+          },
+          "industry_soft_constraints": {
+            "化学原料": 0.5,
+            "化学制品": 0.3,
+            "农药化肥": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "大宗化工龙头(MDI/纯碱/涤纶)",
+            "中军": "精细化工或新材料",
+            "补涨": "农化/农药/化肥"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    },
+    "金融": {
+      "name": "金融",
+      "desc": "大金融板块：券商、银行、保险、金融科技",
+      "themes": {
+        "保险": {
+          "theme_name": "保险",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "寿险与财产险保险公司",
+            "代理人渠道与NBV改善",
+            "长端利率上行与投资收益"
+          ],
+          "industry_roles": {
+            "大型保险集团": 0.4,
+            "寿险公司": 0.3,
+            "财产险公司": 0.2,
+            "保险科技与中介": 0.1
+          },
+          "business_dna_tags": [
+            "保险",
+            "寿险",
+            "财险",
+            "健康险",
+            "代理人",
+            "NBV",
+            "新业务价值",
+            "长端利率",
+            "保险科技",
+            "互联网保险"
+          ],
+          "weak_positive_tags": [
+            "银行",
+            "券商",
+            "高股息"
+          ],
+          "negative_pressure_tags": {
+            "半导体": -0.6,
+            "医药": -0.6,
+            "消费电子": -0.5
+          },
+          "industry_soft_constraints": {
+            "保险": 0.8,
+            "多元金融": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "大型保险集团",
+            "中军": "特色财险/寿险",
+            "补涨": "保险科技/中介/参股保险"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "券商": {
+          "theme_name": "券商",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "证券经纪与投行",
+            "资产管理与自营",
+            "资本市场活跃带来的业绩弹性"
+          ],
+          "industry_roles": {
+            "综合券商龙头": 0.4,
+            "投行与资管特色券商": 0.25,
+            "互联网经纪": 0.2,
+            "参股券商": 0.15
+          },
+          "business_dna_tags": [
+            "券商",
+            "证券公司",
+            "投行",
+            "经纪",
+            "自营",
+            "资管",
+            "公募",
+            "基金",
+            "财富管理",
+            "投行业务",
+            "资本市场"
+          ],
+          "weak_positive_tags": [
+            "银行",
+            "保险",
+            "金融科技"
+          ],
+          "negative_pressure_tags": {
+            "消费电子": -0.7,
+            "医药": -0.8,
+            "半导体": -0.5,
+            "新能源": -0.5
+          },
+          "industry_soft_constraints": {
+            "证券": 0.7,
+            "多元金融": 0.3
+          },
+          "stock_role_mapping": {
+            "龙头": "头部综合大券商",
+            "中军": "区域/特色投行券商",
+            "补涨": "参股券商或金融科技"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "多元金融": {
+          "theme_name": "多元金融",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "信托/租赁/AMC/期货",
+            "类金融服务",
+            "资产管理与不良资产处置"
+          ],
+          "industry_roles": {
+            "资产管理与信托": 0.35,
+            "金融租赁": 0.25,
+            "期货与AMC": 0.25,
+            "小额贷款与典当": 0.15
+          },
+          "business_dna_tags": [
+            "信托",
+            "租赁",
+            "AMC",
+            "不良资产",
+            "期货",
+            "资产管理",
+            "小额贷款",
+            "典当",
+            "类金融"
+          ],
+          "weak_positive_tags": [
+            "银行",
+            "券商",
+            "高股息"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.7,
+            "半导体": -0.6,
+            "消费电子": -0.6,
+            "新能源": -0.4
+          },
+          "industry_soft_constraints": {
+            "多元金融": 1.0
+          },
+          "stock_role_mapping": {
+            "龙头": "大型资管或AMC",
+            "中军": "金融租赁/期货",
+            "补涨": "小贷/典当/特色金融"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "金融科技": {
+          "theme_name": "金融科技",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "支付/征信/数字货币",
+            "证券与基金IT系统",
+            "金融信息服务与数据"
+          ],
+          "industry_roles": {
+            "证券基金IT": 0.3,
+            "支付与清算": 0.25,
+            "金融信息服务": 0.25,
+            "区块链与数字人民币": 0.2
+          },
+          "business_dna_tags": [
+            "金融科技",
+            "支付",
+            "清算",
+            "数字人民币",
+            "证券IT",
+            "基金IT",
+            "金融信息",
+            "行情数据",
+            "区块链",
+            "智能投顾"
+          ],
+          "weak_positive_tags": [
+            "软件开发",
+            "银行",
+            "券商"
+          ],
+          "negative_pressure_tags": {
+            "医药": -0.7,
+            "半导体": -0.4,
+            "消费电子": -0.5,
+            "新能源": -0.4
+          },
+          "industry_soft_constraints": {
+            "软件开发": 0.5,
+            "多元金融": 0.3,
+            "IT服务Ⅱ": 0.2
+          },
+          "stock_role_mapping": {
+            "龙头": "证券基金IT或支付龙头",
+            "中军": "金融信息服务公司",
+            "补涨": "数字人民币/区块链应用"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        },
+        "银行": {
+          "theme_name": "银行",
+          "version": "V2",
+          "theme_type": "产业链主题",
+          "core_semantic": [
+            "国有大行/股份制/城商行",
+            "零售银行与财富管理",
+            "高股息与低估值修复"
+          ],
+          "industry_roles": {
+            "国有大行": 0.3,
+            "股份制银行": 0.3,
+            "城商行与农商行": 0.25,
+            "零售与财富管理": 0.15
+          },
+          "business_dna_tags": [
+            "银行",
+            "大行",
+            "股份制银行",
+            "城商行",
+            "农商行",
+            "零售银行",
+            "财富管理",
+            "净息差",
+            "高股息",
+            "金融稳定"
+          ],
+          "weak_positive_tags": [
+            "保险",
+            "券商",
+            "高股息公用事业"
+          ],
+          "negative_pressure_tags": {
+            "半导体": -0.6,
+            "医药": -0.6,
+            "消费电子": -0.5,
+            "新能源": -0.4
+          },
+          "industry_soft_constraints": {
+            "银行": 1.0
+          },
+          "stock_role_mapping": {
+            "龙头": "国有大行或头部股份行",
+            "中军": "特色零售银行",
+            "补涨": "城商行/区域银行"
+          },
+          "matching_strategy": {
+            "mode": "semantic_business_hybrid",
+            "embedding_weight": 0.55,
+            "business_weight": 0.3,
+            "industry_weight": 0.15
+          }
+        }
+      }
+    }
+  },
+  "THEME_FLAT_MAP": {
+    "AI应用": {
+      "theme_name": "AI应用",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "企业级AI软件与智能体",
+        "通用大模型与垂类行业应用",
+        "办公/搜索/编程等生产力AI"
+      ],
+      "industry_roles": {
+        "大模型与智能体平台": 0.3,
+        "企业软件与ERP": 0.25,
+        "IT服务与系统集成": 0.2,
+        "行业信息化软件": 0.15,
+        "数字媒体与内容": 0.1
+      },
+      "business_dna_tags": [
+        "Agent",
+        "大模型",
+        "RAG",
+        "Copilot",
+        "企业智能体",
+        "AI搜索",
+        "AI办公",
+        "AI编程"
+      ],
+      "weak_positive_tags": [
+        "软件外包",
+        "传统软件",
+        "云服务",
+        "SaaS"
+      ],
+      "negative_pressure_tags": {
+        "游戏": -0.7,
+        "短剧视频": -0.6,
+        "芯片制造": -0.4,
+        "PCB": -0.3
+      },
+      "industry_soft_constraints": {
+        "软件开发": 0.5,
+        "IT服务Ⅱ": 0.3,
+        "数字媒体": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "大模型平台或通用AI应用头部",
+        "中军": "办公/搜索/编程等头部AI软件",
+        "补涨": "垂类行业软件或系统集成"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "AI文化娱乐": {
+      "theme_name": "AI文化娱乐",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "AI视频/短剧/游戏内容生成",
+        "数字人与虚拟偶像",
+        "动漫/影视IP制作工具"
+      ],
+      "industry_roles": {
+        "视频与短剧": 0.3,
+        "游戏": 0.25,
+        "动漫与影视": 0.2,
+        "IP运营": 0.15,
+        "数字人/元宇宙": 0.1
+      },
+      "business_dna_tags": [
+        "AI短剧",
+        "文生视频",
+        "Sora",
+        "Runway",
+        "Midjourney",
+        "数字人",
+        "AIGC",
+        "虚拟偶像",
+        "互动娱乐"
+      ],
+      "weak_positive_tags": [
+        "出版传媒",
+        "广告营销",
+        "影视院线"
+      ],
+      "negative_pressure_tags": {
+        "GPU/算力芯片": -0.3,
+        "创新药": -0.8,
+        "新能源": -0.7
+      },
+      "industry_soft_constraints": {
+        "数字媒体": 0.4,
+        "影视院线": 0.3,
+        "出版": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "短剧/视频平台或头部游戏",
+        "中军": "IP运营与影视制作",
+        "补涨": "广告营销/出版传媒延伸"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "AI模型与AI Agent": {
+      "theme_name": "AI模型与AI Agent",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "大模型训练与推理技术",
+        "AI智能体与自动化工作流",
+        "多模态与端到端AI系统"
+      ],
+      "industry_roles": {
+        "大模型训练平台": 0.35,
+        "Agent中间件": 0.25,
+        "企业AI应用": 0.25,
+        "AI研发外包": 0.15
+      },
+      "business_dna_tags": [
+        "大模型",
+        "LLM",
+        "Agent",
+        "MCP",
+        "Copilot",
+        "Function Call",
+        "Prompt",
+        "RAG"
+      ],
+      "weak_positive_tags": [
+        "SaaS软件",
+        "客服系统",
+        "企业信息化"
+      ],
+      "negative_pressure_tags": {
+        "GPU芯片制造": -0.3,
+        "光模块": -0.3,
+        "游戏": -0.6,
+        "消费电子": -0.5
+      },
+      "industry_soft_constraints": {
+        "软件开发": 0.6,
+        "IT服务Ⅱ": 0.4
+      },
+      "stock_role_mapping": {
+        "龙头": "自研大模型或通用Agent平台",
+        "中军": "Agent中间件或企业AI软件",
+        "补涨": "行业信息化/传统软件AI转型"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "AI算力链": {
+      "theme_name": "AI算力链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "AI算力基础设施与加速芯片",
+        "数据中心网络与高速互联",
+        "光模块与800G/1.6T产业链"
+      ],
+      "industry_roles": {
+        "算力芯片设计制造": 0.3,
+        "光模块与高速互联": 0.25,
+        "网络交换与交换机": 0.2,
+        "服务器与整机制造": 0.15,
+        "铜连接与连接器": 0.1
+      },
+      "business_dna_tags": [
+        "GPU芯片",
+        "光模块",
+        "800G/1.6T",
+        "液冷服务器",
+        "交换机",
+        "硅光子",
+        "AI加速芯片",
+        "高速连接器"
+      ],
+      "weak_positive_tags": [
+        "电子制造",
+        "PCB",
+        "通信设备",
+        "连接器"
+      ],
+      "negative_pressure_tags": {
+        "消费电子终端": -0.7,
+        "手机产业链": -0.6,
+        "家电": -0.5,
+        "传统IDC运营商": -0.4
+      },
+      "industry_soft_constraints": {
+        "计算机设备": 0.3,
+        "通信设备": 0.3,
+        "电子化学品Ⅱ": 0.2,
+        "半导体": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "GPU/光模块/交换机环节全球领先企业",
+        "中军": "服务器整机或ODM巨头/大型IDC或光模块头部",
+        "补涨": "PCB/电源/连接/散热/辅材单点受益"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "AI终端": {
+      "theme_name": "AI终端",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "AI PC/AI手机等端侧智能设备",
+        "MR/AR/VR可穿戴硬件",
+        "端侧AI芯片与传感器"
+      ],
+      "industry_roles": {
+        "消费电子制造": 0.3,
+        "可穿戴与MR硬件": 0.25,
+        "端侧AI芯片": 0.2,
+        "光学镜头与显示": 0.15,
+        "结构件与组装": 0.1
+      },
+      "business_dna_tags": [
+        "AI PC",
+        "AI手机",
+        "MR",
+        "AR",
+        "VR",
+        "端侧大模型",
+        "折叠屏",
+        "智能穿戴",
+        "光学镜头"
+      ],
+      "weak_positive_tags": [
+        "消费电子",
+        "小家电",
+        "汽车电子",
+        "面板"
+      ],
+      "negative_pressure_tags": {
+        "传统白电": -0.6,
+        "纯PCB制造": -0.3,
+        "纯算力芯片": -0.3,
+        "医药生物": -0.8
+      },
+      "industry_soft_constraints": {
+        "消费电子": 0.5,
+        "光学光电子": 0.3,
+        "半导体": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "终端品牌或核心器件",
+        "中军": "MR/AI硬件链主",
+        "补涨": "结构件/传感器/连接"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "数据中心瓶颈硬件链": {
+      "theme_name": "数据中心瓶颈硬件链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "数据中心热管理与液冷系统",
+        "高压直流电源与配电模块",
+        "IDC运营与服务器散热配套"
+      ],
+      "industry_roles": {
+        "液冷温控设备": 0.3,
+        "电源模块与UPS": 0.25,
+        "数据中心运营": 0.2,
+        "母线铜排与连接": 0.15,
+        "散热材料与导热": 0.1
+      },
+      "business_dna_tags": [
+        "冷板式液冷",
+        "浸没式液冷",
+        "高压直流",
+        "UPS",
+        "电源模块",
+        "液冷板",
+        "热管",
+        "PUE优化"
+      ],
+      "weak_positive_tags": [
+        "电力设备",
+        "工业电子",
+        "磁性元件",
+        "铜加工"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.7,
+        "家电整机": -0.6,
+        "手机产业链": -0.5,
+        "GPU芯片设计": -0.3
+      },
+      "industry_soft_constraints": {
+        "电源设备": 0.4,
+        "计算机设备": 0.3,
+        "工业金属": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "液冷系统或高压直流电源头部",
+        "中军": "IDC运营商或大型电源/散热企业",
+        "补涨": "导热材料/电磁兼容/精密结构件"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "人形机器人整机与集成": {
+      "theme_name": "人形机器人整机与集成",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "双足人型机器人整机品牌",
+        "系统集成与场景应用",
+        "工业/服务人形整机"
+      ],
+      "industry_roles": {
+        "人形机器人整机制造": 0.4,
+        "系统集成与应用": 0.3,
+        "场景运营与租赁": 0.2,
+        "工业/服务机器人": 0.1
+      },
+      "business_dna_tags": [
+        "人形机器人",
+        "双足机器人",
+        "具身机器人",
+        "整机",
+        "系统集成",
+        "工业人形",
+        "服务人形",
+        "场景应用",
+        "机器人租赁"
+      ],
+      "weak_positive_tags": [
+        "自动化设备",
+        "人工智能",
+        "机器视觉"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.6,
+        "煤炭石油": -0.5,
+        "白酒": -0.4
+      },
+      "industry_soft_constraints": {
+        "自动化设备": 0.6,
+        "通用设备": 0.2,
+        "软件开发": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "人形机器人整机龙头",
+        "中军": "系统集成商或工业应用",
+        "补涨": "服务/租赁/场景应用"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "伺服电机与运动控制": {
+      "theme_name": "伺服电机与运动控制",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "高性能伺服电机/驱动",
+        "运动控制卡与总线",
+        "力矩控制与力觉"
+      ],
+      "industry_roles": {
+        "伺服电机与驱动": 0.4,
+        "运动控制卡/PLC": 0.3,
+        "力矩控制与力觉": 0.2,
+        "编码器与反馈": 0.1
+      },
+      "business_dna_tags": [
+        "伺服",
+        "伺服电机",
+        "驱动器",
+        "运动控制",
+        "运动控制卡",
+        "PLC",
+        "力矩控制",
+        "力觉",
+        "编码器",
+        "总线",
+        "EtherCAT"
+      ],
+      "weak_positive_tags": [
+        "工业自动化",
+        "数控机床",
+        "机器人制造"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.6,
+        "煤炭石油": -0.5,
+        "消费电子终端": -0.4
+      },
+      "industry_soft_constraints": {
+        "电机Ⅱ": 0.4,
+        "自动化设备": 0.4,
+        "通用设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "伺服驱动龙头或运动控制",
+        "中军": "高端伺服/力矩控制",
+        "补涨": "编码器/总线配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "执行器总成": {
+      "theme_name": "执行器总成",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "人形机器人关节执行器",
+        "伺服/谐波/行星减速",
+        "直线/旋转执行器"
+      ],
+      "industry_roles": {
+        "关节执行器总成": 0.4,
+        "伺服电机与驱动器": 0.25,
+        "减速器集成": 0.2,
+        "传感器与编码器": 0.15
+      },
+      "business_dna_tags": [
+        "执行器",
+        "关节模组",
+        "伺服电机",
+        "驱动器",
+        "编码器",
+        "旋转执行器",
+        "直线执行器",
+        "一体化关节",
+        "模组",
+        "关节电机"
+      ],
+      "weak_positive_tags": [
+        "精密机械",
+        "自动化设备",
+        "伺服系统"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.7,
+        "煤炭石油": -0.6,
+        "消费电子": -0.5
+      },
+      "industry_soft_constraints": {
+        "自动化设备": 0.5,
+        "通用设备": 0.3,
+        "电机Ⅱ": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "执行器总成或关节模组龙头",
+        "中军": "伺服电机与驱动器",
+        "补涨": "编码器/传感器配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "灵巧手": {
+      "theme_name": "灵巧手",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "多指灵巧手与抓握",
+        "欠驱动/腱传动手",
+        "触觉与力觉手指"
+      ],
+      "industry_roles": {
+        "多指灵巧手整机": 0.4,
+        "微型执行器与腱传动": 0.3,
+        "触觉与力觉传感": 0.2,
+        "抓取规划与算法": 0.1
+      },
+      "business_dna_tags": [
+        "灵巧手",
+        "多指手",
+        "腱传动",
+        "欠驱动",
+        "仿人手",
+        "抓握",
+        "触觉手指",
+        "微执行器",
+        "抓取算法"
+      ],
+      "weak_positive_tags": [
+        "精密机械",
+        "微电机",
+        "传感器"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.7,
+        "煤炭石油": -0.6,
+        "消费电子终端": -0.4
+      },
+      "industry_soft_constraints": {
+        "自动化设备": 0.5,
+        "通用设备": 0.3,
+        "电机Ⅱ": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "多指灵巧手或仿人手机构",
+        "中军": "微型执行器与腱传动",
+        "补涨": "触觉/力觉传感配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "精密减速器": {
+      "theme_name": "精密减速器",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "谐波减速器",
+        "RV减速器",
+        "行星减速器与人形机器人关节应用"
+      ],
+      "industry_roles": {
+        "谐波减速器": 0.35,
+        "RV减速器": 0.3,
+        "行星减速器": 0.2,
+        "精密齿轮与轴承": 0.15
+      },
+      "business_dna_tags": [
+        "谐波",
+        "减速器",
+        "RV减速器",
+        "行星减速器",
+        "精密齿轮",
+        "轴承",
+        "齿轮箱",
+        "谐波减速器",
+        "精密传动",
+        "关节减速器"
+      ],
+      "weak_positive_tags": [
+        "工业自动化",
+        "精密制造",
+        "机床"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.5,
+        "医药": -0.6,
+        "煤炭石油": -0.5
+      },
+      "industry_soft_constraints": {
+        "通用设备": 0.5,
+        "自动化设备": 0.3,
+        "机床": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "谐波/RV减速器龙头",
+        "中军": "行星减速器或精密齿轮",
+        "补涨": "轴承/精密加工配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "行星滚柱丝杠": {
+      "theme_name": "行星滚柱丝杠",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "行星滚柱丝杠与直线执行器",
+        "高负载精密直线传动",
+        "人形机器人腿部与腰部关节"
+      ],
+      "industry_roles": {
+        "行星滚柱丝杠": 0.4,
+        "滚珠丝杠与精密传动": 0.3,
+        "直线执行器与模组": 0.2,
+        "精密加工与热处理": 0.1
+      },
+      "business_dna_tags": [
+        "行星滚柱丝杠",
+        "滚珠丝杠",
+        "精密丝杠",
+        "直线执行器",
+        "线性模组",
+        "精密传动",
+        "高负载",
+        "精密加工",
+        "热处理"
+      ],
+      "weak_positive_tags": [
+        "精密机械",
+        "机床",
+        "自动化设备"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.7,
+        "煤炭石油": -0.6,
+        "消费电子": -0.5
+      },
+      "industry_soft_constraints": {
+        "通用设备": 0.5,
+        "机床": 0.3,
+        "自动化设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "行星滚柱丝杠或精密传动",
+        "中军": "滚珠丝杠与精密传动",
+        "补涨": "精密加工/热处理配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "低空基础设施": {
+      "theme_name": "低空基础设施",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "城市空中交通起降场与保障系统",
+        "低空空管与通信导航系统",
+        "无人机运行基础设施网络"
+      ],
+      "industry_roles": {
+        "基础设施建设与起降场": 0.35,
+        "通信网络与导航": 0.25,
+        "能源补给与充电换电": 0.2,
+        "空管与空域管理系统": 0.2
+      },
+      "business_dna_tags": [
+        "起降场",
+        "停机坪",
+        "起降设施",
+        "低空雷达",
+        "空管系统",
+        "通信导航",
+        "UTM",
+        "低空通信",
+        "无人机机场",
+        "充电网络",
+        "城市空域管理"
+      ],
+      "weak_positive_tags": [
+        "通信设备",
+        "智慧城市",
+        "交通信息化",
+        "电力设备"
+      ],
+      "negative_pressure_tags": {
+        "军工武器导弹": -0.6,
+        "消费电子终端": -0.4,
+        "医药": -0.5
+      },
+      "industry_soft_constraints": {
+        "通信服务": 0.3,
+        "基础建设": 0.3,
+        "机场Ⅱ": 0.2,
+        "电力设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "低空基础设施或空管系统",
+        "中军": "通信导航/起降场建设",
+        "补涨": "充电网络/空域管理配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "低空数据与控制": {
+      "theme_name": "低空数据与控制",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "低空通信网络与数据链",
+        "无人机飞控与导航芯片",
+        "UTM飞行管理与调度平台"
+      ],
+      "industry_roles": {
+        "低空通信数据链与导航": 0.35,
+        "飞控与导航芯片": 0.3,
+        "UTM与飞行调度": 0.2,
+        "低空地理与测绘": 0.15
+      },
+      "business_dna_tags": [
+        "飞控",
+        "飞控芯片",
+        "导航芯片",
+        "北斗",
+        "低空通信",
+        "数据链",
+        "UTM",
+        "无人机交通管理",
+        "低空测绘",
+        "地理信息",
+        "卫星导航"
+      ],
+      "weak_positive_tags": [
+        "通信设备",
+        "半导体",
+        "软件开发"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.5,
+        "煤炭石油": -0.5,
+        "白酒": -0.3
+      },
+      "industry_soft_constraints": {
+        "通信设备": 0.4,
+        "软件开发": 0.3,
+        "半导体": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "飞控芯片或UTM平台",
+        "中军": "低空通信数据链",
+        "补涨": "北斗/地理信息/测绘"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "低空运营服务": {
+      "theme_name": "低空运营服务",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "低空物流/巡检/农林作业运营",
+        "飞行培训与通航服务",
+        "低空基础设施运营"
+      ],
+      "industry_roles": {
+        "低空物流与配送运营": 0.35,
+        "电力/能源/应急巡检": 0.25,
+        "农林植保作业": 0.2,
+        "飞行培训/通航服务": 0.2
+      },
+      "business_dna_tags": [
+        "低空物流",
+        "无人机物流",
+        "电力巡检",
+        "能源巡检",
+        "应急巡检",
+        "农林植保",
+        "飞行培训",
+        "通航运营",
+        "低空运营",
+        "无人机服务"
+      ],
+      "weak_positive_tags": [
+        "物流",
+        "电力公用",
+        "农林牧渔"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.5,
+        "煤炭石油": -0.4,
+        "白酒": -0.3,
+        "消费电子": -0.4
+      },
+      "industry_soft_constraints": {
+        "物流": 0.4,
+        "航空运输": 0.3,
+        "软件": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "低空物流或大型巡检运营",
+        "中军": "农林植保/飞行培训",
+        "补涨": "低空基础设施运营"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "低空飞行器制造": {
+      "theme_name": "低空飞行器制造",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "eVTOL电动垂直起降",
+        "工业/消费级无人机",
+        "通航飞机与飞行器制造"
+      ],
+      "industry_roles": {
+        "eVTOL与城市空中交通": 0.35,
+        "无人机整机": 0.3,
+        "通航飞机制造": 0.2,
+        "复合材料与结构件": 0.15
+      },
+      "business_dna_tags": [
+        "eVTOL",
+        "电动垂直起降",
+        "UAM",
+        "城市空中交通",
+        "无人机",
+        "工业无人机",
+        "消费级无人机",
+        "通航飞机",
+        "航空器",
+        "飞行器",
+        "飞行汽车"
+      ],
+      "weak_positive_tags": [
+        "航空制造",
+        "碳纤维",
+        "军工航空"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.6,
+        "煤炭石油": -0.5,
+        "消费电子终端": -0.4
+      },
+      "industry_soft_constraints": {
+        "航空装备Ⅱ": 0.5,
+        "军工电子Ⅱ": 0.2,
+        "复合材料": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "eVTOL或无人机整机龙头",
+        "中军": "通航飞机或大型无人机",
+        "补涨": "复合材料/结构件配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "军工": {
+      "theme_name": "军工",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "军机/舰船/导弹等主战装备",
+        "军工电子与相控阵雷达",
+        "军用发动机与复合材料"
+      ],
+      "industry_roles": {
+        "航空航天装备": 0.25,
+        "航海与舰船装备": 0.2,
+        "军工电子与雷达": 0.2,
+        "航空发动机": 0.15,
+        "地面装备与弹药": 0.1,
+        "军用复合材料": 0.1
+      },
+      "business_dna_tags": [
+        "战斗机",
+        "运输机",
+        "直升机",
+        "教练机",
+        "航空发动机",
+        "涡扇",
+        "涡轴",
+        "燃气轮机",
+        "无人机",
+        "军用无人机",
+        "导弹",
+        "精确制导",
+        "雷达",
+        "相控阵雷达",
+        "电子对抗",
+        "电子战",
+        "军工电子",
+        "军用芯片",
+        "红外探测",
+        "热成像",
+        "装甲车",
+        "坦克",
+        "火炮",
+        "弹药",
+        "火控系统",
+        "航空母舰",
+        "驱逐舰",
+        "护卫舰",
+        "潜艇",
+        "舰船动力",
+        "复合材料",
+        "钛合金",
+        "高温合金",
+        "隐身材料",
+        "吸波材料",
+        "航天器",
+        "卫星",
+        "火箭发动机",
+        "固体火箭",
+        "液体火箭",
+        "军事通信",
+        "数据链",
+        "军用计算机",
+        "军用软件",
+        "军贸",
+        "军工改革",
+        "资产证券化"
+      ],
+      "weak_positive_tags": [
+        "民用航空",
+        "船舶制造",
+        "高端装备"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.6,
+        "医药": -0.7,
+        "传统能源": -0.5,
+        "白酒": -0.4
+      },
+      "industry_soft_constraints": {
+        "航天装备Ⅱ": 0.2,
+        "航空装备Ⅱ": 0.2,
+        "军工电子Ⅱ": 0.2,
+        "地面兵装Ⅱ": 0.2,
+        "航海装备Ⅱ": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "总装厂或发动机主机厂",
+        "中军": "军工电子/导弹/舰船系统",
+        "补涨": "高温合金/钛合金/隐身材料/配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "军工电子与信息化": {
+      "theme_name": "军工电子与信息化",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "军用芯片/FPGA/射频",
+        "相控阵雷达与电子战",
+        "数据链与军事通信"
+      ],
+      "industry_roles": {
+        "军用芯片与FPGA": 0.3,
+        "相控阵雷达与TR组件": 0.3,
+        "数据链与军事通信": 0.2,
+        "红外与光电探测": 0.2
+      },
+      "business_dna_tags": [
+        "军工电子",
+        "军用芯片",
+        "FPGA",
+        "TR组件",
+        "相控阵",
+        "雷达",
+        "电子战",
+        "数据链",
+        "军事通信",
+        "红外探测",
+        "光电",
+        "军用计算机",
+        "军工软件"
+      ],
+      "weak_positive_tags": [
+        "民用射频",
+        "通信设备",
+        "半导体设计"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.5,
+        "医药": -0.7,
+        "传统能源": -0.5
+      },
+      "industry_soft_constraints": {
+        "军工电子Ⅱ": 0.6,
+        "半导体": 0.2,
+        "通信设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "军用芯片或雷达系统总装",
+        "中军": "TR组件/红外/射频",
+        "补涨": "数据链/通信/电源配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "核聚变": {
+      "theme_name": "核聚变",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "可控核聚变与托卡马克",
+        "超导磁体与第一壁",
+        "氚增殖与偏滤器材料"
+      ],
+      "industry_roles": {
+        "超导磁体技术": 0.3,
+        "第一壁与偏滤器": 0.25,
+        "托卡马克装置与工程": 0.2,
+        "高温超导材料": 0.15,
+        "等离子体加热与诊断": 0.1
+      },
+      "business_dna_tags": [
+        "托卡马克",
+        "人造太阳",
+        "聚变能源",
+        "超导磁体",
+        "第一壁",
+        "偏滤器",
+        "氚",
+        "聚变堆",
+        "CFETR",
+        "高温超导"
+      ],
+      "weak_positive_tags": [
+        "核电裂变",
+        "特种金属",
+        "真空技术"
+      ],
+      "negative_pressure_tags": {
+        "传统化石能源": -0.5,
+        "消费电子": -0.7,
+        "医药": -0.8
+      },
+      "industry_soft_constraints": {
+        "其他电源设备Ⅱ": 0.5,
+        "工业金属": 0.3,
+        "通用设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "超导磁体或第一壁材料领先",
+        "中军": "聚变工程参与单位",
+        "补涨": "高温超导/真空设备/诊断配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "船舶制造": {
+      "theme_name": "船舶制造",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "LNG船/集装箱船/油轮高端制造",
+        "军舰/航母/驱逐舰建造",
+        "绿色船舶与双燃料动力"
+      ],
+      "industry_roles": {
+        "大型造船总装": 0.35,
+        "高端船舶(LNG/集装箱)": 0.25,
+        "舰船动力主机": 0.2,
+        "船舶配套与海工": 0.2
+      },
+      "business_dna_tags": [
+        "船舶",
+        "造船",
+        "LNG船",
+        "集装箱船",
+        "油轮",
+        "散货船",
+        "军舰",
+        "航母",
+        "驱逐舰",
+        "护卫舰",
+        "船用发动机",
+        "船用主机",
+        "船舶动力",
+        "绿色船舶",
+        "双燃料",
+        "造船订单",
+        "船坞",
+        "海工装备"
+      ],
+      "weak_positive_tags": [
+        "海工装备",
+        "军工航海",
+        "港口设备"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.7,
+        "医药": -0.7,
+        "新能源整车": -0.3,
+        "白酒": -0.4
+      },
+      "industry_soft_constraints": {
+        "船舶制造": 0.6,
+        "航海装备Ⅱ": 0.4
+      },
+      "stock_role_mapping": {
+        "龙头": "大型船舶总装龙头",
+        "中军": "LNG/高端船型配套",
+        "补涨": "主机/动力/设备配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "先进封装": {
+      "theme_name": "先进封装",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "Chiplet/3D封装/CoWoS",
+        "ABF载板与IC载板",
+        "凸块/扇出/TSV等先进工艺"
+      ],
+      "industry_roles": {
+        "封测代工": 0.35,
+        "封装基板/ABF": 0.25,
+        "凸块与Bumping": 0.15,
+        "封装设备与材料": 0.15,
+        "测试与探针": 0.1
+      },
+      "business_dna_tags": [
+        "CoWoS",
+        "Chiplet",
+        "3D封装",
+        "SiP",
+        "TSV",
+        "Bumping",
+        "扇出型",
+        "PLP",
+        "ABF载板",
+        "引线框架"
+      ],
+      "weak_positive_tags": [
+        "PCB制造",
+        "被动元件",
+        "精密结构件"
+      ],
+      "negative_pressure_tags": {
+        "光刻机/刻蚀": -0.4,
+        "手机终端": -0.6,
+        "白电": -0.7,
+        "医药": -0.8
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.5,
+        "电子制造": 0.3,
+        "自动化设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "封测代工头部",
+        "中军": "ABF载板/大型封测厂",
+        "补涨": "引线框架/探针台/测试设备"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "功率半导体": {
+      "theme_name": "功率半导体",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "碳化硅/氮化镓第三代半导体",
+        "IGBT/MOSFET功率器件",
+        "车规级功率模块"
+      ],
+      "industry_roles": {
+        "SiC/GaN材料与器件": 0.3,
+        "IGBT模块": 0.25,
+        "MOSFET与电源芯片": 0.2,
+        "车规级功率": 0.15,
+        "智能功率模块IPM": 0.1
+      },
+      "business_dna_tags": [
+        "SiC",
+        "碳化硅",
+        "GaN",
+        "氮化镓",
+        "IGBT",
+        "MOSFET",
+        "功率器件",
+        "第三代半导体",
+        "宽禁带",
+        "车规级"
+      ],
+      "weak_positive_tags": [
+        "新能源车电子",
+        "工业自动化",
+        "光伏逆变器"
+      ],
+      "negative_pressure_tags": {
+        "纯设计类芯片": -0.3,
+        "消费电子": -0.5,
+        "医药": -0.7
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.5,
+        "电子": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "SiC/IGBT头部",
+        "中军": "车规级功率模块厂商",
+        "补涨": "MOSFET/驱动IC/IPM"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "半导体材料": {
+      "theme_name": "半导体材料",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "硅片/光刻胶/电子特气",
+        "前驱体/靶材/抛光材料",
+        "晶圆制造关键化学品国产替代"
+      ],
+      "industry_roles": {
+        "电子化学品": 0.3,
+        "硅片晶圆制造": 0.2,
+        "特种气体": 0.15,
+        "靶材": 0.15,
+        "抛光液/抛光垫": 0.1,
+        "光刻胶配套": 0.1
+      },
+      "business_dna_tags": [
+        "光刻胶",
+        "ArF",
+        "KrF",
+        "电子特气",
+        "硅片",
+        "靶材",
+        "CMP",
+        "抛光液",
+        "前驱体",
+        "湿电子化学品"
+      ],
+      "weak_positive_tags": [
+        "化工原料",
+        "特种金属",
+        "精细化工"
+      ],
+      "negative_pressure_tags": {
+        "半导体设备": -0.4,
+        "消费电子": -0.6,
+        "传统煤化工": -0.5,
+        "医药": -0.7
+      },
+      "industry_soft_constraints": {
+        "电子化学品Ⅱ": 0.4,
+        "化学原料": 0.3,
+        "半导体材料": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "光刻胶/电子特气/硅片头部",
+        "中军": "靶材/前驱体/湿电子化学品",
+        "补涨": "CMP材料/特种电子配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "半导体设备": {
+      "theme_name": "半导体设备",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "晶圆制造前道设备国产替代",
+        "刻蚀/薄膜沉积/光刻机",
+        "量测/检测/涂胶显影后道设备"
+      ],
+      "industry_roles": {
+        "前道设备制造": 0.35,
+        "量测与检测设备": 0.2,
+        "后道封装设备": 0.15,
+        "零部件与真空系统": 0.15,
+        "湿法清洗与热处理": 0.15
+      },
+      "business_dna_tags": [
+        "刻蚀设备",
+        "PVD",
+        "CVD",
+        "ALD",
+        "涂胶显影",
+        "量测",
+        "缺陷检测",
+        "热处理",
+        "离子注入"
+      ],
+      "weak_positive_tags": [
+        "高端装备",
+        "精密机械",
+        "真空技术"
+      ],
+      "negative_pressure_tags": {
+        "光刻胶/电子特气": -0.4,
+        "消费电子终端": -0.7,
+        "家电": -0.6,
+        "医药": -0.8
+      },
+      "industry_soft_constraints": {
+        "自动化设备": 0.6,
+        "半导体": 0.4
+      },
+      "stock_role_mapping": {
+        "龙头": "刻蚀/薄膜沉积头部",
+        "中军": "量测/涂胶显影/热处理",
+        "补涨": "零部件/真空泵/电源模块"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "存储芯片": {
+      "theme_name": "存储芯片",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "DRAM/NAND/3D NAND国产替代",
+        "HBM高带宽内存",
+        "存储控制器与接口"
+      ],
+      "industry_roles": {
+        "存储芯片设计": 0.35,
+        "存储制造与晶圆": 0.25,
+        "HBM与高带宽": 0.2,
+        "存储控制器": 0.1,
+        "存储模组与封测": 0.1
+      },
+      "business_dna_tags": [
+        "DRAM",
+        "NAND",
+        "3D NAND",
+        "HBM",
+        "Nor Flash",
+        "MCU",
+        "存储控制器",
+        "CXL"
+      ],
+      "weak_positive_tags": [
+        "封测",
+        "PCB",
+        "模组制造"
+      ],
+      "negative_pressure_tags": {
+        "光刻机设备": -0.3,
+        "消费电子品牌": -0.5,
+        "传统家电": -0.6,
+        "医药": -0.7
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.6,
+        "电子": 0.4
+      },
+      "stock_role_mapping": {
+        "龙头": "DRAM/NAND设计或制造",
+        "中军": "MCU/存储控制芯片",
+        "补涨": "模组/封测/接口"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "晶圆代工与IDM": {
+      "theme_name": "晶圆代工与IDM",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "晶圆制造代工Foundry",
+        "成熟制程扩产与国产替代",
+        "IDM一体化企业"
+      ],
+      "industry_roles": {
+        "晶圆代工企业": 0.4,
+        "IDM综合制造": 0.3,
+        "特种工艺代工": 0.15,
+        "功率/模拟代工": 0.15
+      },
+      "business_dna_tags": [
+        "Foundry",
+        "IDM",
+        "晶圆代工",
+        "成熟制程",
+        "先进制程",
+        "28nm",
+        "BCD",
+        "CIS",
+        "MEMS"
+      ],
+      "weak_positive_tags": [
+        "半导体设备",
+        "半导体材料"
+      ],
+      "negative_pressure_tags": {
+        "纯芯片设计": -0.2,
+        "消费电子终端": -0.6,
+        "医药": -0.7,
+        "传统能源": -0.6
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.7,
+        "电子": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "大型晶圆代工/IDM",
+        "中军": "特色工艺代工厂",
+        "补涨": "功率/模拟代工与扩产配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "芯片设计": {
+      "theme_name": "芯片设计",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "数字/模拟/射频/FPGA全品类芯片设计",
+        "EDA工具与IP授权",
+        "国产替代芯片"
+      ],
+      "industry_roles": {
+        "数字与SOC设计": 0.3,
+        "模拟/电源/射频": 0.25,
+        "FPGA与可编程": 0.15,
+        "EDA与IP": 0.15,
+        "蓝牙/WiFi/物联网": 0.15
+      },
+      "business_dna_tags": [
+        "EDA",
+        "FPGA",
+        "ASIC",
+        "SoC",
+        "IP授权",
+        "RISC-V",
+        "模拟芯片",
+        "射频",
+        "MCU",
+        "GPU"
+      ],
+      "weak_positive_tags": [
+        "软件工具",
+        "消费电子芯片"
+      ],
+      "negative_pressure_tags": {
+        "晶圆代工制造": -0.3,
+        "家电整机": -0.6,
+        "医药": -0.8,
+        "能源开采": -0.7
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.7,
+        "软件开发": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "通用大芯片/高端模拟/射频头部",
+        "中军": "国产MCU/Power/传感器设计",
+        "补涨": "EDA/IP/细分领域设计"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "卫星制造与发射": {
+      "theme_name": "卫星制造与发射",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "卫星平台与载荷制造",
+        "商业火箭与可回收",
+        "卫星互联网与低轨星座"
+      ],
+      "industry_roles": {
+        "卫星平台与制造": 0.3,
+        "商业火箭与发射服务": 0.3,
+        "低轨星座与卫星互联网": 0.2,
+        "卫星载荷与元器件": 0.2
+      },
+      "business_dna_tags": [
+        "卫星",
+        "卫星制造",
+        "商业火箭",
+        "可回收火箭",
+        "低轨卫星",
+        "LEO",
+        "卫星互联网",
+        "星座",
+        "载荷",
+        "星载芯片",
+        "卫星平台"
+      ],
+      "weak_positive_tags": [
+        "航天军工",
+        "半导体",
+        "通信"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.6,
+        "煤炭石油": -0.5,
+        "消费电子终端": -0.4
+      },
+      "industry_soft_constraints": {
+        "航天装备Ⅱ": 0.5,
+        "军工电子Ⅱ": 0.3,
+        "通信设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "卫星制造或商业火箭龙头",
+        "中军": "低轨星座/卫星互联网",
+        "补涨": "载荷/星载芯片配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "卫星应用": {
+      "theme_name": "卫星应用",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "直连手机/直连消费终端",
+        "车规与智能驾驶卫星应用",
+        "应急与海洋/林业等行业应用"
+      ],
+      "industry_roles": {
+        "卫星直连终端与消费应用": 0.35,
+        "车规与智能驾驶卫星": 0.25,
+        "行业应用(应急/海洋/林业)": 0.25,
+        "卫星物联网": 0.15
+      },
+      "business_dna_tags": [
+        "卫星直连",
+        "卫星手机",
+        "直连终端",
+        "车规卫星",
+        "车载卫星",
+        "卫星物联网",
+        "NTN",
+        "非地面网络",
+        "应急通信",
+        "海洋遥感",
+        "林业应用"
+      ],
+      "weak_positive_tags": [
+        "消费电子",
+        "车联网",
+        "通信设备"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.5,
+        "煤炭石油": -0.4,
+        "白酒": -0.3
+      },
+      "industry_soft_constraints": {
+        "通信设备": 0.4,
+        "消费电子": 0.3,
+        "软件开发": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "卫星直连终端或车规应用",
+        "中军": "行业应用解决方案",
+        "补涨": "物联网/芯片/终端配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "卫星运营": {
+      "theme_name": "卫星运营",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "卫星通信运营与服务",
+        "遥感卫星数据与应用",
+        "卫星导航与位置服务"
+      ],
+      "industry_roles": {
+        "卫星通信运营": 0.35,
+        "遥感数据与应用": 0.3,
+        "卫星导航与位置服务": 0.25,
+        "地面站与测控": 0.1
+      },
+      "business_dna_tags": [
+        "卫星运营",
+        "卫星通信",
+        "遥感",
+        "地理信息",
+        "北斗",
+        "GNSS",
+        "位置服务",
+        "卫星数据",
+        "地面站",
+        "测控",
+        "卫星互联网服务"
+      ],
+      "weak_positive_tags": [
+        "通信运营",
+        "软件",
+        "测绘地理"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.6,
+        "煤炭石油": -0.4,
+        "白酒": -0.3
+      },
+      "industry_soft_constraints": {
+        "通信服务": 0.7,
+        "IT服务Ⅱ": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "卫星通信或北斗运营龙头",
+        "中军": "遥感数据与地理信息",
+        "补涨": "地面站/测控配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "光伏产业链": {
+      "theme_name": "光伏产业链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "N型TOPCon/BC电池/叠层技术",
+        "硅料/硅片/电池片/组件",
+        "逆变器与支架跟踪"
+      ],
+      "industry_roles": {
+        "硅料与硅片": 0.2,
+        "电池片技术": 0.25,
+        "组件与胶膜/玻璃": 0.2,
+        "逆变器": 0.2,
+        "支架与跟踪": 0.15
+      },
+      "business_dna_tags": [
+        "光伏",
+        "TOPCon",
+        "BC电池",
+        "HJT",
+        "钙钛矿",
+        "叠层",
+        "硅料",
+        "石英坩埚",
+        "光伏玻璃",
+        "胶膜",
+        "金刚线"
+      ],
+      "weak_positive_tags": [
+        "储能",
+        "新能源运营",
+        "工业金属"
+      ],
+      "negative_pressure_tags": {
+        "风电整机": -0.3,
+        "消费电子": -0.6,
+        "医药": -0.7,
+        "传统能源": -0.5
+      },
+      "industry_soft_constraints": {
+        "光伏设备": 0.5,
+        "电力": 0.3,
+        "有色金属": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "一体化组件或逆变器头部",
+        "中军": "新型电池片/胶膜/玻璃龙头",
+        "补涨": "辅材/支架/设备"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "固态电池": {
+      "theme_name": "固态电池",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "半固态/全固态电池",
+        "硫化物/氧化物电解质",
+        "锂金属负极与高镍正极"
+      ],
+      "industry_roles": {
+        "固态电池制造": 0.3,
+        "硫化物/氧化物电解质": 0.25,
+        "高镍正极与富锂锰基": 0.2,
+        "锂金属/硅碳负极": 0.15,
+        "聚合物电解质": 0.1
+      },
+      "business_dna_tags": [
+        "全固态",
+        "半固态",
+        "硫化物",
+        "氧化物",
+        "聚合物电解质",
+        "锂金属负极",
+        "高镍",
+        "富锂锰基",
+        "固态电解质",
+        "LLZO",
+        "LATP"
+      ],
+      "weak_positive_tags": [
+        "锂电材料",
+        "新能源车",
+        "储能"
+      ],
+      "negative_pressure_tags": {
+        "传统燃油车": -0.7,
+        "煤炭/石油": -0.6,
+        "医药": -0.7,
+        "消费电子": -0.5
+      },
+      "industry_soft_constraints": {
+        "电池": 0.5,
+        "电池化学品": 0.3,
+        "能源金属": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "固态电池中试线或半固态量产",
+        "中军": "高镍正极/固态电解质材料",
+        "补涨": "锂金属负极/硅碳/粘结剂"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "新型储能": {
+      "theme_name": "新型储能",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "电化学储能/工商业储能",
+        "PCS/逆变器",
+        "钠离子电池与液流电池"
+      ],
+      "industry_roles": {
+        "电化学储能系统": 0.3,
+        "PCS与逆变器": 0.25,
+        "钠电与液流电池": 0.2,
+        "温控与消防": 0.15,
+        "BMS/EMS": 0.1
+      },
+      "business_dna_tags": [
+        "储能",
+        "工商业储能",
+        "大型储能",
+        "PCS",
+        "BMS",
+        "EMS",
+        "钠离子电池",
+        "液流电池",
+        "电化学储能",
+        "虚拟电厂配套"
+      ],
+      "weak_positive_tags": [
+        "新能源车电池",
+        "光伏逆变器",
+        "电力运营"
+      ],
+      "negative_pressure_tags": {
+        "传统火电煤炭": -0.5,
+        "消费电子": -0.6,
+        "医药": -0.7
+      },
+      "industry_soft_constraints": {
+        "电池": 0.4,
+        "电网设备": 0.3,
+        "电力设备": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "大型储能系统集成商",
+        "中军": "PCS/温控/钠电材料",
+        "补涨": "BMS/消防/电力电子配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "电力链": {
+      "theme_name": "电力链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "火电/水电/核电等传统电源",
+        "电网设备与特高压",
+        "电力市场化与容量电价"
+      ],
+      "industry_roles": {
+        "火电运营": 0.25,
+        "水电/核电": 0.2,
+        "电网设备与特高压": 0.25,
+        "输变电设备": 0.15,
+        "配网与电力电子": 0.15
+      },
+      "business_dna_tags": [
+        "火电",
+        "煤电",
+        "超超临界",
+        "水电",
+        "核电",
+        "特高压",
+        "电网",
+        "电力市场化",
+        "容量电价",
+        "调峰"
+      ],
+      "weak_positive_tags": [
+        "煤炭",
+        "工业机械",
+        "通用设备"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.7,
+        "医药": -0.8,
+        "半导体设计": -0.5,
+        "银行": -0.3
+      },
+      "industry_soft_constraints": {
+        "电力": 0.4,
+        "火力发电": 0.3,
+        "电网设备": 0.2,
+        "风电设备": 0.1
+      },
+      "stock_role_mapping": {
+        "龙头": "大型电力运营集团",
+        "中军": "水电/核电核心运营商",
+        "补涨": "输变电/配网设备厂商"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "电网数字化": {
+      "theme_name": "电网数字化",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "虚拟电厂与源网荷储协调",
+        "配网自动化与调度",
+        "电力物联网与数字电网"
+      ],
+      "industry_roles": {
+        "调度自动化与软件": 0.35,
+        "配网自动化设备": 0.25,
+        "电力物联网": 0.2,
+        "柔性直流与电力电子": 0.2
+      },
+      "business_dna_tags": [
+        "虚拟电厂",
+        "配网改造",
+        "数字电网",
+        "调度自动化",
+        "能源互联网",
+        "配电自动化",
+        "柔性直流",
+        "电力物联网"
+      ],
+      "weak_positive_tags": [
+        "工业软件",
+        "工业自动化",
+        "通信设备"
+      ],
+      "negative_pressure_tags": {
+        "火电煤炭开采": -0.4,
+        "医药": -0.7,
+        "消费电子": -0.5
+      },
+      "industry_soft_constraints": {
+        "电网设备": 0.5,
+        "软件开发": 0.3,
+        "自动化设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "调度/继保/电力软件",
+        "中军": "配网自动化与物联网设备",
+        "补涨": "传感器/电力信息安全"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "风电产业链": {
+      "theme_name": "风电产业链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "海上风电与深远海",
+        "风机大型化与大兆瓦",
+        "齿轮箱/主轴/塔筒/海缆"
+      ],
+      "industry_roles": {
+        "风机整机": 0.3,
+        "海缆与传输": 0.2,
+        "叶片/齿轮箱/主轴": 0.25,
+        "塔筒与基础": 0.15,
+        "漂浮式与深远海": 0.1
+      },
+      "business_dna_tags": [
+        "风电",
+        "海上风电",
+        "风机",
+        "大型化",
+        "叶片",
+        "齿轮箱",
+        "轴承",
+        "法兰",
+        "塔筒",
+        "海缆",
+        "漂浮式"
+      ],
+      "weak_positive_tags": [
+        "海工装备",
+        "船舶制造",
+        "电力运营"
+      ],
+      "negative_pressure_tags": {
+        "光伏组件": -0.3,
+        "消费电子": -0.6,
+        "医药": -0.7,
+        "传统能源": -0.4
+      },
+      "industry_soft_constraints": {
+        "风电设备": 0.6,
+        "电力": 0.2,
+        "船舶制造": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "风机整机龙头",
+        "中军": "海缆/轴承/叶片",
+        "补涨": "塔筒/法兰/海工装备"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "充换电与能源补给": {
+      "theme_name": "充换电与能源补给",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "超快充/800V充电网络",
+        "换电站与运营",
+        "光储充一体化"
+      ],
+      "industry_roles": {
+        "充电桩/站制造": 0.3,
+        "超快充与模块": 0.25,
+        "换电站运营": 0.25,
+        "V2G/光储充": 0.2
+      },
+      "business_dna_tags": [
+        "充电桩",
+        "充电站",
+        "快充",
+        "超充",
+        "换电",
+        "换电站",
+        "充电模块",
+        "充电枪",
+        "V2G",
+        "光储充"
+      ],
+      "weak_positive_tags": [
+        "储能",
+        "电力运营",
+        "电力电子"
+      ],
+      "negative_pressure_tags": {
+        "燃油车": -0.5,
+        "医药": -0.7,
+        "消费电子": -0.5
+      },
+      "industry_soft_constraints": {
+        "电力": 0.4,
+        "电源设备": 0.3,
+        "通用设备": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "大型充电/换电设备商",
+        "中军": "充电模块/运营平台",
+        "补涨": "配网接入/充电枪/光储充集成"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "动力系统": {
+      "theme_name": "动力系统",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "动力电池与BMS",
+        "电机电控与电驱",
+        "SiC/GaN高压平台"
+      ],
+      "industry_roles": {
+        "动力电池": 0.35,
+        "电驱与电机": 0.25,
+        "电控与BMS": 0.2,
+        "高压平台与SiC": 0.2
+      },
+      "business_dna_tags": [
+        "电池",
+        "动力电池",
+        "锂电池",
+        "磷酸铁锂",
+        "三元锂",
+        "电机",
+        "电驱",
+        "电控",
+        "BMS",
+        "SiC",
+        "800V高压"
+      ],
+      "weak_positive_tags": [
+        "新能源车电子",
+        "IGBT",
+        "储能电池"
+      ],
+      "negative_pressure_tags": {
+        "传统燃油发动机": -0.6,
+        "消费电子": -0.5,
+        "医药": -0.7,
+        "半导体设计公司": -0.3
+      },
+      "industry_soft_constraints": {
+        "电池": 0.4,
+        "汽车零部件": 0.3,
+        "电机Ⅱ": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "大型动力电池厂",
+        "中军": "电驱/电机/电控厂商",
+        "补涨": "电池辅材/热管理/碳化硅器件"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "新能源汽车整车制造": {
+      "theme_name": "新能源汽车整车制造",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "新能源乘用车整车品牌",
+        "商用车电动化与出口",
+        "增程/纯电/插混平台"
+      ],
+      "industry_roles": {
+        "新能源乘用车": 0.4,
+        "新能源商用车": 0.25,
+        "汽车平台与出口": 0.2,
+        "经销商与渠道": 0.15
+      },
+      "business_dna_tags": [
+        "新能源汽车",
+        "电动车",
+        "纯电动",
+        "插混",
+        "增程式",
+        "出口",
+        "乘用车",
+        "商用车"
+      ],
+      "weak_positive_tags": [
+        "汽车零部件",
+        "汽车电子",
+        "汽车经销"
+      ],
+      "negative_pressure_tags": {
+        "燃油车品牌": -0.5,
+        "消费电子": -0.5,
+        "医药": -0.7
+      },
+      "industry_soft_constraints": {
+        "汽车整车": 0.7,
+        "汽车零部件": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "头部新势力或大型自主",
+        "中军": "商用车/出口/合资新能源",
+        "补涨": "经销渠道/平台公司"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "新能源汽车智能化": {
+      "theme_name": "新能源汽车智能化",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "高阶智驾NOA与城市NOA",
+        "激光雷达/毫米波/摄像头",
+        "座舱芯片与车规OS"
+      ],
+      "industry_roles": {
+        "智驾域控制器与芯片": 0.3,
+        "激光雷达与传感器": 0.25,
+        "智能座舱": 0.2,
+        "车规软件与OS": 0.15,
+        "V2X与车路协同": 0.1
+      },
+      "business_dna_tags": [
+        "自动驾驶",
+        "NOA",
+        "城市NOA",
+        "激光雷达",
+        "毫米波",
+        "摄像头",
+        "域控制器",
+        "智驾芯片",
+        "座舱芯片",
+        "车规OS",
+        "BEV",
+        "Transformer"
+      ],
+      "weak_positive_tags": [
+        "消费电子",
+        "半导体",
+        "工业软件"
+      ],
+      "negative_pressure_tags": {
+        "传统燃油车": -0.5,
+        "医药": -0.7,
+        "传统火电": -0.5
+      },
+      "industry_soft_constraints": {
+        "汽车零部件": 0.4,
+        "软件开发": 0.3,
+        "半导体": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "激光雷达或智驾域控头部",
+        "中军": "座舱/驾驶芯片Tier1",
+        "补涨": "摄像头/毫米波/线束"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "新能源汽车材料链": {
+      "theme_name": "新能源汽车材料链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "锂/钴/镍/锰能源金属",
+        "正极/负极/电解液/隔膜",
+        "铜箔铝箔与结构件"
+      ],
+      "industry_roles": {
+        "能源金属开采": 0.3,
+        "正极材料": 0.25,
+        "负极与硅碳": 0.2,
+        "电解液与锂盐": 0.15,
+        "隔膜/铜箔铝箔": 0.1
+      },
+      "business_dna_tags": [
+        "锂矿",
+        "碳酸锂",
+        "氢氧化锂",
+        "钴",
+        "镍",
+        "锰",
+        "正极材料",
+        "负极材料",
+        "电解液",
+        "隔膜",
+        "铜箔",
+        "铝箔",
+        "PVDF"
+      ],
+      "weak_positive_tags": [
+        "有色金属",
+        "化工材料",
+        "铜加工"
+      ],
+      "negative_pressure_tags": {
+        "整车品牌": -0.4,
+        "消费电子": -0.5,
+        "医药": -0.7
+      },
+      "industry_soft_constraints": {
+        "能源金属": 0.4,
+        "化学原料": 0.3,
+        "有色金属": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "锂矿/正极头部",
+        "中军": "负极/电解液/隔膜龙头",
+        "补涨": "PVDF/导电剂/结构件"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "家电家装": {
+      "theme_name": "家电家装",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "白电/厨电/小家电",
+        "以旧换新与出口",
+        "家居建材与装修链"
+      ],
+      "industry_roles": {
+        "白电(空调/冰箱/洗衣机)": 0.35,
+        "厨电与小家电": 0.25,
+        "家居建材": 0.2,
+        "装修与装饰": 0.1,
+        "家电出口制造": 0.1
+      },
+      "business_dna_tags": [
+        "白电",
+        "空调",
+        "冰箱",
+        "洗衣机",
+        "厨电",
+        "小家电",
+        "智能家居",
+        "以旧换新",
+        "家电出口",
+        "家居",
+        "建材",
+        "装修",
+        "装饰"
+      ],
+      "weak_positive_tags": [
+        "家具",
+        "建材",
+        "消费零售"
+      ],
+      "negative_pressure_tags": {
+        "半导体": -0.5,
+        "医药": -0.5,
+        "新能源车": -0.4
+      },
+      "industry_soft_constraints": {
+        "白色家电": 0.4,
+        "小家电": 0.3,
+        "家居装饰": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "大型白电集团",
+        "中军": "厨电/小家电龙头",
+        "补涨": "家居建材/装修链"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "必选消费红利链": {
+      "theme_name": "必选消费红利链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "食品饮料/乳业/调味品等高股息龙头",
+        "农业与农产品加工",
+        "商超与食品制造"
+      ],
+      "industry_roles": {
+        "食品饮料龙头": 0.35,
+        "乳业": 0.2,
+        "调味品与食品制造": 0.2,
+        "农业与农副": 0.15,
+        "商超零售": 0.1
+      },
+      "business_dna_tags": [
+        "食品饮料",
+        "乳业",
+        "奶粉",
+        "调味品",
+        "酱油",
+        "食用油",
+        "米面",
+        "肉禽",
+        "水产",
+        "农业",
+        "高股息消费",
+        "商超",
+        "零售"
+      ],
+      "weak_positive_tags": [
+        "白酒",
+        "家电",
+        "医药零售"
+      ],
+      "negative_pressure_tags": {
+        "半导体": -0.5,
+        "新能源车": -0.4,
+        "军工": -0.4
+      },
+      "industry_soft_constraints": {
+        "食品饮料": 0.4,
+        "农业": 0.3,
+        "零售": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "食品饮料乳业龙头",
+        "中军": "调味品/米面/农副",
+        "补涨": "商超零售或高股息农业"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "情绪消费成长链": {
+      "theme_name": "情绪消费成长链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "连锁餐饮/茶饮/零食",
+        "免税与旅游零售",
+        "网红消费与电商渠道"
+      ],
+      "industry_roles": {
+        "连锁餐饮茶饮": 0.35,
+        "旅游与免税零售": 0.25,
+        "休闲食品/零食连锁": 0.2,
+        "美妆个护": 0.1,
+        "电商与MCN": 0.1
+      },
+      "business_dna_tags": [
+        "连锁餐饮",
+        "奶茶",
+        "咖啡",
+        "零食",
+        "免税",
+        "旅游",
+        "美妆",
+        "个护",
+        "电商",
+        "MCN",
+        "网红经济",
+        "直播带货",
+        "消费复苏"
+      ],
+      "weak_positive_tags": [
+        "白酒",
+        "商业零售",
+        "影视娱乐"
+      ],
+      "negative_pressure_tags": {
+        "半导体": -0.5,
+        "医药": -0.5,
+        "军工": -0.4,
+        "传统能源": -0.3
+      },
+      "industry_soft_constraints": {
+        "餐饮": 0.4,
+        "零售": 0.3,
+        "旅游Ⅱ": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "连锁餐饮或免税龙头",
+        "中军": "零食连锁/旅游",
+        "补涨": "美妆/电商配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "智能驾驶": {
+      "theme_name": "智能驾驶",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "汽车智能化/智驾/座舱",
+        "车载电子与车规芯片",
+        "汽车软件与域控制器"
+      ],
+      "industry_roles": {
+        "智驾与域控制器": 0.35,
+        "智能座舱": 0.25,
+        "车规芯片与传感器": 0.2,
+        "车载软件与OS": 0.1,
+        "车路协同/V2X": 0.1
+      },
+      "business_dna_tags": [
+        "智能驾驶",
+        "自动驾驶",
+        "NOA",
+        "域控制器",
+        "智驾芯片",
+        "智能座舱",
+        "车载芯片",
+        "车规级",
+        "车载OS",
+        "车联网",
+        "V2X",
+        "车路协同",
+        "OTA",
+        "毫米波雷达",
+        "激光雷达",
+        "摄像头"
+      ],
+      "weak_positive_tags": [
+        "汽车零部件",
+        "汽车电子",
+        "半导体"
+      ],
+      "negative_pressure_tags": {
+        "消费电子终端": -0.4,
+        "医药": -0.5,
+        "煤炭石油": -0.5
+      },
+      "industry_soft_constraints": {
+        "汽车零部件": 0.5,
+        "软件开发": 0.3,
+        "半导体": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "智驾域控或座舱龙头",
+        "中军": "车规芯片/车载软件",
+        "补涨": "传感器/线束/配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "消费电子": {
+      "theme_name": "消费电子",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "智能手机/PC/平板/可穿戴",
+        "AI终端/MR/AI眼镜",
+        "苹果链/安卓链创新"
+      ],
+      "industry_roles": {
+        "智能手机链": 0.3,
+        "MR/VR/AR/可穿戴": 0.25,
+        "消费电子零部件": 0.25,
+        "AI终端硬件": 0.2
+      },
+      "business_dna_tags": [
+        "智能手机",
+        "AI手机",
+        "AI PC",
+        "MR",
+        "VR",
+        "AR",
+        "可穿戴",
+        "折叠屏",
+        "苹果链",
+        "安卓链",
+        "消费电子零部件",
+        "显示面板",
+        "摄像头",
+        "结构件",
+        "被动元件"
+      ],
+      "weak_positive_tags": [
+        "半导体",
+        "面板",
+        "精密制造"
+      ],
+      "negative_pressure_tags": {
+        "传统家电": -0.4,
+        "医药": -0.5,
+        "煤炭": -0.5
+      },
+      "industry_soft_constraints": {
+        "消费电子": 0.6,
+        "光学光电子": 0.2,
+        "电子制造": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "消费电子制造龙头或苹果链",
+        "中军": "MR/可穿戴/AI硬件",
+        "补涨": "被动元件/结构件/配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "白酒": {
+      "theme_name": "白酒",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "高端/次高端/区域白酒",
+        "白酒渠道与动销",
+        "品牌力与提价能力"
+      ],
+      "industry_roles": {
+        "高端白酒": 0.4,
+        "次高端白酒": 0.3,
+        "区域白酒": 0.2,
+        "白酒渠道与配套": 0.1
+      },
+      "business_dna_tags": [
+        "白酒",
+        "高端白酒",
+        "次高端",
+        "酱酒",
+        "浓香型",
+        "清香型",
+        "品牌白酒",
+        "白酒渠道",
+        "宴席消费",
+        "送礼"
+      ],
+      "weak_positive_tags": [
+        "食品饮料",
+        "商业零售",
+        "餐饮"
+      ],
+      "negative_pressure_tags": {
+        "半导体": -0.5,
+        "新能源": -0.4,
+        "医药": -0.3,
+        "军工": -0.4
+      },
+      "industry_soft_constraints": {
+        "白酒": 0.7,
+        "食品饮料": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "高端白酒龙头",
+        "中军": "次高端白酒",
+        "补涨": "区域白酒或渠道配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "传感器": {
+      "theme_name": "传感器",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "MEMS/惯性/力觉/触觉传感器",
+        "毫米波/超声波/激光",
+        "温度/压力/气体工业传感"
+      ],
+      "industry_roles": {
+        "MEMS与惯性传感器": 0.3,
+        "激光/毫米波雷达": 0.25,
+        "力觉/触觉传感器": 0.2,
+        "工业传感器": 0.15,
+        "图像与视觉传感器": 0.1
+      },
+      "business_dna_tags": [
+        "传感器",
+        "MEMS",
+        "惯性测量",
+        "IMU",
+        "六维力",
+        "力矩传感器",
+        "触觉传感器",
+        "激光雷达",
+        "毫米波",
+        "超声波",
+        "工业传感器",
+        "压力传感",
+        "温度传感",
+        "气体传感"
+      ],
+      "weak_positive_tags": [
+        "半导体设计",
+        "消费电子",
+        "汽车电子"
+      ],
+      "negative_pressure_tags": {
+        "传统煤炭": -0.6,
+        "医药": -0.6,
+        "白酒": -0.4
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.4,
+        "电子制造": 0.3,
+        "自动化设备": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "MEMS/工业传感器龙头",
+        "中军": "激光/毫米波/力觉厂商",
+        "补涨": "触觉/气体/视觉配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "具身智能大模型": {
+      "theme_name": "具身智能大模型",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "物理世界通用人工智能/具身AGI",
+        "机器人基础大模型与多模态",
+        "视觉-语言-动作统一模型"
+      ],
+      "industry_roles": {
+        "具身大模型平台": 0.35,
+        "多模态与视觉语言": 0.25,
+        "机器人智能体": 0.2,
+        "运动控制与强化学习": 0.2
+      },
+      "business_dna_tags": [
+        "具身智能",
+        "物理AI",
+        "具身大模型",
+        "机器人GPT",
+        "VLA",
+        "视觉语言动作",
+        "多模态",
+        "机器人智能体",
+        "通用人工智能",
+        "AGI",
+        "强化学习",
+        "基础模型"
+      ],
+      "weak_positive_tags": [
+        "AI大模型",
+        "机器人制造",
+        "机器视觉"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.5,
+        "医药": -0.7,
+        "传统能源": -0.5,
+        "白酒": -0.4
+      },
+      "industry_soft_constraints": {
+        "软件开发": 0.4,
+        "IT服务Ⅱ": 0.3,
+        "自动化设备": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "具身大模型平台或通用AI龙头",
+        "中军": "多模态/机器人智能体",
+        "补涨": "运动控制/强化学习应用"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "数字孪生与工业仿真": {
+      "theme_name": "数字孪生与工业仿真",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "工业数字孪生与仿真软件",
+        "CAE/EDA级物理仿真",
+        "工厂数字化与工业软件"
+      ],
+      "industry_roles": {
+        "工业仿真与CAE": 0.35,
+        "数字孪生平台": 0.3,
+        "工厂数字化/MES": 0.2,
+        "工业数据与可视化": 0.15
+      },
+      "business_dna_tags": [
+        "数字孪生",
+        "工业仿真",
+        "CAE",
+        "工厂数字化",
+        "MES",
+        "工业软件",
+        "物理仿真",
+        "可视化",
+        "工业大数据",
+        "仿真引擎"
+      ],
+      "weak_positive_tags": [
+        "工业软件",
+        "工业自动化",
+        "云计算"
+      ],
+      "negative_pressure_tags": {
+        "消费游戏": -0.5,
+        "医药": -0.6,
+        "煤炭石油": -0.5
+      },
+      "industry_soft_constraints": {
+        "软件开发": 0.5,
+        "IT服务Ⅱ": 0.3,
+        "自动化设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "工业仿真或数字孪生平台",
+        "中军": "工厂数字化/MES",
+        "补涨": "工业数据/可视化配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "机器视觉与3D感知": {
+      "theme_name": "机器视觉与3D感知",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "工业/服务机器人视觉系统",
+        "3D视觉/深度相机/激光",
+        "SLAM与环境感知"
+      ],
+      "industry_roles": {
+        "机器视觉系统": 0.35,
+        "3D视觉/深度相机": 0.3,
+        "SLAM与定位": 0.2,
+        "图像传感器与摄像头": 0.15
+      },
+      "business_dna_tags": [
+        "机器视觉",
+        "3D视觉",
+        "深度相机",
+        "激光雷达",
+        "视觉定位",
+        "SLAM",
+        "环境感知",
+        "图像传感器",
+        "视觉算法",
+        "视觉检测"
+      ],
+      "weak_positive_tags": [
+        "安防监控",
+        "半导体图像传感器",
+        "工业自动化"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.7,
+        "煤炭石油": -0.6,
+        "消费电子纯终端": -0.4
+      },
+      "industry_soft_constraints": {
+        "自动化设备": 0.4,
+        "光学光电子": 0.3,
+        "软件开发": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "机器视觉系统龙头",
+        "中军": "3D视觉/深度相机厂商",
+        "补涨": "SLAM/图像传感器配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "边缘计算与AI芯片": {
+      "theme_name": "边缘计算与AI芯片",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "边缘AI推理芯片",
+        "FPGA/ASIC/NPU嵌入式加速",
+        "端侧大模型与小模型"
+      ],
+      "industry_roles": {
+        "边缘AI芯片": 0.35,
+        "嵌入式FPGA/ASIC": 0.25,
+        "端侧大模型与推理": 0.2,
+        "边缘计算网关与模组": 0.2
+      },
+      "business_dna_tags": [
+        "边缘计算",
+        "边缘AI",
+        "AI芯片",
+        "NPU",
+        "FPGA",
+        "ASIC",
+        "端侧推理",
+        "端侧大模型",
+        "边缘网关",
+        "嵌入式AI",
+        "低功耗AI"
+      ],
+      "weak_positive_tags": [
+        "半导体设计",
+        "通信模组",
+        "工业自动化"
+      ],
+      "negative_pressure_tags": {
+        "GPU/算力中心": -0.3,
+        "医药": -0.7,
+        "煤炭石油": -0.6
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.5,
+        "软件开发": 0.3,
+        "通信设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "边缘AI芯片或FPGA厂商",
+        "中军": "端侧大模型与推理",
+        "补涨": "边缘网关/模组配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "CXO周期修复链": {
+      "theme_name": "CXO周期修复链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "CRO/CDMO海外订单回暖",
+        "创新药研发外包复苏",
+        "产能利用率修复"
+      ],
+      "industry_roles": {
+        "CDMO与生产外包": 0.35,
+        "CRO研发服务": 0.3,
+        "临床CRO": 0.15,
+        "API与中间体CDMO": 0.1,
+        "安评毒理": 0.1
+      },
+      "business_dna_tags": [
+        "CXO",
+        "CRO",
+        "CDMO",
+        "订单回暖",
+        "海外订单",
+        "研发外包",
+        "产能利用率",
+        "CMC",
+        "IND申报",
+        "临床前",
+        "安评",
+        "GLP实验室"
+      ],
+      "weak_positive_tags": [
+        "原料药",
+        "精细化工",
+        "实验室耗材"
+      ],
+      "negative_pressure_tags": {
+        "创新药Biotech": -0.3,
+        "消费电子": -0.7,
+        "煤炭石油": -0.6
+      },
+      "industry_soft_constraints": {
+        "医疗服务": 0.5,
+        "化学制药": 0.5
+      },
+      "stock_role_mapping": {
+        "龙头": "大型CDMO或综合CRO",
+        "中军": "临床CRO或安评",
+        "补涨": "API/中间体/实验室耗材"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "中药": {
+      "theme_name": "中药",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "品牌中药与保密品种",
+        "中药配方颗粒与创新药",
+        "国家基药与医保目录"
+      ],
+      "industry_roles": {
+        "品牌中成药": 0.35,
+        "中药配方颗粒": 0.25,
+        "中药创新药": 0.15,
+        "中药饮片与药材": 0.15,
+        "中药出海": 0.1
+      },
+      "business_dna_tags": [
+        "中药",
+        "中成药",
+        "中药材",
+        "配方颗粒",
+        "中药创新药",
+        "中药OTC",
+        "品牌中药",
+        "保密品种",
+        "国家基药",
+        "医保目录",
+        "中药现代化",
+        "中药出海"
+      ],
+      "weak_positive_tags": [
+        "医药商业",
+        "保健品",
+        "农林牧渔"
+      ],
+      "negative_pressure_tags": {
+        "创新药生物药": -0.3,
+        "消费电子": -0.6,
+        "能源开采": -0.6
+      },
+      "industry_soft_constraints": {
+        "中药Ⅱ": 0.6,
+        "中药生产": 0.4
+      },
+      "stock_role_mapping": {
+        "龙头": "品牌中药保密品种",
+        "中军": "配方颗粒或OTC",
+        "补涨": "中药材/中药创新药/出海"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "创新医药主线": {
+      "theme_name": "创新医药主线",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "创新药ADC/GLP-1/双抗等新一代生物药",
+        "license-out出海授权",
+        "临床数据与NDA/BLA"
+      ],
+      "industry_roles": {
+        "创新药与Biotech": 0.35,
+        "ADC/双抗/GLP-1": 0.25,
+        "mRNA/核酸药物": 0.15,
+        "License-out与合作": 0.15,
+        "First-in-class/最佳同类": 0.1
+      },
+      "business_dna_tags": [
+        "创新药",
+        "ADC",
+        "GLP-1",
+        "PD-1",
+        "单抗",
+        "双抗",
+        "mRNA",
+        "抗体药物",
+        "临床数据",
+        "NDA",
+        "BLA",
+        "出海授权",
+        "license-out",
+        "突破性疗法"
+      ],
+      "weak_positive_tags": [
+        "CXO",
+        "CDMO",
+        "医疗器械"
+      ],
+      "negative_pressure_tags": {
+        "仿制药": -0.5,
+        "中药饮片": -0.3,
+        "保健品": -0.5,
+        "消费电子": -0.7,
+        "能源开采": -0.6
+      },
+      "industry_soft_constraints": {
+        "化学制药": 0.5,
+        "生物制品": 0.5
+      },
+      "stock_role_mapping": {
+        "龙头": "大药企或ADC/GLP-1头部",
+        "中军": "Biotech或临床阶段创新",
+        "补涨": "license-out/合作企业"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "医疗AI智能化": {
+      "theme_name": "医疗AI智能化",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "AI制药与分子模拟",
+        "医学影像AI辅助诊断",
+        "数字病理与大模型医疗应用"
+      ],
+      "industry_roles": {
+        "AI制药与研发": 0.35,
+        "医学影像AI": 0.3,
+        "数字病理": 0.2,
+        "医疗大模型": 0.15
+      },
+      "business_dna_tags": [
+        "AI医疗",
+        "AI制药",
+        "药物发现",
+        "分子模拟",
+        "医疗大模型",
+        "AI诊断",
+        "影像识别",
+        "数字病理",
+        "R&D AI"
+      ],
+      "weak_positive_tags": [
+        "医疗器械",
+        "创新药",
+        "软件开发"
+      ],
+      "negative_pressure_tags": {
+        "传统医院服务": -0.4,
+        "医药零售": -0.5,
+        "消费电子": -0.6,
+        "煤炭石油": -0.7
+      },
+      "industry_soft_constraints": {
+        "软件开发": 0.4,
+        "医疗器械": 0.4,
+        "IT服务Ⅱ": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "AI制药平台或影像AI头部",
+        "中军": "医疗设备+AI集成",
+        "补涨": "医院信息化/数字病理配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "医疗器械": {
+      "theme_name": "医疗器械",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "高端影像设备与进口替代",
+        "高值耗材与骨科/心脏介入",
+        "IVD体外诊断与PET-CT/MRI"
+      ],
+      "industry_roles": {
+        "影像设备(CT/MRI/PET)": 0.25,
+        "高值耗材(骨科/支架)": 0.25,
+        "IVD体外诊断": 0.2,
+        "眼科/牙科": 0.15,
+        "监护生命支持": 0.15
+      },
+      "business_dna_tags": [
+        "医疗器械",
+        "高值耗材",
+        "医疗设备",
+        "IVD",
+        "体外诊断",
+        "CT",
+        "MRI",
+        "PET-CT",
+        "超声",
+        "内窥镜",
+        "手术机器人",
+        "骨科植入",
+        "心脏支架",
+        "人工关节",
+        "起搏器",
+        "眼科",
+        "OK镜",
+        "ICL",
+        "牙科",
+        "种植牙"
+      ],
+      "weak_positive_tags": [
+        "创新药",
+        "医疗服务",
+        "精密制造"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.5,
+        "煤炭石油": -0.6,
+        "传统纺织": -0.7
+      },
+      "industry_soft_constraints": {
+        "医疗器械": 1.0
+      },
+      "stock_role_mapping": {
+        "龙头": "大型影像设备或综合器械",
+        "中军": "IVD龙头/高值耗材",
+        "补涨": "专科(眼科/牙科/机器人)"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "合成生物": {
+      "theme_name": "合成生物",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "合成生物学与微生物改造",
+        "生物基材料与可降解",
+        "工业生物技术发酵工程"
+      ],
+      "industry_roles": {
+        "合成生物平台": 0.3,
+        "生物基材料": 0.25,
+        "工业发酵工程": 0.2,
+        "PLA/PHA可降解": 0.15,
+        "特种氨基酸/长链二元酸": 0.1
+      },
+      "business_dna_tags": [
+        "合成生物",
+        "生物制造",
+        "工业生物技术",
+        "生物基材料",
+        "生物可降解",
+        "PLA",
+        "PHA",
+        "生物发酵",
+        "发酵工程",
+        "菌种改造",
+        "酶工程",
+        "细胞工厂",
+        "CO2固定",
+        "生物合成"
+      ],
+      "weak_positive_tags": [
+        "精细化工",
+        "农产品加工",
+        "食品工业"
+      ],
+      "negative_pressure_tags": {
+        "石油化工传统路线": -0.4,
+        "创新药研发": -0.3,
+        "消费电子": -0.6
+      },
+      "industry_soft_constraints": {
+        "生物制品": 0.4,
+        "农化制品": 0.3,
+        "食品加工": 0.15,
+        "化学原料": 0.15
+      },
+      "stock_role_mapping": {
+        "龙头": "合成生物平台或工业发酵头部",
+        "中军": "长链二元酸/氨基酸/特种发酵",
+        "补涨": "菌种/酶工程/生物制造配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "脑机接口": {
+      "theme_name": "脑机接口",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "侵入式/非侵入式脑电信号采集",
+        "神经调控与神经反馈",
+        "脑控设备与植入式芯片"
+      ],
+      "industry_roles": {
+        "脑电采集与设备": 0.3,
+        "植入式BCI芯片": 0.25,
+        "神经调控治疗": 0.25,
+        "脑控应用": 0.2
+      },
+      "business_dna_tags": [
+        "脑机接口",
+        "BCI",
+        "神经接口",
+        "脑电信号",
+        "神经调控",
+        "神经反馈",
+        "脑科学",
+        "脑控",
+        "植入式芯片",
+        "脑电设备"
+      ],
+      "weak_positive_tags": [
+        "医疗器械",
+        "神经科药物",
+        "AI芯片"
+      ],
+      "negative_pressure_tags": {
+        "传统医院服务": -0.4,
+        "消费品": -0.6,
+        "煤炭石油": -0.7
+      },
+      "industry_soft_constraints": {
+        "医疗器械": 0.5,
+        "生物制品": 0.3,
+        "软件开发": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "脑电设备/植入式BCI领先",
+        "中军": "神经调控设备厂商",
+        "补涨": "配套传感器/电极/耗材"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "基础化工": {
+      "theme_name": "基础化工",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "基础化学品与大宗化工",
+        "精细化工与新材料",
+        "化肥农药与农化"
+      ],
+      "industry_roles": {
+        "大宗化工品": 0.3,
+        "精细化工": 0.25,
+        "化肥与农药": 0.2,
+        "化学原料": 0.15,
+        "化工新材料": 0.1
+      },
+      "business_dna_tags": [
+        "化工",
+        "纯碱",
+        "烧碱",
+        "PVC",
+        "涤纶",
+        "MDI",
+        "钛白粉",
+        "化肥",
+        "农药",
+        "草甘膦",
+        "精细化工",
+        "化工新材料"
+      ],
+      "weak_positive_tags": [
+        "农业",
+        "纺织",
+        "建筑材料"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.5,
+        "医药生物": -0.4,
+        "半导体": -0.3,
+        "白酒": -0.3
+      },
+      "industry_soft_constraints": {
+        "化学原料": 0.5,
+        "化学制品": 0.3,
+        "农药化肥": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "大宗化工龙头(MDI/纯碱/涤纶)",
+        "中军": "精细化工或新材料",
+        "补涨": "农化/农药/化肥"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "有色资源": {
+      "theme_name": "有色资源",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "铜/铝/锌/铅等工业金属",
+        "新能源金属锂/钴/镍/稀土",
+        "金/银/铂等贵金属"
+      ],
+      "industry_roles": {
+        "工业金属(铜/铝)": 0.25,
+        "新能源金属(锂/钴/镍)": 0.3,
+        "稀土永磁": 0.2,
+        "贵金属(金/银)": 0.15,
+        "金属加工与铜材": 0.1
+      },
+      "business_dna_tags": [
+        "铜矿",
+        "铜矿带",
+        "电解铝",
+        "氧化铝",
+        "铜箔",
+        "铝箔",
+        "铜杆",
+        "铝材",
+        "钴",
+        "镍",
+        "稀土",
+        "钨",
+        "钼",
+        "锂",
+        "黄金",
+        "白银",
+        "铂",
+        "大宗商品",
+        "矿产",
+        "矿产开发",
+        "矿采选"
+      ],
+      "weak_positive_tags": [
+        "钢铁",
+        "煤炭",
+        "化工",
+        "机械制造"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.5,
+        "医药": -0.6,
+        "白酒": -0.3,
+        "房地产": -0.4
+      },
+      "industry_soft_constraints": {
+        "工业金属": 0.5,
+        "能源金属": 0.3,
+        "贵金属": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "大型铜矿/电解铝/稀土集团",
+        "中军": "锂/钴/镍/黄金龙头",
+        "补涨": "金属加工/铜箔/铝箔/钨钼"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "煤炭链": {
+      "theme_name": "煤炭链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "动力煤/焦煤/焦炭生产",
+        "煤炭开采与洗选",
+        "煤化工与煤电一体化"
+      ],
+      "industry_roles": {
+        "动力煤开采": 0.3,
+        "焦煤与焦炭": 0.25,
+        "煤化工与甲醇": 0.2,
+        "煤炭运输与港口": 0.15,
+        "煤电一体化": 0.1
+      },
+      "business_dna_tags": [
+        "煤炭",
+        "动力煤",
+        "焦煤",
+        "焦炭",
+        "煤矿",
+        "煤化工",
+        "甲醇",
+        "煤制烯烃",
+        "洗选煤",
+        "煤电",
+        "煤炭运输"
+      ],
+      "weak_positive_tags": [
+        "火电",
+        "钢铁",
+        "化工"
+      ],
+      "negative_pressure_tags": {
+        "新能源": -0.5,
+        "半导体": -0.6,
+        "医药": -0.7,
+        "消费电子": -0.6
+      },
+      "industry_soft_constraints": {
+        "煤炭开采": 0.6,
+        "煤化工": 0.2,
+        "火力发电": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "大型煤企集团",
+        "中军": "焦煤焦炭或煤化工",
+        "补涨": "煤炭运输/洗选/港口配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "稀土永磁": {
+      "theme_name": "稀土永磁",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "稀土氧化物分离与冶炼",
+        "钕铁硼/钐钴永磁材料",
+        "稀土磁材在电机/风电/消费电子应用"
+      ],
+      "industry_roles": {
+        "稀土矿与分离": 0.35,
+        "高性能钕铁硼": 0.3,
+        "磁材应用与器件": 0.2,
+        "稀土回收": 0.15
+      },
+      "business_dna_tags": [
+        "稀土",
+        "钕铁硼",
+        "钐钴",
+        "永磁",
+        "稀土矿",
+        "轻稀土",
+        "中重稀土",
+        "磁材",
+        "磁性材料",
+        "稀土氧化物",
+        "镨钕",
+        "镝铽"
+      ],
+      "weak_positive_tags": [
+        "新能源车电机",
+        "风电",
+        "工业电机"
+      ],
+      "negative_pressure_tags": {
+        "消费电子终端": -0.4,
+        "医药": -0.7,
+        "煤炭石油": -0.5
+      },
+      "industry_soft_constraints": {
+        "有色金属": 0.7,
+        "能源金属": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "大型稀土集团或磁材龙头",
+        "中军": "高性能钕铁硼",
+        "补涨": "稀土回收/磁材器件配套"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "贵金属与黄金": {
+      "theme_name": "贵金属与黄金",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "黄金开采与冶炼",
+        "白银/铂系金属",
+        "黄金饰品与投资",
+        "央行动态与去美元化"
+      ],
+      "industry_roles": {
+        "黄金开采与冶炼": 0.4,
+        "黄金饰品与零售": 0.25,
+        "白银与铂系金属": 0.2,
+        "黄金回收与投资": 0.15
+      },
+      "business_dna_tags": [
+        "黄金",
+        "金矿",
+        "白银",
+        "铂",
+        "钯",
+        "贵金属",
+        "金饰品",
+        "金条",
+        "黄金ETF",
+        "去美元化",
+        "避险"
+      ],
+      "weak_positive_tags": [
+        "珠宝零售",
+        "有色金属",
+        "银行"
+      ],
+      "negative_pressure_tags": {
+        "半导体": -0.5,
+        "医药": -0.6,
+        "新能源车": -0.4,
+        "白酒": -0.3
+      },
+      "industry_soft_constraints": {
+        "贵金属": 0.5,
+        "有色金属": 0.3,
+        "饰品": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "大型黄金矿业集团",
+        "中军": "黄金饰品或白银",
+        "补涨": "黄金回收/铂系/投资品"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "钢铁": {
+      "theme_name": "钢铁",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "长材/板材/特钢",
+        "铁矿石与炼钢上游",
+        "特钢与高端装备用钢"
+      ],
+      "industry_roles": {
+        "长材与建筑用钢": 0.25,
+        "板材与制造用钢": 0.25,
+        "特钢与高端": 0.25,
+        "铁矿石与原料": 0.15,
+        "不锈钢": 0.1
+      },
+      "business_dna_tags": [
+        "钢铁",
+        "钢材",
+        "板材",
+        "长材",
+        "螺纹钢",
+        "热轧",
+        "冷轧",
+        "特钢",
+        "不锈钢",
+        "铁矿石",
+        "焦煤",
+        "焦炭",
+        "高炉",
+        "电炉钢"
+      ],
+      "weak_positive_tags": [
+        "煤炭",
+        "基建",
+        "机械装备",
+        "造船"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.7,
+        "半导体": -0.6,
+        "消费电子": -0.5,
+        "白酒": -0.3
+      },
+      "industry_soft_constraints": {
+        "钢铁": 0.7,
+        "普钢": 0.15,
+        "特钢": 0.15
+      },
+      "stock_role_mapping": {
+        "龙头": "大型钢铁集团或特钢龙头",
+        "中军": "板材/长材区域龙头",
+        "补涨": "特钢细分/不锈钢/铁合金"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "保险": {
+      "theme_name": "保险",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "寿险与财产险保险公司",
+        "代理人渠道与NBV改善",
+        "长端利率上行与投资收益"
+      ],
+      "industry_roles": {
+        "大型保险集团": 0.4,
+        "寿险公司": 0.3,
+        "财产险公司": 0.2,
+        "保险科技与中介": 0.1
+      },
+      "business_dna_tags": [
+        "保险",
+        "寿险",
+        "财险",
+        "健康险",
+        "代理人",
+        "NBV",
+        "新业务价值",
+        "长端利率",
+        "保险科技",
+        "互联网保险"
+      ],
+      "weak_positive_tags": [
+        "银行",
+        "券商",
+        "高股息"
+      ],
+      "negative_pressure_tags": {
+        "半导体": -0.6,
+        "医药": -0.6,
+        "消费电子": -0.5
+      },
+      "industry_soft_constraints": {
+        "保险": 0.8,
+        "多元金融": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "大型保险集团",
+        "中军": "特色财险/寿险",
+        "补涨": "保险科技/中介/参股保险"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "券商": {
+      "theme_name": "券商",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "证券经纪与投行",
+        "资产管理与自营",
+        "资本市场活跃带来的业绩弹性"
+      ],
+      "industry_roles": {
+        "综合券商龙头": 0.4,
+        "投行与资管特色券商": 0.25,
+        "互联网经纪": 0.2,
+        "参股券商": 0.15
+      },
+      "business_dna_tags": [
+        "券商",
+        "证券公司",
+        "投行",
+        "经纪",
+        "自营",
+        "资管",
+        "公募",
+        "基金",
+        "财富管理",
+        "投行业务",
+        "资本市场"
+      ],
+      "weak_positive_tags": [
+        "银行",
+        "保险",
+        "金融科技"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.7,
+        "医药": -0.8,
+        "半导体": -0.5,
+        "新能源": -0.5
+      },
+      "industry_soft_constraints": {
+        "证券": 0.7,
+        "多元金融": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "头部综合大券商",
+        "中军": "区域/特色投行券商",
+        "补涨": "参股券商或金融科技"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "多元金融": {
+      "theme_name": "多元金融",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "信托/租赁/AMC/期货",
+        "类金融服务",
+        "资产管理与不良资产处置"
+      ],
+      "industry_roles": {
+        "资产管理与信托": 0.35,
+        "金融租赁": 0.25,
+        "期货与AMC": 0.25,
+        "小额贷款与典当": 0.15
+      },
+      "business_dna_tags": [
+        "信托",
+        "租赁",
+        "AMC",
+        "不良资产",
+        "期货",
+        "资产管理",
+        "小额贷款",
+        "典当",
+        "类金融"
+      ],
+      "weak_positive_tags": [
+        "银行",
+        "券商",
+        "高股息"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.7,
+        "半导体": -0.6,
+        "消费电子": -0.6,
+        "新能源": -0.4
+      },
+      "industry_soft_constraints": {
+        "多元金融": 1.0
+      },
+      "stock_role_mapping": {
+        "龙头": "大型资管或AMC",
+        "中军": "金融租赁/期货",
+        "补涨": "小贷/典当/特色金融"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "金融科技": {
+      "theme_name": "金融科技",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "支付/征信/数字货币",
+        "证券与基金IT系统",
+        "金融信息服务与数据"
+      ],
+      "industry_roles": {
+        "证券基金IT": 0.3,
+        "支付与清算": 0.25,
+        "金融信息服务": 0.25,
+        "区块链与数字人民币": 0.2
+      },
+      "business_dna_tags": [
+        "金融科技",
+        "支付",
+        "清算",
+        "数字人民币",
+        "证券IT",
+        "基金IT",
+        "金融信息",
+        "行情数据",
+        "区块链",
+        "智能投顾"
+      ],
+      "weak_positive_tags": [
+        "软件开发",
+        "银行",
+        "券商"
+      ],
+      "negative_pressure_tags": {
+        "医药": -0.7,
+        "半导体": -0.4,
+        "消费电子": -0.5,
+        "新能源": -0.4
+      },
+      "industry_soft_constraints": {
+        "软件开发": 0.5,
+        "多元金融": 0.3,
+        "IT服务Ⅱ": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "证券基金IT或支付龙头",
+        "中军": "金融信息服务公司",
+        "补涨": "数字人民币/区块链应用"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "银行": {
+      "theme_name": "银行",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "国有大行/股份制/城商行",
+        "零售银行与财富管理",
+        "高股息与低估值修复"
+      ],
+      "industry_roles": {
+        "国有大行": 0.3,
+        "股份制银行": 0.3,
+        "城商行与农商行": 0.25,
+        "零售与财富管理": 0.15
+      },
+      "business_dna_tags": [
+        "银行",
+        "大行",
+        "股份制银行",
+        "城商行",
+        "农商行",
+        "零售银行",
+        "财富管理",
+        "净息差",
+        "高股息",
+        "金融稳定"
+      ],
+      "weak_positive_tags": [
+        "保险",
+        "券商",
+        "高股息公用事业"
+      ],
+      "negative_pressure_tags": {
+        "半导体": -0.6,
+        "医药": -0.6,
+        "消费电子": -0.5,
+        "新能源": -0.4
+      },
+      "industry_soft_constraints": {
+        "银行": 1.0
+      },
+      "stock_role_mapping": {
+        "龙头": "国有大行或头部股份行",
+        "中军": "特色零售银行",
+        "补涨": "城商行/区域银行"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    }
+  },
+  "version": "V2",
+  "_generated_from": "theme2.json + theme_v2_meta_part1~4"
+}

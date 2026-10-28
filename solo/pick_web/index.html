@@ -206,9 +206,10 @@ async function boot() {
   await loadStat();
 }
 
-// 明细排序：4 个重点策略按序置顶 → 其余策略各自成块（块间随机）→ 猎狐V4 固定最后。
+// 明细排序：重点策略按序置顶 → 其余策略各自成块（块间随机）→ 猎狐V4 固定最后。
 // 同一个策略的行永远连在一起，不交叉；组内保持接口原序。
-const PRIORITY = ['w7_hvt', 'hvt_bull_te', 'hvt_bull_fe_watch', 'w7_t20'];
+// 20261028：w7_ab = W7 新口径两类信号（类型A/类型B），与旧口径 w7_hvt 并列置顶。
+const PRIORITY = ['w7_ab', 'w7_hvt', 'hvt_bull_te', 'hvt_bull_fe_watch', 'w7_t20'];
 const LAST_STRATEGY = 'fox_v4';
 
 function sortKeyOf(rows) {

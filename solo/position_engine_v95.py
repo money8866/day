@@ -264,7 +264,7 @@ def _judge_dday(v9):
     if mom == "钝化" and sent == "情绪中性":
         return 5, "D5 高位"
     if mom in ("衰退", "急杀"):
-        return 6, "D6 高位谨慎"
+        return 6, "D6 下跌防守"
     if sent in ("情绪冰点", "情绪退潮"):
         return 7, "D7 冰点"
     return 3, "D3 中性"
@@ -792,7 +792,7 @@ class PositionEngineV99:
                 r.action = "维持"
                 r.action_detail = ""
         elif up_ratio < 0.40 or bomb_ratio > 0.30 or r.d_day >= 6:
-            # 弱势/高炸板/高位谨慎 → 减仓控仓
+            # 弱势/高炸板/下跌防守 → 减仓控仓
             r.action = "减仓/控仓"
             r.action_detail = "弱势环境（涨%.0f%%/炸板%.0f%%/D%d）" % (up_ratio * 100, bomb_ratio * 100, r.d_day)
         elif _check_level2_reduce(v9):
@@ -929,7 +929,7 @@ class PositionEngineV99:
         if r.d_day in (4, 5):
             return "D4-D5：趋势延续，持有或回踩加仓"
         if r.d_day in (6, 7):
-            return "D6-D7：高位谨慎，不追涨"
+            return "D6-D7：下跌防守，不追涨"
         return "等待新一轮启动信号"
 
     def generate_report(self, r):

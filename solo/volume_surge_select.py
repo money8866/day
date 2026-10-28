@@ -234,7 +234,22 @@ MOM_GATE_THRESHOLD = 3.0
 # 起量台阶识别参数（20260927，_vol_step_days；20260930 起兼作「缩量比」的基准选择，参数敏感度已检验不脆弱）
 VOL_STEP_RATIO_JUMP = 1.5    # 起量判据：5日均量 / 前5日均量
 VOL_T0_VOLBASE_MIN = 3.0     # 起量判据：T0当日量 / 起量前20日均量（不含当日，20261002 由「含当日20日量比」改口径，阈值 2.0→2.5 补偿；20261003 用户要求「拉高量能放大幅度」2.5→3.0，剔除楚江新材 002171.SZ 0916/0917 这类 T0 量比仅 2.72 的贴线票）
+# 20261028 用户口径（斯菱智驱 301550.SZ）：T0 应是「长阳 + 巨量」的起涨日 0811（+20.00% 涨停、
+#   量 2.31×起跳前20日均量），0812（+1.45%、量 3.11×、跳空高开后回落）只是高位换手的延续日。
+#   旧口径只认量能 ≥3.0×：0811 被卡掉、0812 虽过门槛但因 0819 收盘 75.43 跌破其前收 87.42 被
+#   「T0 失效」规则作废 → 整段无合格 T0，10/15 的缩量回踩自然没有下蹲买点。
+#   与 W7 同步按涨幅分档：涨停/准涨停级长阳（≥10%）本身即起量确认，量能门槛降到 2.0×；
+#   普通长阳（5%~10%）仍按 3.0×（20261003 标定值不变）。
+VOL_T0_PCT_STRONG = 10.0
+VOL_T0_VOLBASE_MIN_STRONG = 2.0
 VOL_STEP_MIN = 1.2           # 台阶维持：起量后每日 5日均量 >= 起量前一日 5日均量 × 本值
+                             #   20261028 用户口径「放宽台阶」：不再要求跟踪期内每一天都达标，
+                             #   改为「容忍短期回踩」——允许最多 VOL_STEP_TOL_DAYS 个交易日短暂跌破，
+                             #   但判定当日仍须站在台阶上（见 _vol_step_days）。
+                             #   触发案例：斯菱智驱 301550.SZ 的 T0=0811，5日均量倍数在 0901 掉到 1.172、
+                             #   0902 1.177（仅 2 天、幅度 -2.3%），1015 已回到 1.42；旧口径按「全窗口最小值」
+                             #   一刀切判死，整段 T0 作废、后续缩量回踩全被漏掉。
+VOL_STEP_TOL_DAYS = 3        # 台阶维持的短期回踩容忍：跟踪期内 5日均量跌破台阶的天数上限
 VOL_STEP_MAX_D = 60          # T0 到今日的最大允许交易日跨度（20261003 用户要求 15→60：T0 识别后跟踪 60 个交易日；
                              #   跟踪期间若收盘跌破「T0 前一交易日收盘价」，该 T0 即作废、不再跟踪，见 _vol_step_days）
 VOL_T0_MIN_PCT = 5.0         # T0 标志日：第一根放量阳线当日涨幅下限（20260930 用户要求；20261003 起涨停日/涨停次日豁免）
@@ -1233,7 +1248,8 @@ def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr, zt_line=9.8, all
 
     语义（用户口径，20261002 修正）：某日起量（5日均量较前5日均量跳升 >=1.5 倍，
     且当日量 >= 起量前20日均量（不含当日）VOL_T0_VOLBASE_MIN 倍，
-    且当日为放量阳线、涨幅 >VOL_T0_MIN_PCT），此后每日 5日均量始终 >= 起量前一日 5日均量的 1.2 倍
+    且当日为放量阳线、涨幅 >VOL_T0_MIN_PCT），此后每日 5日均量 >= 起量前一日 5日均量的 1.2 倍
+    （20261028 起放宽：允许最多 VOL_STEP_TOL_DAYS 个交易日短暂跌破、判定当日须达标）
     → 量能台阶维持、资金未走。该日即 T0 标志日。
     返回 (距 T0 天数 d, 相对 T0 收盘涨幅小数, T0 当日涨幅小数, T0 开盘价)；无合格 T0 返回 None。
 
@@ -1242,7 +1258,8 @@ def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr, zt_line=9.8, all
     兜底口径下，若 T0 日 i 为涨停日（涨幅 >= zt_line）或其前一交易日 i-1 为涨停日，豁免
       (a) 5日均量「新跳升」条件（涨停通常是放量的第 2、3 天，5日均量比已 >=1.5）
       (d) 阳线 + 涨幅 >VOL_T0_MIN_PCT 条件（涨停日涨幅天然足够；涨停次日常为小阳/平盘）
-    但量能条件不豁免：T0 当日量仍须 >= 起跳前20日均量 3.0 倍，且台阶维持到今日。
+    但量能条件不豁免：T0 当日量仍须 >= 起跳前20日均量 3.0 倍（20261028 起按涨幅分档：
+      T0 当日涨幅 >=10% 的长阳按 2.0 倍），且台阶维持到今日。
     之所以两段式而非直接豁免：直接豁免会让「已有严格 T0」的个股 T0 被改认到更近的涨停次日，
     从而改写缩量比基准与距T0开盘（实测大港股份 002077.SZ 的 T0 由 0909 涨停日被改认为 0910 涨停
     次日 +2.26%，导致 0930 缩量比 0.546→0.414、距T0开盘 +9.27%→-0.65%，原本的 0930 下蹲信号丢失）。
@@ -1321,19 +1338,25 @@ def _vol_step_days(vol_arr, close_arr, open_arr, pre_close_arr, zt_line=9.8, all
             if not _zt_exm:
                 if ratio[i] < VOL_STEP_RATIO_JUMP or ratio[i - 1] >= VOL_STEP_RATIO_JUMP:
                     continue
-            if np.isnan(v_t0[i]) or v_t0[i] < VOL_T0_VOLBASE_MIN or not (ma5[i - 1] > 0):
+            if pre_close_arr[i] <= 0:
+                continue
+            # 20261028：量能门槛按 T0 当日涨幅分档（涨停/准涨停级长阳 2.0×，普通长阳 3.0×）
+            _t0_pct = (close_arr[i] / pre_close_arr[i] - 1) * 100
+            _volbase_min = VOL_T0_VOLBASE_MIN_STRONG if _t0_pct >= VOL_T0_PCT_STRONG else VOL_T0_VOLBASE_MIN
+            if np.isnan(v_t0[i]) or v_t0[i] < _volbase_min or not (ma5[i - 1] > 0):
                 continue
             seg = ma5[i:k + 1] / ma5[i - 1]
-            if np.isnan(seg).any() or seg.min() < VOL_STEP_MIN:
+            # 台阶维持（20261028 用户口径「放宽台阶」）：判定当日须站在台阶上，
+            #   跟踪期内允许最多 VOL_STEP_TOL_DAYS 个交易日短暂跌破（长期阴跌仍会被剔除）。
+            if np.isnan(seg).any() or seg[-1] < VOL_STEP_MIN:
                 continue
-            if pre_close_arr[i] <= 0:
+            if int((seg < VOL_STEP_MIN).sum()) > VOL_STEP_TOL_DAYS:
                 continue
             # T0 失效判定（20261003 用户要求）：跟踪期间（T0 次日起至今日）若任一交易日
             #   收盘跌破「T0 前一交易日收盘价」→ 整波放量已被完全回吐、起涨基石被击穿，
             #   该 T0 作废、不再跟踪，继续向前找更早的 T0。判据用收盘价，不用盘中最低价。
             if i + 1 <= k and float(np.min(close_arr[i + 1:k + 1])) < float(pre_close_arr[i]):
                 continue
-            _t0_pct = (close_arr[i] / pre_close_arr[i] - 1) * 100
             # (d) 放量阳线且涨幅达标：兜底口径下涨停日 / 涨停次日豁免（20261003）
             if not _zt_exm:
                 if close_arr[i] <= open_arr[i] or _t0_pct <= VOL_T0_MIN_PCT:

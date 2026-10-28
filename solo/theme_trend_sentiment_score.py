@@ -1956,7 +1956,31 @@ def match_theme_stocks(hot_themes, dc_df, stock_basic_df, stock_mainbiz=None, sw
                             break
                 if dna_match:
                     filtered_candidates[code] = info
-            candidates = filtered_candidates
+            # 防误杀（P0 修复）：Gate 白名单过窄时（如只映射到 1 个小板块），
+            # 过滤后可能只剩个别股票，核心成分被整体误杀。
+            # 部分回退：保留"概念板块与 DNA 白名单或主题 concept 有重叠"的候选，
+            # 仅丢弃纯行业溢出候选；若部分回退后仍不足 3 只才全量回退。
+            if len(filtered_candidates) < 3 and candidates:
+                partial = {}
+                for code2, info2 in candidates.items():
+                    cc_list = stock_concepts.get(code2, []) or []
+                    hit_dna = any(dc in cc or cc in dc
+                                  for cc in cc_list for dc in dna_concept_required)
+                    hit_con = any(t in cc or cc in t
+                                  for cc in cc_list for t in concept_list if t)
+                    if hit_dna or hit_con:
+                        partial[code2] = info2
+                if len(partial) >= 3:
+                    print(f"    [GateLoose] {theme_name}: DNA Gate 过滤后仅 "
+                          f"{len(filtered_candidates)} 只（过滤前 {len(candidates)} 只），"
+                          f"部分回退保留概念重叠候选 {len(partial)} 只")
+                    candidates = partial
+                else:
+                    print(f"    [GateLoose] {theme_name}: DNA Gate 过滤后仅 "
+                          f"{len(filtered_candidates)} 只（过滤前 {len(candidates)} 只），"
+                          f"白名单过窄，降级保留过滤前候选")
+            else:
+                candidates = filtered_candidates
 
         # ====================================================================
         # Phase 1.6: 主营排他词过滤（成分股纯度修复）
@@ -2112,23 +2136,28 @@ def _disambiguate_multi_theme(theme_stock_map, hot_themes, stock_concepts):
                 is_force = via in ("leader_company", "core_company")
                 score = meta.get("score", 0)
                 im = meta.get("industry_match", False)
-                theme_entries.append((theme_name, via, is_core_chain, is_force, score, im))
+                # DNA Gate 精确命中：股票概念板块与主题 DNA 白名单精确重合
+                # → 视为核心业务证据，不参与"只留最佳主题"的去重删除
+                dna = (hot_themes.get(theme_name, {}) or {}).get("dna_concept_required", []) or []
+                concepts = stock_concepts.get(code, []) or []
+                dna_hit = any(dc == cc for cc in concepts for dc in dna)
+                theme_entries.append((theme_name, via, is_core_chain, is_force, score, im, dna_hit))
 
-        # 如果股票在所有主题都是核心产业链(chain=0)或强制纳入 → 跳过不去重
-        all_exempt = all(is_cc or is_f for _, _, is_cc, is_f, _, _ in theme_entries)
+        # 如果股票在所有主题都是核心产业链(chain=0)/强制纳入/DNA精确命中 → 跳过不去重
+        all_exempt = all(is_cc or is_f or dh for _, _, is_cc, is_f, _, _, dh in theme_entries)
         if all_exempt:
             continue
 
         # 强制纳入的公司保留
-        forced_keep = {t for t, _, _, is_f, _, _ in theme_entries if is_f}
+        forced_keep = {t for t, _, _, is_f, _, _, _ in theme_entries if is_f}
 
         # 按 score 降序
         theme_scores = sorted(theme_entries, key=lambda x: -x[4])
         best_score = theme_scores[0][4]
 
         keep_themes = set(forced_keep)
-        for t, _, is_cc, is_f, sc, im in theme_scores:
-            if t in forced_keep:
+        for t, _, is_cc, is_f, sc, im, dh in theme_scores:
+            if t in forced_keep or dh:
                 continue
             if sc == best_score:
                 keep_themes.add(t)
@@ -2136,8 +2165,8 @@ def _disambiguate_multi_theme(theme_stock_map, hot_themes, stock_concepts):
                 # 分数相近且当前最佳无行业匹配 → 保留有行业匹配的
                 keep_themes.add(t)
 
-        for theme_name, _, is_cc, is_f, _, _ in theme_entries:
-            if theme_name not in keep_themes and not is_cc and not is_f:
+        for theme_name, _, is_cc, is_f, _, _, dh in theme_entries:
+            if theme_name not in keep_themes and not is_cc and not is_f and not dh:
                 del theme_stock_map[theme_name][code]
                 removed_count += 1
 

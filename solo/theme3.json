@@ -4419,54 +4419,322 @@
         "industry_weight": 0.15
       }
     },
-    "AI算力链": {
-      "theme_name": "AI算力链",
+    "AI算力芯片": {
+      "theme_name": "AI算力芯片",
       "version": "V2",
       "theme_type": "产业链主题",
       "core_semantic": [
-        "AI算力基础设施与加速芯片",
-        "数据中心网络与高速互联",
-        "光模块与800G/1.6T产业链"
+        "GPU/NPU/TPU等AI训练推理芯片",
+        "AI加速卡与HBM内存",
+        "先进封装与制程"
       ],
       "industry_roles": {
-        "算力芯片设计制造": 0.3,
-        "光模块与高速互联": 0.25,
-        "网络交换与交换机": 0.2,
-        "服务器与整机制造": 0.15,
-        "铜连接与连接器": 0.1
+        "AI芯片设计": 0.4,
+        "先进封装代工": 0.3,
+        "芯片制造配套": 0.3
       },
       "business_dna_tags": [
         "GPU芯片",
-        "光模块",
-        "800G/1.6T",
-        "液冷服务器",
-        "交换机",
-        "硅光子",
         "AI加速芯片",
-        "高速连接器"
+        "NPU",
+        "AI加速卡",
+        "HBM内存",
+        "AI推理芯片",
+        "国产GPU",
+        "Chiplet"
       ],
       "weak_positive_tags": [
-        "电子制造",
-        "PCB",
-        "通信设备",
-        "连接器"
+        "光模块",
+        "服务器整机",
+        "电子制造"
+      ],
+      "negative_pressure_tags": {
+        "消费电子终端": -0.6,
+        "手机SoC": -0.5,
+        "家电": -0.5,
+        "汽车芯片": -0.3
+      },
+      "industry_soft_constraints": {
+        "半导体": 0.6,
+        "电子制造": 0.2,
+        "通信设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "AI芯片全球头部或自研GPU/NPU",
+        "中军": "AI加速卡/HBM封装/代工",
+        "补涨": "国产替代AI芯片/单点封装设备"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "光模块与CPO": {
+      "theme_name": "光模块与CPO",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "800G/1.6T高速光模块",
+        "CPO共封装光学技术",
+        "硅光子与光引擎"
+      ],
+      "industry_roles": {
+        "光模块封装": 0.35,
+        "光芯片/硅光芯片": 0.25,
+        "CPO/光引擎": 0.25,
+        "光纤连接器件": 0.15
+      },
+      "business_dna_tags": [
+        "光模块",
+        "800G",
+        "1.6T光模块",
+        "CPO",
+        "共封装光学",
+        "硅光子",
+        "光引擎",
+        "光通信芯片",
+        "EML",
+        "VCSEL"
+      ],
+      "weak_positive_tags": [
+        "光纤",
+        "交换机",
+        "数据中心"
       ],
       "negative_pressure_tags": {
         "消费电子终端": -0.7,
         "手机产业链": -0.6,
         "家电": -0.5,
-        "传统IDC运营商": -0.4
+        "汽车电子": -0.4
       },
       "industry_soft_constraints": {
-        "计算机设备": 0.3,
-        "通信设备": 0.3,
-        "电子化学品Ⅱ": 0.2,
-        "半导体": 0.2
+        "通信设备": 0.5,
+        "光通信": 0.3,
+        "通信电子": 0.2
       },
       "stock_role_mapping": {
-        "龙头": "GPU/光模块/交换机环节全球领先企业",
-        "中军": "服务器整机或ODM巨头/大型IDC或光模块头部",
-        "补涨": "PCB/电源/连接/散热/辅材单点受益"
+        "龙头": "800G/1.6T光模块全球头部",
+        "中军": "光芯片/CPO/硅光",
+        "补涨": "光纤跳线/光无源器件/辅材"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "数据中心网络": {
+      "theme_name": "数据中心网络",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "AI服务器与GPU集群",
+        "数据中心交换机与路由器",
+        "数据中心电源与电力设备"
+      ],
+      "industry_roles": {
+        "AI服务器整机": 0.35,
+        "网络交换设备": 0.25,
+        "数据中心电源": 0.2,
+        "机柜与基础设施": 0.2
+      },
+      "business_dna_tags": [
+        "AI服务器",
+        "交换机",
+        "路由器",
+        "数据中心电源",
+        "UPS",
+        "机柜",
+        "服务器ODM",
+        "GPU服务器",
+        "算力服务器"
+      ],
+      "weak_positive_tags": [
+        "PCB",
+        "连接器",
+        "服务器电源"
+      ],
+      "negative_pressure_tags": {
+        "消费电子终端": -0.7,
+        "手机": -0.6,
+        "家电": -0.5,
+        "汽车电子": -0.4
+      },
+      "industry_soft_constraints": {
+        "计算机设备": 0.4,
+        "通信设备": 0.3,
+        "电力设备": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "AI服务器/交换机全球头部",
+        "中军": "ODM/电源/机柜",
+        "补涨": "服务器配件/连接/散热单点"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "数据中心散热": {
+      "theme_name": "数据中心散热",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "数据中心液冷散热系统",
+        "服务器风扇与温控",
+        "绿色数据中心与能效"
+      ],
+      "industry_roles": {
+        "液冷系统": 0.35,
+        "散热模组": 0.25,
+        "温控设备": 0.2,
+        "CDU/冷却机组": 0.2
+      },
+      "business_dna_tags": [
+        "液冷服务器",
+        "液冷散热",
+        "冷板",
+        "CDU",
+        "冷却机组",
+        "散热模组",
+        "风扇",
+        "温控",
+        "热管",
+        "数据中心温控"
+      ],
+      "weak_positive_tags": [
+        "服务器",
+        "电力设备",
+        "IDC运营"
+      ],
+      "negative_pressure_tags": {
+        "消费电子终端": -0.7,
+        "手机": -0.6,
+        "家电": -0.5,
+        "汽车电子": -0.4
+      },
+      "industry_soft_constraints": {
+        "电力设备": 0.5,
+        "通用设备": 0.3,
+        "计算机设备": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "液冷系统整体解决方案头部",
+        "中军": "液冷模组/CDU/温控设备",
+        "补涨": "散热材料/风扇/单点配件"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "高速铜连接": {
+      "theme_name": "高速铜连接",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "高速背板连接器",
+        "AI服务器内部铜互联",
+        "光铜混合连接方案"
+      ],
+      "industry_roles": {
+        "高速连接器": 0.4,
+        "背板/线缆": 0.3,
+        "精密制造": 0.3
+      },
+      "business_dna_tags": [
+        "高速连接器",
+        "背板连接器",
+        "铜缆",
+        "高速铜缆",
+        "AI服务器连接",
+        "连接器",
+        "精密连接件",
+        "IO连接器",
+        "SFP"
+      ],
+      "weak_positive_tags": [
+        "服务器",
+        "通信设备",
+        "PCB"
+      ],
+      "negative_pressure_tags": {
+        "消费电子终端": -0.7,
+        "手机": -0.6,
+        "家电": -0.5,
+        "汽车连接器": -0.3
+      },
+      "industry_soft_constraints": {
+        "电子制造": 0.4,
+        "通信设备": 0.3,
+        "计算机设备": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "高速背板连接器全球头部",
+        "中军": "AI服务器铜缆/连接方案",
+        "补涨": "单点精密连接件/辅材"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
+    "数据中心瓶颈硬件链": {
+      "theme_name": "数据中心瓶颈硬件链",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "数据中心热管理与液冷系统",
+        "高压直流电源与配电模块",
+        "IDC运营与服务器散热配套"
+      ],
+      "industry_roles": {
+        "液冷温控设备": 0.3,
+        "电源模块与UPS": 0.25,
+        "数据中心运营": 0.2,
+        "母线铜排与连接": 0.15,
+        "散热材料与导热": 0.1
+      },
+      "business_dna_tags": [
+        "冷板式液冷",
+        "浸没式液冷",
+        "高压直流",
+        "UPS",
+        "电源模块",
+        "液冷板",
+        "热管",
+        "PUE优化"
+      ],
+      "weak_positive_tags": [
+        "电力设备",
+        "工业电子",
+        "磁性元件",
+        "铜加工"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.7,
+        "家电整机": -0.6,
+        "手机产业链": -0.5,
+        "GPU芯片设计": -0.3
+      },
+      "industry_soft_constraints": {
+        "电源设备": 0.4,
+        "计算机设备": 0.3,
+        "工业金属": 0.3
+      },
+      "stock_role_mapping": {
+        "龙头": "液冷系统或高压直流电源头部",
+        "中军": "IDC运营商或大型电源/散热企业",
+        "补涨": "导热材料/电磁兼容/精密结构件"
       },
       "matching_strategy": {
         "mode": "semantic_business_hybrid",
@@ -4523,61 +4791,6 @@
         "龙头": "终端品牌或核心器件",
         "中军": "MR/AI硬件链主",
         "补涨": "结构件/传感器/连接"
-      },
-      "matching_strategy": {
-        "mode": "semantic_business_hybrid",
-        "embedding_weight": 0.55,
-        "business_weight": 0.3,
-        "industry_weight": 0.15
-      }
-    },
-    "数据中心瓶颈硬件链": {
-      "theme_name": "数据中心瓶颈硬件链",
-      "version": "V2",
-      "theme_type": "产业链主题",
-      "core_semantic": [
-        "数据中心热管理与液冷系统",
-        "高压直流电源与配电模块",
-        "IDC运营与服务器散热配套"
-      ],
-      "industry_roles": {
-        "液冷温控设备": 0.3,
-        "电源模块与UPS": 0.25,
-        "数据中心运营": 0.2,
-        "母线铜排与连接": 0.15,
-        "散热材料与导热": 0.1
-      },
-      "business_dna_tags": [
-        "冷板式液冷",
-        "浸没式液冷",
-        "高压直流",
-        "UPS",
-        "电源模块",
-        "液冷板",
-        "热管",
-        "PUE优化"
-      ],
-      "weak_positive_tags": [
-        "电力设备",
-        "工业电子",
-        "磁性元件",
-        "铜加工"
-      ],
-      "negative_pressure_tags": {
-        "消费电子": -0.7,
-        "家电整机": -0.6,
-        "手机产业链": -0.5,
-        "GPU芯片设计": -0.3
-      },
-      "industry_soft_constraints": {
-        "电源设备": 0.4,
-        "计算机设备": 0.3,
-        "工业金属": 0.3
-      },
-      "stock_role_mapping": {
-        "龙头": "液冷系统或高压直流电源头部",
-        "中军": "IDC运营商或大型电源/散热企业",
-        "补涨": "导热材料/电磁兼容/精密结构件"
       },
       "matching_strategy": {
         "mode": "semantic_business_hybrid",
@@ -4948,10 +5161,11 @@
         "医药": -0.5
       },
       "industry_soft_constraints": {
-        "通信服务": 0.3,
-        "基础建设": 0.3,
-        "机场Ⅱ": 0.2,
-        "电力设备": 0.2
+        "基础建设": 0.25,
+        "通信服务": 0.25,
+        "电力设备": 0.2,
+        "通用设备": 0.15,
+        "机场": 0.15
       },
       "stock_role_mapping": {
         "龙头": "低空基础设施或空管系统",
@@ -5004,9 +5218,10 @@
         "白酒": -0.3
       },
       "industry_soft_constraints": {
-        "通信设备": 0.4,
-        "软件开发": 0.3,
-        "半导体": 0.3
+        "通信设备": 0.35,
+        "软件开发": 0.25,
+        "半导体": 0.2,
+        "军工电子": 0.2
       },
       "stock_role_mapping": {
         "龙头": "飞控芯片或UTM平台",
@@ -5059,9 +5274,11 @@
         "消费电子": -0.4
       },
       "industry_soft_constraints": {
-        "物流": 0.4,
-        "航空运输": 0.3,
-        "软件": 0.3
+        "物流": 0.3,
+        "航空运输": 0.25,
+        "软件开发": 0.2,
+        "汽车零部件": 0.15,
+        "电力": 0.1
       },
       "stock_role_mapping": {
         "龙头": "低空物流或大型巡检运营",
@@ -5114,9 +5331,11 @@
         "消费电子终端": -0.4
       },
       "industry_soft_constraints": {
-        "航空装备Ⅱ": 0.5,
-        "军工电子Ⅱ": 0.2,
-        "复合材料": 0.3
+        "航空装备": 0.35,
+        "军工电子": 0.25,
+        "通用设备": 0.15,
+        "汽车零部件": 0.15,
+        "机械设备": 0.1
       },
       "stock_role_mapping": {
         "龙头": "eVTOL或无人机整机龙头",
@@ -6826,7 +7045,8 @@
       "weak_positive_tags": [
         "半导体",
         "面板",
-        "精密制造"
+        "精密制造",
+        "光学光电子"
       ],
       "negative_pressure_tags": {
         "传统家电": -0.4,
@@ -7586,64 +7806,6 @@
         "industry_weight": 0.15
       }
     },
-    "基础化工": {
-      "theme_name": "基础化工",
-      "version": "V2",
-      "theme_type": "产业链主题",
-      "core_semantic": [
-        "基础化学品与大宗化工",
-        "精细化工与新材料",
-        "化肥农药与农化"
-      ],
-      "industry_roles": {
-        "大宗化工品": 0.3,
-        "精细化工": 0.25,
-        "化肥与农药": 0.2,
-        "化学原料": 0.15,
-        "化工新材料": 0.1
-      },
-      "business_dna_tags": [
-        "化工",
-        "纯碱",
-        "烧碱",
-        "PVC",
-        "涤纶",
-        "MDI",
-        "钛白粉",
-        "化肥",
-        "农药",
-        "草甘膦",
-        "精细化工",
-        "化工新材料"
-      ],
-      "weak_positive_tags": [
-        "农业",
-        "纺织",
-        "建筑材料"
-      ],
-      "negative_pressure_tags": {
-        "消费电子": -0.5,
-        "医药生物": -0.4,
-        "半导体": -0.3,
-        "白酒": -0.3
-      },
-      "industry_soft_constraints": {
-        "化学原料": 0.5,
-        "化学制品": 0.3,
-        "农药化肥": 0.2
-      },
-      "stock_role_mapping": {
-        "龙头": "大宗化工龙头(MDI/纯碱/涤纶)",
-        "中军": "精细化工或新材料",
-        "补涨": "农化/农药/化肥"
-      },
-      "matching_strategy": {
-        "mode": "semantic_business_hybrid",
-        "embedding_weight": 0.55,
-        "business_weight": 0.3,
-        "industry_weight": 0.15
-      }
-    },
     "有色资源": {
       "theme_name": "有色资源",
       "version": "V2",
@@ -7942,6 +8104,64 @@
         "industry_weight": 0.15
       }
     },
+    "基础化工": {
+      "theme_name": "基础化工",
+      "version": "V2",
+      "theme_type": "产业链主题",
+      "core_semantic": [
+        "基础化学品与大宗化工",
+        "精细化工与新材料",
+        "化肥农药与农化"
+      ],
+      "industry_roles": {
+        "大宗化工品": 0.3,
+        "精细化工": 0.25,
+        "化肥与农药": 0.2,
+        "化学原料": 0.15,
+        "化工新材料": 0.1
+      },
+      "business_dna_tags": [
+        "化工",
+        "纯碱",
+        "烧碱",
+        "PVC",
+        "涤纶",
+        "MDI",
+        "钛白粉",
+        "化肥",
+        "农药",
+        "草甘膦",
+        "精细化工",
+        "化工新材料"
+      ],
+      "weak_positive_tags": [
+        "农业",
+        "纺织",
+        "建筑材料"
+      ],
+      "negative_pressure_tags": {
+        "消费电子": -0.5,
+        "医药生物": -0.4,
+        "半导体": -0.3,
+        "白酒": -0.3
+      },
+      "industry_soft_constraints": {
+        "化学原料": 0.5,
+        "化学制品": 0.3,
+        "农药化肥": 0.2
+      },
+      "stock_role_mapping": {
+        "龙头": "大宗化工龙头(MDI/纯碱/涤纶)",
+        "中军": "精细化工或新材料",
+        "补涨": "农化/农药/化肥"
+      },
+      "matching_strategy": {
+        "mode": "semantic_business_hybrid",
+        "embedding_weight": 0.55,
+        "business_weight": 0.3,
+        "industry_weight": 0.15
+      }
+    },
     "保险": {
       "theme_name": "保险",
       "version": "V2",
@@ -8212,5 +8432,77 @@
     }
   },
   "version": "V2",
-  "_generated_from": "theme2.json + theme_v2_meta_part1~4"
+  "_generated_from": "theme2.json + theme_v2_meta_part1~4",
+  "MANUAL_CONCEPT_BOARDS": {
+    "AI应用": [
+      "人工智能",
+      "AI应用",
+      "AI智能体",
+      "多模态AI",
+      "ChatGPT概念",
+      "AIGC概念",
+      "数字人"
+    ],
+    "AI模型与AI Agent": [
+      "人工智能",
+      "AI应用",
+      "AI智能体",
+      "多模态AI",
+      "ChatGPT概念",
+      "AIGC概念"
+    ],
+    "AI算力芯片": [
+      "AI芯片",
+      "算力概念",
+      "GPU概念",
+      "人工智能",
+      "半导体概念",
+      "先进封装"
+    ],
+    "光模块与CPO": [
+      "CPO概念",
+      "光通信模块",
+      "光纤概念",
+      "光通信",
+      "5G概念"
+    ],
+    "数据中心网络": [
+      "东数西算",
+      "算力概念",
+      "云计算",
+      "数字经济"
+    ],
+    "数据中心散热": [
+      "液冷概念",
+      "算力概念",
+      "数据中心",
+      "绿色电力"
+    ],
+    "高速铜连接": [
+      "铜缆高速连接",
+      "连接器",
+      "算力概念"
+    ],
+    "行星滚柱丝杠": [
+      "人形机器人",
+      "减速器",
+      "工业母机",
+      "高端装备"
+    ],
+    "核聚变": [
+      "核能核电",
+      "高温超导",
+      "军工"
+    ],
+    "低空运营服务": [
+      "低空经济",
+      "通用航空",
+      "无人机"
+    ],
+    "低空基础设施": [
+      "低空经济",
+      "通用航空",
+      "无人机"
+    ]
+  }
 }

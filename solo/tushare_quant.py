@@ -9759,7 +9759,8 @@ def run(target_date=None, simple_mode=False):
     # =========================
     def _load_w7_today_action(trade_date: str) -> str:
         r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
-        九态=SECOND_WAVE(二波买点)/BREAKOUT_CONFIRM(放量突破确认)/RE_EXPANSION(重新扩张)/T0_CONFIRM(T0天量确认买点)/BREAKOUT_RETEST(放量突破后缩量回踩买点)/MIDLINE_HOLD(W7-不破中位)/SHAKEOUT_HOLD(W7-放量洗盘)/RIGHT_BOTTOM(W7-右底低吸)/SQUAT_SHRINK(W7-缩量十字星下蹲)。
+        20261028 起统一为两类：T0_PULLBACK_HOLD(类型A-缩量回踩止跌低吸)/T0_REBREAK(类型B-回踩后突破T0收盘)。
+        （旧九态 BREAKOUT_RETEST/MIDLINE_HOLD/SHAKEOUT_HOLD/RIGHT_BOTTOM/SQUAT_SHRINK 等已不再产出可操作买点。）
         JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
         """
         def _num(v):
