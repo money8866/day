@@ -1,0 +1,129 @@
+{
+  "old": {
+    "n": 4,
+    "by_state": {
+      "T0_PULLBACK_HOLD": {
+        "n": 4,
+        "ret1_mean": -0.454,
+        "ret3_mean": 1.194,
+        "ret5_mean": 0.15,
+        "ret10_mean": -3.22,
+        "ex3_mean": 0.08,
+        "ex5_mean": -1.204,
+        "win3": 75.0,
+        "win5": 50.0,
+        "win10": 25.0
+      }
+    }
+  },
+  "new": {
+    "n": 73,
+    "by_state": {
+      "T0_PULLBACK_HOLD": {
+        "n": 54,
+        "ret1_mean": 0.598,
+        "ret3_mean": 1.57,
+        "ret5_mean": 1.345,
+        "ret10_mean": -0.856,
+        "ex3_mean": 1.162,
+        "ex5_mean": 1.277,
+        "win3": 55.8,
+        "win5": 54.9,
+        "win10": 34.0
+      },
+      "T0_REBREAK": {
+        "n": 19,
+        "ret1_mean": 0.521,
+        "ret3_mean": 1.59,
+        "ret5_mean": -2.424,
+        "ret10_mean": -4.69,
+        "ex3_mean": 1.983,
+        "ex5_mean": -1.551,
+        "win3": 38.9,
+        "win5": 31.2,
+        "win10": 21.4
+      }
+    }
+  },
+  "paired": {
+    "both": 4,
+    "only_new": 69,
+    "only_old": 0,
+    "state_changed_both": 0
+  },
+  "only_new": {
+    "n": 69,
+    "state": {
+      "T0_PULLBACK_HOLD": 50,
+      "T0_REBREAK": 19
+    },
+    "ret1_mean": 0.64,
+    "ret3_mean": 1.598,
+    "ret5_mean": 0.464,
+    "ret10_mean": -1.593,
+    "ex3_mean": 1.452,
+    "ex5_mean": 0.716,
+    "win3": 50.0,
+    "win5": 49.2,
+    "win10": 31.7,
+    "stop_hit_rate": 0.493
+  },
+  "only_old": {
+    "n": 0
+  },
+  "monthly": {
+    "old": {
+      "202609": {
+        "n": 4,
+        "ret3_mean": 1.194,
+        "ret5_mean": 0.15,
+        "ret10_mean": -3.22,
+        "ex3_mean": 0.08,
+        "win3": 75.0,
+        "win5": 50.0
+      }
+    },
+    "new": {
+      "202608": {
+        "n": 21,
+        "ret3_mean": 1.597,
+        "ret5_mean": 2.466,
+        "ret10_mean": 2.072,
+        "ex3_mean": 1.029,
+        "win3": 57.1,
+        "win5": 57.1
+      },
+      "202609": {
+        "n": 38,
+        "ret3_mean": 2.782,
+        "ret5_mean": 0.369,
+        "ret10_mean": -2.787,
+        "ex3_mean": 2.446,
+        "win3": 60.5,
+        "win5": 50.0
+      },
+      "202610": {
+        "n": 14,
+        "ret3_mean": -2.635,
+        "ret5_mean": -4.498,
+        "ret10_mean": -9.207,
+        "ex3_mean": -1.675,
+        "win3": 9.1,
+        "win5": 25.0
+      }
+    }
+  },
+  "_meta": {
+    "start": "20260803",
+    "end": "20261028",
+    "days": 57,
+    "codes": 120,
+    "combos": 6612,
+    "probe_hits": 86,
+    "probe_hit_rate_pct": 1.301,
+    "anchor_crosscheck_n": 156,
+    "anchor_mismatch": 0,
+    "anchor_consistency_pct": 100.0,
+    "elapsed_s": 24.7
+  }
+}

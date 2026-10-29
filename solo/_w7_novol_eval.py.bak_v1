@@ -1,0 +1,538 @@
+# -*- coding: utf-8 -*-
+"""W7「T0 后不对量能进行约束」全市场配对回测（同锚同日期双口径对比）。
+
+目的
+----
+20261028 用户口径：T0 锚定日之后不再用量能约束形态。本脚本用「配对回测」量化这次改造：
+同一批 T0 锚、同一批交易日下，同时跑两套口径，对比信号数量与事后表现。
+
+口径定义
+--------
+A. old（现口径/改造前基准）：六个开关全 True。
+   该组合逐条等价于改造前的引擎（备份 w7_second_wave_engine.py.bak_v7_20261028）：
+     · 四个探测器量能硬门槛全部生效；
+     · w7_priority 的量能因子按原方向判定；
+     · w7_exec_status 类型B 走通用量比阀门；
+     · hvt_type 类型B 走通用分支（dist_risk≥60 可否决）；
+     · persistent_sell 含 T0 后量能 conjunct 且阻断 T0 探测器。
+   → 用 _w7_novol_selftest.py 与备份引擎逐条对拍验证（要求 100% 一致）。
+B. new（取消 T0 后量能约束）：六个开关全 False。
+   量能彻底退出「信号生死」判定，只保留记录（pull_vol_ratio / break_volr / stall_volr）与排序参考。
+
+口径一致性保证
+--------------
+· 锚点每 (股票, 交易日) 只算一次，两口径共用 → 锚点一致率天然 100%（脚本另做独立校验）。
+· 同一份截断序列（as-of）+ 同一份 MA/前复权 + 同一份财务(as_of) + 同一份 IGE(严格 as-of)
+  + 同一市场环境判定 + 同一份锚点参照特征 → 两口径唯一差异就是那六个开关。
+
+产出
+----
+_w7_novol_out/eval_signals.csv   每个 (日期, 代码, 口径) 的过门信号 + 事后表现
+_w7_novol_out/eval_summary.json  汇总统计
+report_daily/w7_novol_eval_*.md  人读报告
+"""
+import argparse
+import importlib.util
+import json
+import os
+import sys
+import time
+from multiprocessing import Pool
+
+import numpy as np
+import pandas as pd
+
+SOLO = os.path.dirname(os.path.abspath(__file__))
+ENGINE = os.path.join(SOLO, "w7_second_wave_engine.py")
+OUT_DIR = os.path.join(SOLO, "_w7_novol_out")
+
+# 六道开关 → 口径映射
+GATE_KEYS = ("W7_GATE_A_PULL_SHRINK", "W7_GATE_A_STALL_VOLR", "W7_GATE_B_PULL_SHRINK",
+             "W7_GATE_B_BREAK_VOLR", "W7_GATE_B_DIST_RISK", "W7_GATE_PERSIST_SELL")
+CALIBERS = {"old": True, "new": False}
+
+_MOD = None
+_READER = None
+_CTX = {}
+_DATES = []
+
+
+def _stable_hash(s):
+    """跨进程稳定的字符串哈希（Python 内置 hash 对 str 有随机盐，worker 间不一致）。"""
+    h = 0
+    for ch in s:
+        h = (h * 131 + ord(ch)) & 0xFFFFFFFF
+    return h
+
+
+def load_engine(path=ENGINE):
+    """按「真实模块名」加载引擎。
+
+    关键：Windows spawn 语义下，initargs 在子进程 initializer 之前就要反序列化。
+    ctx 里含 MarketCtx 实例 → pickle 时记的是类所在的模块名。若用
+    spec_from_file_location('w7eng_eval', ...) 这种虚拟模块名，子进程 import 不到
+    'w7eng_eval' → ModuleNotFoundError（20261028 实测）。
+    故把 SOLO 加入 sys.path 并用真实模块名导入，子进程继承 sys.path 即可解析。
+    """
+    if SOLO not in sys.path:
+        sys.path.insert(0, SOLO)
+    modname = os.path.splitext(os.path.basename(path))[0]
+    import importlib
+    if modname in sys.modules:
+        return sys.modules[modname]
+    return importlib.import_module(modname)
+
+
+def set_caliber(mod, caliber):
+    """切换六道开关到指定口径（True=old 基准 / False=new 取消量能约束）。"""
+    v = CALIBERS[caliber]
+    for k in GATE_KEYS:
+        setattr(mod, k, v)
+
+
+# ---------------------------------------------------------------- worker 侧
+def _worker_init(engine_path, ctx, dates):
+    global _MOD, _READER, _CTX, _DATES
+    _MOD = load_engine(engine_path)
+    _READER = _MOD.CacheReader()
+    _READER.load_fina()
+    _CTX = ctx
+    _DATES = dates
+
+
+def _load_chunk(mod, reader, codes, start, end):
+    """批量加载一个代码块的日线（一次 SQL IN 查询，比逐票 bars_sql 快 3 倍以上）。
+
+    返回 {code: DataFrame}，各 DataFrame 已按 trade_date 升序、index 重置、
+    且只保留 [start, end] 区间的行（对齐生产 load_all(min_date=DATA_START)）。
+    """
+    if not codes:
+        return {}
+    ph = ",".join(["?"] * len(codes))
+    q = (mod._BARS_SELECT +
+         " WHERE d.ts_code IN (%s) AND d.trade_date>=? AND d.trade_date<=? ORDER BY d.ts_code,d.trade_date" % ph)
+    df = pd.read_sql_query(q, reader.conn, params=list(codes) + [start, end])
+    if df.empty:
+        return {}
+    df = df.dropna(subset=["close", "high", "low", "vol"]).copy()
+    numeric = [c for c in df.columns if c not in ("ts_code", "trade_date")]
+    for col in numeric:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    out = {}
+    for code, g in df.groupby("ts_code", sort=False):
+        out[str(code)] = g.reset_index(drop=True)
+    return out
+
+
+def _asof_ige(mod, asof):
+    """严格 as-of 版 IGE 快照：只取快照日期 <= asof 的最近一次（生产口径会回退到 files[-1]，属前视）。"""
+    d = mod.IGE_OUT_DIR
+    if not os.path.isdir(d):
+        return {}
+    files = sorted(f for f in os.listdir(d)
+                   if f.startswith("ige_full_") and f.endswith(".csv") and len(f) == 19)
+    cands = [f for f in files if f[9:17] <= str(asof)]
+    if not cands:
+        return {}
+    df = pd.read_csv(os.path.join(d, cands[-1]), encoding="utf-8-sig", dtype={"code": str})
+    if "code" not in df.columns or "ige_adj" not in df.columns:
+        return {}
+    out = {}
+    for rec in df[["code", "ige_adj"]].to_dict("records"):
+        code = str(rec.get("code") or "").strip()
+        if not code:
+            continue
+        v = rec.get("ige_adj")
+        if isinstance(v, (int, float)) and not pd.isna(v):
+            out[code] = float(v)
+    return out
+
+
+def _fast_anchor(mod, sub, flags):
+    """与引擎 find_event_anchor 完全等价的快速版（extreme_event 因只读历史，可全历史预算）。
+
+    extreme_event(df, i) 只使用 df.iloc[i-120:i] 与 df.iloc[i] → 与截断位置无关（因果），
+    故可在全历史上一次性预算 ok/ep 标志，逐日只需按窗口筛选候选。
+    preshift_start_bar / extreme_cluster_anchor 同样只看锚点之前的数据 → 逐日等价。
+    """
+    n = len(sub)
+    if n < mod.MIN_BARS:
+        return None
+    cands = []
+    for i in range(max(mod.MIN_BARS, n - mod.MAX_EVENT_AGE - 1), n - 2):
+        hit = flags.get(i)
+        if hit is not None and hit[0]:
+            cands.append((i, hit[1]))
+    if not cands:
+        return None
+    ei, ep = mod.extreme_cluster_anchor(sub, cands)
+    return mod.preshift_start_bar(sub, ei), ep
+
+
+def _process_code(code, df_full=None):
+    """单票逐日 as-of 回放，双口径并行出信号。返回 (rows, diag)。
+
+    df_full 为 None 时自行逐票查询（调试用）；生产路径由 _process_chunk 批量预载后传入。
+    """
+    mod, reader = _MOD, _READER
+    diag = {"code": code, "anchor_mismatch": 0, "anchor_checked": 0, "states": {}}
+    rows = []
+    basic = reader.basic.loc[code] if code in reader.basic.index else {}
+    list_date = str(basic.get("list_date", "")) if hasattr(basic, "get") else ""
+
+    if df_full is None:
+        df_full = reader.bars_sql(code, _DATES[-1] if _DATES else "")
+    if df_full is None or df_full.empty or len(df_full) < mod.MIN_BARS:
+        return rows, diag
+    # 与生产 load_all(min_date=DATA_START) 对齐：只保留 DATA_START 之后的 K 线。
+    # 作用：① 行索引与生产一致（extreme_event 的 120 根窗口、MIN_BARS 门槛都锚在同一基准）；
+    #      ② 前复权缩放基准（序列末端因子）与生产相同。
+    df_full = df_full[df_full.trade_date.astype(str) >= mod.DATA_START].reset_index(drop=True)
+    if len(df_full) < mod.MIN_BARS:
+        return rows, diag
+
+    # 全历史预算 extreme_event 标志（因果、与截断无关）
+    flags = {}
+    for i in range(mod.MIN_BARS, len(df_full) - 1):
+        ok, ep = mod.extreme_event(df_full, i)
+        if ok:
+            flags[i] = (True, ep)
+
+    # 前复权收盘（用于事后收益，避免除权跳空污染）
+    price = mod._qfq_price(df_full)
+    dates_all = df_full.trade_date.astype(str).to_numpy()
+    price_map = dict(zip(dates_all, price.astype(float)))
+    # 日期→行号映射（避免事后表现循环里反复 list.index，O(n^2) → O(1)）
+    row_of_date = {d: i for i, d in enumerate(dates_all)}
+    lows_all = df_full.low.astype(float).to_numpy()
+
+    for D in _DATES:
+        ctx = _CTX.get(D)
+        if ctx is None:
+            continue
+        # 股票当日是否存在（生产股池取 reader.universe(D) 截面）
+        uni = ctx["uni"]
+        if code not in uni:
+            continue
+        name, industry = uni[code]
+        # ST/退市/次新过滤（与生产 _analyze_row 同口径）
+        if "ST" in name.upper() or "退" in name:
+            continue
+        if list_date and list_date.isdigit() and int(list_date) > int(D) - 365:
+            continue
+        mask = df_full.trade_date.astype(str) <= D
+        sub = df_full[mask].copy()
+        if len(sub) < mod.MIN_BARS:
+            continue
+        # MA / 前复权在截断序列上重算（与生产 load_all(end_date=D) 一致）
+        sub = mod._fill_ma_columns(sub, price=mod._qfq_price(sub))
+
+        anchor = _fast_anchor(mod, sub, flags)
+        # 独立校验：与引擎 find_event_anchor 逐条对拍（抽样约 4% 的 (股,日) 组合 + 末日全量）
+        if D == _DATES[-1] or _stable_hash(code) % 23 == 0:
+            ref = mod.find_event_anchor(sub)
+            diag["anchor_checked"] += 1
+            got = None if anchor is None else (anchor[0], anchor[1])
+            exp = None if ref is None else (ref[0], ref[1])
+            if got != exp:
+                diag["anchor_mismatch"] += 1
+                if len(diag.setdefault("mismatch_sample", [])) < 5:
+                    diag["mismatch_sample"].append(
+                        {"date": D, "code": code, "fast": str(got), "ref": str(exp)})
+        fallback_anchor = False
+        if anchor is None:
+            # 20261028 P0 修复（生产同口径）：无 P99 天量事件时退化为「放量激活日」参照锚。
+            #   find_activation_anchor 只用 is_preshift_bar（仅看 i 之前 20 根均量）→ 因果，
+            #   在截断序列上直接算即等价于生产在 as-of 序列上的结果。
+            anchor = mod.find_activation_anchor(sub)
+            if anchor is None:
+                continue
+            fallback_anchor = True
+        event_idx, ep = anchor
+
+        ige = ctx["ige"].get(code)
+        for caliber in ("old", "new"):
+            set_caliber(mod, caliber)
+            res = mod.analyze(code, name, industry, sub, ctx["anchors"], reader=reader,
+                              mkt=ctx["mkt"], sector_strength={}, sector_growth={},
+                              ige_adj=ige, event_hint=(event_idx, ep))
+            if not res:
+                continue
+            res["ige_adj"] = ige
+            res["market_regime"] = ctx["regime"]
+            if fallback_anchor:
+                res["event_is_fallback"] = True
+            st, fail_line, fail_name = mod.w7_exec_status(res)
+            res["w7_status"] = st
+            res["w7_fail_line"] = fail_line
+            res["w7_fail_name"] = fail_name
+            ok, why = mod.w7_quality_gate(res)
+            diag["states"][(caliber, res["state"])] = diag["states"].get((caliber, res["state"]), 0) + 1
+            if not ok or res["state"] not in mod.ACTION_BUY_STATES:
+                continue
+            rows.append({
+                "caliber": caliber, "date": D, "code": code, "name": name,
+                "state": res["state"], "type": res["type"],
+                "close": res["close"], "volr": round(res["volr"], 4),
+                "amount_wan": round(res["amount"] / 10.0, 1),
+                "t0_date": res.get("t0_date", ""), "t0_open": res.get("t0_open"),
+                "t0_close": res.get("t0_close"), "pull_low": res.get("pull_low"),
+                "pull_vol_ratio": round(res.get("pull_vol_ratio", 0.0), 4),
+                "stall": res.get("stall", ""), "break_volr": round(res.get("break_volr", 0.0), 4),
+                "buy": res["buy"], "exec": st, "gate": "PASS",
+                "base_score": round(res["base_score"], 2), "score": round(res["score"], 2),
+                "t120": round(res["t120"], 2), "ige_adj": ige, "regime": ctx["regime"],
+                "level": res["level"], "extension": round(res["extension"], 4),
+                "fail_line": fail_line, "fail_name": fail_name,
+                "anchor_idx": int(event_idx), "anchor_ep": round(float(ep), 2),
+            })
+        set_caliber(mod, "new")  # 复位
+
+    # 事后表现（T+1/3/5/10，用前复权价；基准用上证指数）
+    idx = _CTX["_index"]
+    idx_dates = list(idx.keys())
+    idx_row = {d: i for i, d in enumerate(idx_dates)}
+    for r in rows:
+        d0 = r["date"]
+        i0 = row_of_date.get(d0)
+        if i0 is not None and d0 in price_map:
+            p0 = price_map[d0]
+            for h in (1, 3, 5, 10):
+                j = i0 + h
+                r["ret%d" % h] = (round((price_map[dates_all[j]] / p0 - 1) * 100, 3)
+                                  if j < len(dates_all) and p0 > 0 else None)
+        i0i = idx_row.get(d0)
+        if i0i is not None and idx[d0] > 0:
+            for h in (1, 3, 5, 10):
+                j = i0i + h
+                r["mkt%d" % h] = (round((idx[idx_dates[j]] / idx[d0] - 1) * 100, 3)
+                                  if j < len(idx_dates) else None)
+        # 失效位保护：T+10 内是否触及
+        hit = None
+        if i0 is not None:
+            fl = r.get("fail_line") or 0
+            if fl:
+                for j in range(i0 + 1, min(i0 + 11, len(dates_all))):
+                    if lows_all[j] <= fl:
+                        hit = str(dates_all[j])
+                        break
+        r["stop_hit_date"] = hit
+    return rows, diag
+
+
+def _process_chunk(codes):
+    """worker 入口：批量加载一个代码块 → 逐票双口径回放。"""
+    mod, reader = _MOD, _READER
+    start = mod.DATA_START
+    end = _DATES[-1] if _DATES else ""
+    frames = _load_chunk(mod, reader, codes, start, end)
+    all_rows = []
+    diags = []
+    for code in codes:
+        rows, diag = _process_code(code, frames.get(code))
+        all_rows.extend(rows)
+        diags.append(diag)
+    return all_rows, diags
+
+
+def _worker_map(chunk):
+    return _process_chunk(chunk)
+
+
+# ---------------------------------------------------------------- parent 侧
+def build_ctx(reader, mod, dates, end_date):
+    """构建逐日共享上下文：股池截面 / 锚点参照特征 / 市场曲线 / 市场环境 / IGE(as-of)。
+
+    股池用 reader.universe(D)（生产同口径：过滤北交所前缀、仅 .SZ/.SH、合并 market_*.csv 快照
+    补 name/industry）；代码字符串做 intern，使 pickle 跨日股池时只存一份。
+
+    市场曲线用 reader.market_curve(D)（index_daily_cache 自 DATA_START 起、归一化到 1.0），
+    与生产 main() 完全同口径——不得用自定义归一化（起点不同会让 alpha_rs 的 120 日基准错位）。
+    """
+    ctx = {}
+    intern = {}
+    for D in dates:
+        uni_df = reader.universe(D)
+        uni = {}
+        for rec in uni_df[["ts_code", "name", "industry"]].to_dict("records"):
+            code = str(rec.get("ts_code") or "")
+            if not code:
+                continue
+            code = intern.setdefault(code, code)
+            nm = str(rec.get("name") or code)
+            ind = str(rec.get("industry") or "")
+            uni[code] = (nm, ind)
+        anchors = {}
+        for label, (acode, adate) in mod.ANCHORS.items():
+            adf = reader.bars_sql(acode, D)
+            anchors[label] = mod.anchor_features(adf, adate)
+        mdates, mvals = reader.market_curve(D)
+        mkt = mod.MarketCtx(mdates, mvals)
+        ctx[D] = {
+            "uni": uni, "anchors": anchors, "mkt": mkt,
+            "regime": mod.market_regime(reader.conn, D),
+            "ige": _asof_ige(mod, D),
+        }
+    ctx["_index"] = {str(d): float(c) for d, c in reader.conn.execute(
+        "SELECT trade_date, close FROM index_daily_cache WHERE ts_code=? AND trade_date<=? ORDER BY trade_date",
+        (mod.MARKET_INDEX_CODE, end_date)).fetchall()}
+    return ctx
+
+
+def summarize(df, ctx):
+    """汇总：数量 / 事后表现 / 增量（new 独有 vs old 独有）/ 分月稳定性。"""
+    out = {}
+    if df.empty:
+        return out
+    for caliber in ("old", "new"):
+        sub = df[df.caliber == caliber]
+        st = {}
+        for s, g in sub.groupby("state"):
+            st[s] = {
+                "n": int(len(g)),
+                "ret1_mean": _m(g, "ret1"), "ret3_mean": _m(g, "ret3"),
+                "ret5_mean": _m(g, "ret5"), "ret10_mean": _m(g, "ret10"),
+                "ex3_mean": _m(g.assign(e3=g.ret3 - g.mkt3), "e3"),
+                "ex5_mean": _m(g.assign(e5=g.ret5 - g.mkt5), "e5"),
+                "win3": _win(g, "ret3"), "win5": _win(g, "ret5"), "win10": _win(g, "ret10"),
+            }
+        out[caliber] = {"n": int(len(sub)), "by_state": st}
+
+    key = ["date", "code"]
+    o = df[df.caliber == "old"].set_index(key)
+    n = df[df.caliber == "new"].set_index(key)
+    both = o.index.intersection(n.index)
+    only_new = n.index.difference(o.index)
+    only_old = o.index.difference(n.index)
+    out["paired"] = {
+        "both": int(len(both)), "only_new": int(len(only_new)), "only_old": int(len(only_old)),
+        "state_changed_both": int((o.loc[both, "state"] != n.loc[both, "state"]).sum()) if len(both) else 0,
+    }
+    for label, idxs in (("only_new", only_new), ("only_old", only_old)):
+        if len(idxs) == 0:
+            out[label] = {"n": 0}
+            continue
+        g = n.loc[idxs] if label == "only_new" else o.loc[idxs]
+        out[label] = {
+            "n": int(len(g)),
+            "state": g.state.value_counts().to_dict(),
+            "ret1_mean": _m(g, "ret1"), "ret3_mean": _m(g, "ret3"),
+            "ret5_mean": _m(g, "ret5"), "ret10_mean": _m(g, "ret10"),
+            "ex3_mean": _m(g.assign(e3=g.ret3 - g.mkt3), "e3"),
+            "ex5_mean": _m(g.assign(e5=g.ret5 - g.mkt5), "e5"),
+            "win3": _win(g, "ret3"), "win5": _win(g, "ret5"), "win10": _win(g, "ret10"),
+            "stop_hit_rate": _m(g.assign(h=g.stop_hit_date.notna()), "h"),
+        }
+    # 分月稳定性
+    mm = {}
+    for caliber in ("old", "new"):
+        sub = df[df.caliber == caliber].copy()
+        sub["month"] = sub.date.str[:6]
+        mm[caliber] = {}
+        for mo, g in sub.groupby("month"):
+            mm[caliber][mo] = {
+                "n": int(len(g)),
+                "ret3_mean": _m(g, "ret3"), "ret5_mean": _m(g, "ret5"), "ret10_mean": _m(g, "ret10"),
+                "ex3_mean": _m(g.assign(e3=g.ret3 - g.mkt3), "e3"),
+                "win3": _win(g, "ret3"), "win5": _win(g, "ret5"),
+            }
+    out["monthly"] = mm
+    return out
+
+
+def _m(g, col):
+    if col not in g.columns or g[col].isna().all() or len(g) == 0:
+        return None
+    return round(float(g[col].mean()), 3)
+
+
+def _win(g, col):
+    if col not in g.columns or g[col].isna().all() or len(g) == 0:
+        return None
+    v = g[col].dropna()
+    if len(v) == 0:
+        return None
+    return round(float((v > 0).mean() * 100), 1)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--start", default="20260803")
+    ap.add_argument("--end", default="20261028")
+    ap.add_argument("--jobs", type=int, default=11)
+    ap.add_argument("--limit", type=int, default=0, help="限制股数（调试）")
+    ap.add_argument("--block", type=int, default=40, help="每块的股票数")
+    ap.add_argument("--outdir", default=OUT_DIR)
+    args = ap.parse_args()
+
+    mod = load_engine()
+    reader = mod.CacheReader()
+    reader.load_fina()
+
+    dates = [str(r[0]) for r in reader.conn.execute(
+        "SELECT DISTINCT trade_date FROM index_daily_cache WHERE ts_code=? AND trade_date BETWEEN ? AND ? ORDER BY trade_date",
+        (mod.MARKET_INDEX_CODE, args.start, args.end)).fetchall()]
+    if not dates:
+        print("[eval] 无交易日")
+        return
+    print("[eval] 交易日 %d 个：%s ~ %s" % (len(dates), dates[0], dates[-1]), flush=True)
+
+    t0 = time.time()
+    ctx = build_ctx(reader, mod, dates, args.end)
+    print("[eval] 上下文构建完成 %.1fs（股池 %d 只/日）" %
+          (time.time() - t0, len(ctx[dates[0]]["uni"])), flush=True)
+
+    codes = sorted(ctx[dates[-1]]["uni"])
+    if args.limit:
+        codes = codes[:args.limit]
+    print("[eval] 待回放 %d 只 × %d 日 = %d 次" % (len(codes), len(dates), len(codes) * len(dates)), flush=True)
+
+    # 分块：每块 40 只（批量 SQL 一次查 40 只，比逐票快 3 倍以上）
+    block = max(1, args.block)
+    chunks = [codes[i:i + block] for i in range(0, len(codes), block)]
+    print("[eval] 分为 %d 块（每块 %d 只），并行 %d 进程" % (len(chunks), block, args.jobs), flush=True)
+
+    os.makedirs(args.outdir, exist_ok=True)
+    all_rows = []
+    diags = []
+    t0 = time.time()
+    with Pool(args.jobs, initializer=_worker_init, initargs=(ENGINE, ctx, dates)) as pool:
+        for n, (rows, dgs) in enumerate(pool.imap_unordered(_worker_map, chunks, chunksize=1), 1):
+            all_rows.extend(rows)
+            diags.extend(dgs)
+            if n % 10 == 0 or n == len(chunks):
+                el = time.time() - t0
+                done = min(len(codes), n * block)
+                print("[eval] %d/%d 块（%d/%d 只）用时=%.0fs 预计剩余=%.0fs 信号=%d" %
+                      (n, len(chunks), done, len(codes), el,
+                       el / n * (len(chunks) - n), len(all_rows)), flush=True)
+
+    df = pd.DataFrame(all_rows)
+    p_sig = os.path.join(args.outdir, "eval_signals.csv")
+    if not df.empty:
+        cols = ["caliber", "date", "code", "name", "state", "type", "close", "volr", "amount_wan",
+                "t0_date", "t0_open", "t0_close", "pull_low", "pull_vol_ratio", "stall", "break_volr",
+                "buy", "exec", "gate", "base_score", "score", "t120", "ige_adj", "regime", "level",
+                "extension", "fail_line", "fail_name", "anchor_idx", "anchor_ep",
+                "ret1", "ret3", "ret5", "ret10", "mkt1", "mkt3", "mkt5", "mkt10", "stop_hit_date"]
+        df[[c for c in cols if c in df.columns]].to_csv(p_sig, index=False, encoding="utf-8-sig")
+
+    checked = sum(d["anchor_checked"] for d in diags)
+    mism = sum(d["anchor_mismatch"] for d in diags)
+    summary = summarize(df, ctx) if not df.empty else {}
+    summary["_meta"] = {
+        "start": dates[0], "end": dates[-1], "days": len(dates), "codes": len(codes),
+        "anchor_crosscheck_n": checked, "anchor_mismatch": mism,
+        "anchor_consistency_pct": (100.0 if mism == 0 else round(100.0 * (1 - mism / max(1, checked)), 3)),
+        "elapsed_s": round(time.time() - t0, 1),
+    }
+    p_sum = os.path.join(args.outdir, "eval_summary.json")
+    with open(p_sum, "w", encoding="utf-8") as fh:
+        json.dump(summary, fh, ensure_ascii=False, indent=2)
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    print("[eval] 输出：%s / %s" % (p_sig, p_sum))
+
+
+if __name__ == "__main__":
+    main()

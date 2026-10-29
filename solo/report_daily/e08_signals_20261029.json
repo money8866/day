@@ -1,0 +1,139 @@
+{
+ "trade_date": "20261029",
+ "universe": 1950,
+ "signals": [],
+ "watch": [
+  {
+   "code": "300357.SZ",
+   "name": "我武生物",
+   "date_t0": "20261026",
+   "days_pullback": 3,
+   "gap": 0.0139,
+   "gap_top": 19.45,
+   "break_price": 21.08,
+   "total_mv_wan": 1109998.0,
+   "vol_avg_ratio": 0.544,
+   "earliest_in": 1,
+   "latest_in": 4
+  },
+  {
+   "code": "002315.SZ",
+   "name": "焦点科技",
+   "date_t0": "20261026",
+   "days_pullback": 3,
+   "gap": 0.0288,
+   "gap_top": 26.4,
+   "break_price": 28.79,
+   "total_mv_wan": 1109087.0,
+   "vol_avg_ratio": 0.43,
+   "earliest_in": 1,
+   "latest_in": 4
+  },
+  {
+   "code": "002468.SZ",
+   "name": "申通快递",
+   "date_t0": "20261026",
+   "days_pullback": 3,
+   "gap": 0.0173,
+   "gap_top": 13.91,
+   "break_price": 14.94,
+   "total_mv_wan": 2192109.0,
+   "vol_avg_ratio": 0.417,
+   "earliest_in": 1,
+   "latest_in": 4
+  },
+  {
+   "code": "688772.SH",
+   "name": "珠海冠宇",
+   "date_t0": "20261026",
+   "days_pullback": 3,
+   "gap": 0.0108,
+   "gap_top": 14.8,
+   "break_price": 15.73,
+   "total_mv_wan": 1716526.0,
+   "vol_avg_ratio": 0.492,
+   "earliest_in": 1,
+   "latest_in": 4
+  },
+  {
+   "code": "000513.SZ",
+   "name": "丽珠集团",
+   "date_t0": "20261026",
+   "days_pullback": 3,
+   "gap": 0.017,
+   "gap_top": 27.09,
+   "break_price": 28.57,
+   "total_mv_wan": 2454176.0,
+   "vol_avg_ratio": 0.43,
+   "earliest_in": 1,
+   "latest_in": 4
+  },
+  {
+   "code": "300014.SZ",
+   "name": "亿纬锂能",
+   "date_t0": "20261026",
+   "days_pullback": 3,
+   "gap": 0.0229,
+   "gap_top": 44.48,
+   "break_price": 47.8,
+   "total_mv_wan": 9975433.0,
+   "vol_avg_ratio": 0.444,
+   "earliest_in": 1,
+   "latest_in": 4
+  }
+ ],
+ "early": [
+  {
+   "code": "600395.SH",
+   "name": "盘江股份",
+   "date_t0": "20261028",
+   "days_pullback": 1,
+   "gap": 0.0309,
+   "gap_top": 4.86,
+   "break_price": 5.28,
+   "total_mv_wan": 1088339.0,
+   "vol_avg_ratio": 0.669,
+   "earliest_in": 2,
+   "latest_in": 6
+  },
+  {
+   "code": "603658.SH",
+   "name": "安图生物",
+   "date_t0": "20261027",
+   "days_pullback": 2,
+   "gap": 0.0312,
+   "gap_top": 36.27,
+   "break_price": 39.44,
+   "total_mv_wan": 2142843.0,
+   "vol_avg_ratio": 0.409,
+   "earliest_in": 1,
+   "latest_in": 5
+  },
+  {
+   "code": "002532.SZ",
+   "name": "天山铝业",
+   "date_t0": "20261027",
+   "days_pullback": 2,
+   "gap": 0.0307,
+   "gap_top": 11.41,
+   "break_price": 12.09,
+   "total_mv_wan": 5498940.0,
+   "vol_avg_ratio": 0.477,
+   "earliest_in": 1,
+   "latest_in": 5
+  },
+  {
+   "code": "600309.SH",
+   "name": "万华化学",
+   "date_t0": "20261027",
+   "days_pullback": 2,
+   "gap": 0.0133,
+   "gap_top": 67.79,
+   "break_price": 70.94,
+   "total_mv_wan": 22104260.0,
+   "vol_avg_ratio": 0.429,
+   "earliest_in": 1,
+   "latest_in": 5
+  }
+ ]
+}

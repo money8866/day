@@ -1,0 +1,27 @@
+{
+  "compared": 6762,
+  "anchor_mismatch": 0,
+  "result_mismatch": 0,
+  "exec_mismatch": 0,
+  "gate_mismatch": 0,
+  "total_mismatch": 0,
+  "consistency_pct": 100.0,
+  "sample_dates": [
+    "20260803",
+    "20260807",
+    "20260813",
+    "20260819",
+    "20260825",
+    "20260831",
+    "20260904",
+    "20260910",
+    "20260916",
+    "20260922",
+    "20260929",
+    "20261012"
+  ],
+  "codes": 600,
+  "elapsed_s": 613.5,
+  "mismatch_samples": [],
+  "note": "OLD 基准 = w7_second_wave_engine.py.bak_v7_20261028；NEW = 现引擎六开关全 True"
+}

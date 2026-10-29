@@ -1,0 +1,802 @@
+{
+  "marginal": [
+    {
+      "gate": "W7_GATE_A_PULL_SHRINK",
+      "desc": "类型A 回踩段缩量（回踩均量 ≤ T0量×0.50）",
+      "caliber": "no_A_PULL",
+      "n": 362,
+      "dn": 134,
+      "inc": {
+        "n": 134,
+        "ret3": 0.284,
+        "ex3": 0.313,
+        "ret10": 0.606,
+        "ex10": 1.809,
+        "win3": 50.4,
+        "win10": 46.2
+      },
+      "verdict": "增量正期望，建议关闭",
+      "recommend": false
+    },
+    {
+      "gate": "W7_GATE_A_STALL_VOLR",
+      "desc": "类型A 止跌日量比上限（当日量 ≤ 0.55×前20日均量）",
+      "caliber": "no_A_STALL",
+      "n": 979,
+      "dn": 751,
+      "inc": {
+        "n": 751,
+        "ret3": -0.559,
+        "ex3": -0.236,
+        "ret10": -1.811,
+        "ex10": -0.557,
+        "win3": 40.5,
+        "win10": 35.3
+      },
+      "verdict": "增量负期望，建议保留",
+      "recommend": true
+    },
+    {
+      "gate": "W7_GATE_B_PULL_SHRINK",
+      "desc": "类型B 回踩期缩量（回踩均量 ≤ T0量×0.70）",
+      "caliber": "no_B_PULL",
+      "n": 270,
+      "dn": 42,
+      "inc": {
+        "n": 42,
+        "ret3": -2.642,
+        "ex3": -2.168,
+        "ret10": -7.83,
+        "ex10": -6.26,
+        "win3": 30.8,
+        "win10": 23.1
+      },
+      "verdict": "增量负期望，建议保留",
+      "recommend": true
+    },
+    {
+      "gate": "W7_GATE_B_BREAK_VOLR",
+      "desc": "类型B 突破日放量确认（当日量 ≥ 2.20×前20日均量）",
+      "caliber": "no_B_BREAK",
+      "n": 432,
+      "dn": 204,
+      "inc": {
+        "n": 204,
+        "ret3": -1.356,
+        "ex3": -1.242,
+        "ret10": -3.099,
+        "ex10": -2.327,
+        "win3": 36.7,
+        "win10": 31.2
+      },
+      "verdict": "增量负期望，建议保留",
+      "recommend": true
+    },
+    {
+      "gate": "W7_GATE_B_DIST_RISK",
+      "desc": "类型B 走 dist_risk 通用分支（dist_risk≥60 判 DISTRIBUTION）",
+      "caliber": "no_B_DIST",
+      "n": 228,
+      "dn": 0,
+      "inc": {
+        "n": 0,
+        "ret3": null,
+        "ex3": null,
+        "ret10": null,
+        "ex10": null,
+        "win3": null,
+        "win10": null
+      },
+      "verdict": "零影响（可自由开关）",
+      "recommend": null
+    },
+    {
+      "gate": "W7_GATE_PERSIST_SELL",
+      "desc": "persistent_sell（含量能 conjunct，且阻断 T0 探测器）",
+      "caliber": "no_PERSIST",
+      "n": 228,
+      "dn": 0,
+      "inc": {
+        "n": 0,
+        "ret3": null,
+        "ex3": null,
+        "ret10": null,
+        "ex10": null,
+        "win3": null,
+        "win10": null
+      },
+      "verdict": "零影响（可自由开关）",
+      "recommend": null
+    }
+  ],
+  "current_defaults": {
+    "W7_GATE_A_PULL_SHRINK": true,
+    "W7_GATE_A_STALL_VOLR": true,
+    "W7_GATE_B_PULL_SHRINK": true,
+    "W7_GATE_B_BREAK_VOLR": true,
+    "W7_GATE_B_DIST_RISK": false,
+    "W7_GATE_PERSIST_SELL": false
+  },
+  "verdict": {
+    "W7_GATE_A_PULL_SHRINK": {
+      "dn": 134,
+      "d_ex3": 0.313,
+      "judgement": "增量正期望，但放宽阈值优于彻底关闭 → 保留闸并放宽阈值",
+      "recommend": true,
+      "caliber": "no_A_PULL",
+      "threshold_note": {
+        "group": "类型A 回踩缩量 W7_T0_SHRINK",
+        "threshold_caliber": "thr085",
+        "threshold_note": "放宽阈值口径不劣于彻底关闭口径",
+        "relax": {
+          "n": 329,
+          "ex3": 0.199,
+          "ex10": 0.72,
+          "win3": 49.5
+        },
+        "off": {
+          "n": 362,
+          "ex3": 0.146,
+          "ex10": 0.61,
+          "win3": 48.1
+        }
+      }
+    },
+    "W7_GATE_A_STALL_VOLR": {
+      "dn": 751,
+      "d_ex3": -0.236,
+      "judgement": "增量负期望，建议保留",
+      "recommend": true,
+      "caliber": "no_A_STALL"
+    },
+    "W7_GATE_B_PULL_SHRINK": {
+      "dn": 42,
+      "d_ex3": -2.168,
+      "judgement": "增量负期望，建议保留",
+      "recommend": true,
+      "caliber": "no_B_PULL"
+    },
+    "W7_GATE_B_BREAK_VOLR": {
+      "dn": 204,
+      "d_ex3": -1.242,
+      "judgement": "增量负期望，建议保留",
+      "recommend": true,
+      "caliber": "no_B_BREAK"
+    },
+    "W7_GATE_B_DIST_RISK": {
+      "dn": 0,
+      "d_ex3": 0.0,
+      "judgement": "无影响",
+      "recommend": false,
+      "caliber": "no_B_DIST"
+    },
+    "W7_GATE_PERSIST_SELL": {
+      "dn": 0,
+      "d_ex3": 0.0,
+      "judgement": "无影响",
+      "recommend": false,
+      "caliber": "no_PERSIST"
+    }
+  },
+  "recommended_on": [
+    "W7_GATE_A_PULL_SHRINK",
+    "W7_GATE_A_STALL_VOLR",
+    "W7_GATE_B_BREAK_VOLR",
+    "W7_GATE_B_PULL_SHRINK"
+  ],
+  "recommended_config": {
+    "W7_GATE_A_PULL_SHRINK": true,
+    "W7_GATE_A_STALL_VOLR": true,
+    "W7_GATE_B_PULL_SHRINK": true,
+    "W7_GATE_B_BREAK_VOLR": true,
+    "W7_GATE_B_DIST_RISK": false,
+    "W7_GATE_PERSIST_SELL": false
+  },
+  "ablation": {
+    "old": {
+      "n": 228,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 223,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.107,
+      "ex1": -0.054,
+      "win1": 43.9,
+      "ret3": -0.036,
+      "ex3": 0.048,
+      "win3": 46.7,
+      "ret5": -0.983,
+      "ex5": -0.468,
+      "win5": 40.5,
+      "ret10": -1.648,
+      "ex10": -0.042,
+      "win10": 36.7,
+      "stop_rate": 66.7,
+      "by_regime": {
+        "RANGE": 191,
+        "RECOVERY": 36,
+        "BEAR": 1
+      },
+      "delta_vs_old": 0
+    },
+    "new": {
+      "n": 2304,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 1768,
+        "T0_REBREAK": 536
+      },
+      "ret1": -0.237,
+      "ex1": -0.183,
+      "win1": 43.1,
+      "ret3": -0.617,
+      "ex3": -0.421,
+      "win3": 41.2,
+      "ret5": -1.367,
+      "ex5": -0.902,
+      "win5": 37.4,
+      "ret10": -2.208,
+      "ex10": -1.06,
+      "win10": 34.4,
+      "stop_rate": 62.5,
+      "by_regime": {
+        "RANGE": 1861,
+        "RECOVERY": 423,
+        "BEAR": 20
+      },
+      "delta_vs_old": 2076
+    },
+    "rec": {
+      "n": 370,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 365,
+        "T0_REBREAK": 5
+      },
+      "ret1": 0.089,
+      "ex1": 0.133,
+      "win1": 47.0,
+      "ret3": 0.098,
+      "ex3": 0.154,
+      "win3": 48.4,
+      "ret5": -0.59,
+      "ex5": -0.146,
+      "win5": 44.7,
+      "ret10": -0.793,
+      "ex10": 0.675,
+      "win10": 40.7,
+      "stop_rate": 64.3,
+      "by_regime": {
+        "RANGE": 304,
+        "RECOVERY": 65,
+        "BEAR": 1
+      },
+      "delta_vs_old": 142
+    },
+    "rec_noBpull": {
+      "n": 416,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 365,
+        "T0_REBREAK": 51
+      },
+      "ret1": -0.001,
+      "ex1": 0.054,
+      "win1": 46.1,
+      "ret3": -0.174,
+      "ex3": -0.069,
+      "win3": 46.7,
+      "ret5": -0.867,
+      "ex5": -0.394,
+      "win5": 43.0,
+      "ret10": -1.333,
+      "ex10": 0.141,
+      "win10": 39.3,
+      "stop_rate": 62.7,
+      "by_regime": {
+        "RANGE": 339,
+        "RECOVERY": 71,
+        "BEAR": 6
+      },
+      "delta_vs_old": 188
+    },
+    "rec_dist_on": {
+      "n": 370,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 365,
+        "T0_REBREAK": 5
+      },
+      "ret1": 0.089,
+      "ex1": 0.133,
+      "win1": 47.0,
+      "ret3": 0.098,
+      "ex3": 0.154,
+      "win3": 48.4,
+      "ret5": -0.59,
+      "ex5": -0.146,
+      "win5": 44.7,
+      "ret10": -0.793,
+      "ex10": 0.675,
+      "win10": 40.7,
+      "stop_rate": 64.3,
+      "by_regime": {
+        "RANGE": 304,
+        "RECOVERY": 65,
+        "BEAR": 1
+      },
+      "delta_vs_old": 142
+    },
+    "rec_persist_on": {
+      "n": 362,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 357,
+        "T0_REBREAK": 5
+      },
+      "ret1": 0.079,
+      "ex1": 0.123,
+      "win1": 46.7,
+      "ret3": 0.082,
+      "ex3": 0.146,
+      "win3": 48.1,
+      "ret5": -0.588,
+      "ex5": -0.142,
+      "win5": 44.6,
+      "ret10": -0.854,
+      "ex10": 0.61,
+      "win10": 40.1,
+      "stop_rate": 64.9,
+      "by_regime": {
+        "RANGE": 296,
+        "RECOVERY": 65,
+        "BEAR": 1
+      },
+      "delta_vs_old": 134
+    },
+    "no_A_PULL": {
+      "n": 362,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 357,
+        "T0_REBREAK": 5
+      },
+      "ret1": 0.079,
+      "ex1": 0.123,
+      "win1": 46.7,
+      "ret3": 0.082,
+      "ex3": 0.146,
+      "win3": 48.1,
+      "ret5": -0.588,
+      "ex5": -0.142,
+      "win5": 44.6,
+      "ret10": -0.854,
+      "ex10": 0.61,
+      "win10": 40.1,
+      "stop_rate": 64.9,
+      "by_regime": {
+        "RANGE": 296,
+        "RECOVERY": 65,
+        "BEAR": 1
+      },
+      "delta_vs_old": 134
+    },
+    "thr060": {
+      "n": 266,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 261,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.005,
+      "ex1": 0.038,
+      "win1": 45.1,
+      "ret3": 0.2,
+      "ex3": 0.257,
+      "win3": 50.0,
+      "ret5": -0.671,
+      "ex5": -0.202,
+      "win5": 44.3,
+      "ret10": -1.405,
+      "ex10": 0.139,
+      "win10": 38.2,
+      "stop_rate": 65.4,
+      "by_regime": {
+        "RANGE": 221,
+        "RECOVERY": 44,
+        "BEAR": 1
+      },
+      "delta_vs_old": 38
+    },
+    "thr070": {
+      "n": 293,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 288,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.015,
+      "ex1": 0.039,
+      "win1": 45.4,
+      "ret3": 0.142,
+      "ex3": 0.216,
+      "win3": 49.8,
+      "ret5": -0.629,
+      "ex5": -0.172,
+      "win5": 44.8,
+      "ret10": -1.233,
+      "ex10": 0.288,
+      "win10": 39.1,
+      "stop_rate": 66.6,
+      "by_regime": {
+        "RANGE": 243,
+        "RECOVERY": 49,
+        "BEAR": 1
+      },
+      "delta_vs_old": 65
+    },
+    "thr085": {
+      "n": 329,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 324,
+        "T0_REBREAK": 5
+      },
+      "ret1": 0.05,
+      "ex1": 0.087,
+      "win1": 45.0,
+      "ret3": 0.16,
+      "ex3": 0.199,
+      "win3": 49.5,
+      "ret5": -0.55,
+      "ex5": -0.129,
+      "win5": 44.5,
+      "ret10": -0.73,
+      "ex10": 0.72,
+      "win10": 40.3,
+      "stop_rate": 66.3,
+      "by_regime": {
+        "RANGE": 270,
+        "RECOVERY": 58,
+        "BEAR": 1
+      },
+      "delta_vs_old": 101
+    },
+    "thr100": {
+      "n": 342,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 337,
+        "T0_REBREAK": 5
+      },
+      "ret1": 0.094,
+      "ex1": 0.134,
+      "win1": 46.2,
+      "ret3": 0.155,
+      "ex3": 0.188,
+      "win3": 49.1,
+      "ret5": -0.544,
+      "ex5": -0.127,
+      "win5": 44.5,
+      "ret10": -0.805,
+      "ex10": 0.657,
+      "win10": 40.1,
+      "stop_rate": 66.1,
+      "by_regime": {
+        "RANGE": 280,
+        "RECOVERY": 61,
+        "BEAR": 1
+      },
+      "delta_vs_old": 114
+    },
+    "no_A_STALL": {
+      "n": 979,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 974,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.228,
+      "ex1": -0.153,
+      "win1": 43.3,
+      "ret3": -0.437,
+      "ex3": -0.17,
+      "win3": 41.9,
+      "ret5": -1.081,
+      "ex5": -0.519,
+      "win5": 37.2,
+      "ret10": -1.772,
+      "ex10": -0.434,
+      "win10": 35.7,
+      "stop_rate": 68.8,
+      "by_regime": {
+        "RANGE": 812,
+        "RECOVERY": 166,
+        "BEAR": 1
+      },
+      "delta_vs_old": 751
+    },
+    "no_B_PULL": {
+      "n": 270,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 223,
+        "T0_REBREAK": 47
+      },
+      "ret1": -0.243,
+      "ex1": -0.177,
+      "win1": 42.9,
+      "ret3": -0.418,
+      "ex3": -0.277,
+      "win3": 44.4,
+      "ret5": -1.364,
+      "ex5": -0.829,
+      "win5": 38.7,
+      "ret10": -2.315,
+      "ex10": -0.713,
+      "win10": 35.3,
+      "stop_rate": 64.4,
+      "by_regime": {
+        "RANGE": 222,
+        "RECOVERY": 42,
+        "BEAR": 6
+      },
+      "delta_vs_old": 42
+    },
+    "no_B_BREAK": {
+      "n": 432,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 221,
+        "T0_REBREAK": 211
+      },
+      "ret1": -0.292,
+      "ex1": -0.238,
+      "win1": 39.1,
+      "ret3": -0.648,
+      "ex3": -0.55,
+      "win3": 42.1,
+      "ret5": -1.585,
+      "ex5": -1.186,
+      "win5": 36.6,
+      "ret10": -2.321,
+      "ex10": -1.102,
+      "win10": 34.2,
+      "stop_rate": 55.6,
+      "by_regime": {
+        "RANGE": 346,
+        "RECOVERY": 79,
+        "BEAR": 7
+      },
+      "delta_vs_old": 204
+    },
+    "no_B_DIST": {
+      "n": 228,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 223,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.107,
+      "ex1": -0.054,
+      "win1": 43.9,
+      "ret3": -0.036,
+      "ex3": 0.048,
+      "win3": 46.7,
+      "ret5": -0.983,
+      "ex5": -0.468,
+      "win5": 40.5,
+      "ret10": -1.648,
+      "ex10": -0.042,
+      "win10": 36.7,
+      "stop_rate": 66.7,
+      "by_regime": {
+        "RANGE": 191,
+        "RECOVERY": 36,
+        "BEAR": 1
+      },
+      "delta_vs_old": 0
+    },
+    "no_PERSIST": {
+      "n": 228,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 223,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.107,
+      "ex1": -0.054,
+      "win1": 43.9,
+      "ret3": -0.036,
+      "ex3": 0.048,
+      "win3": 46.7,
+      "ret5": -0.983,
+      "ex5": -0.468,
+      "win5": 40.5,
+      "ret10": -1.648,
+      "ex10": -0.042,
+      "win10": 36.7,
+      "stop_rate": 66.7,
+      "by_regime": {
+        "RANGE": 191,
+        "RECOVERY": 36,
+        "BEAR": 1
+      },
+      "delta_vs_old": 0
+    },
+    "stall070": {
+      "n": 451,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 446,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.272,
+      "ex1": -0.188,
+      "win1": 41.5,
+      "ret3": -0.396,
+      "ex3": -0.169,
+      "win3": 42.0,
+      "ret5": -1.025,
+      "ex5": -0.494,
+      "win5": 37.1,
+      "ret10": -1.518,
+      "ex10": -0.032,
+      "win10": 37.2,
+      "stop_rate": 68.3,
+      "by_regime": {
+        "RANGE": 362,
+        "RECOVERY": 88,
+        "BEAR": 1
+      },
+      "delta_vs_old": 223
+    },
+    "stall085": {
+      "n": 663,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 658,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.231,
+      "ex1": -0.174,
+      "win1": 43.0,
+      "ret3": -0.33,
+      "ex3": -0.114,
+      "win3": 43.4,
+      "ret5": -0.874,
+      "ex5": -0.376,
+      "win5": 38.8,
+      "ret10": -1.468,
+      "ex10": -0.098,
+      "win10": 38.0,
+      "stop_rate": 68.6,
+      "by_regime": {
+        "RANGE": 546,
+        "RECOVERY": 116,
+        "BEAR": 1
+      },
+      "delta_vs_old": 435
+    },
+    "stall100": {
+      "n": 796,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 791,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.202,
+      "ex1": -0.137,
+      "win1": 43.1,
+      "ret3": -0.31,
+      "ex3": -0.075,
+      "win3": 42.8,
+      "ret5": -0.824,
+      "ex5": -0.32,
+      "win5": 38.1,
+      "ret10": -1.434,
+      "ex10": -0.091,
+      "win10": 37.7,
+      "stop_rate": 68.1,
+      "by_regime": {
+        "RANGE": 655,
+        "RECOVERY": 140,
+        "BEAR": 1
+      },
+      "delta_vs_old": 568
+    },
+    "c085_s070": {
+      "n": 625,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 620,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.121,
+      "ex1": -0.058,
+      "win1": 43.5,
+      "ret3": -0.194,
+      "ex3": -0.031,
+      "win3": 44.9,
+      "ret5": -0.584,
+      "ex5": -0.144,
+      "win5": 41.0,
+      "ret10": -0.785,
+      "ex10": 0.559,
+      "win10": 40.8,
+      "stop_rate": 66.7,
+      "by_regime": {
+        "RANGE": 498,
+        "RECOVERY": 126,
+        "BEAR": 1
+      },
+      "delta_vs_old": 397
+    },
+    "c085_s085": {
+      "n": 931,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 926,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.105,
+      "ex1": -0.068,
+      "win1": 45.0,
+      "ret3": -0.255,
+      "ex3": -0.09,
+      "win3": 44.6,
+      "ret5": -0.665,
+      "ex5": -0.228,
+      "win5": 41.2,
+      "ret10": -0.996,
+      "ex10": 0.238,
+      "win10": 40.4,
+      "stop_rate": 67.3,
+      "by_regime": {
+        "RANGE": 760,
+        "RECOVERY": 170,
+        "BEAR": 1
+      },
+      "delta_vs_old": 703
+    },
+    "c085_s100": {
+      "n": 1139,
+      "by_state": {
+        "T0_PULLBACK_HOLD": 1134,
+        "T0_REBREAK": 5
+      },
+      "ret1": -0.1,
+      "ex1": -0.063,
+      "win1": 44.2,
+      "ret3": -0.266,
+      "ex3": -0.099,
+      "win3": 43.9,
+      "ret5": -0.662,
+      "ex5": -0.248,
+      "win5": 40.3,
+      "ret10": -1.097,
+      "ex10": 0.089,
+      "win10": 39.8,
+      "stop_rate": 66.8,
+      "by_regime": {
+        "RANGE": 928,
+        "RECOVERY": 210,
+        "BEAR": 1
+      },
+      "delta_vs_old": 911
+    }
+  },
+  "threshold_reco": {
+    "类型A 回踩缩量 W7_T0_SHRINK": {
+      "best_caliber": "thr085",
+      "threshold": "0.85"
+    },
+    "类型A 止跌日量比 W7_T0_STALL_VOLR": {
+      "best_caliber": "old",
+      "threshold": "0.55（改造前）"
+    },
+    "组合：A_PULL 0.85 × A_STALL 放宽": {
+      "best_caliber": "thr085",
+      "threshold": "0.85×0.55"
+    }
+  },
+  "threshold_fix": {
+    "W7_GATE_A_PULL_SHRINK": {
+      "group": "类型A 回踩缩量 W7_T0_SHRINK",
+      "threshold_caliber": "thr085",
+      "threshold_note": "放宽阈值口径不劣于彻底关闭口径",
+      "relax": {
+        "n": 329,
+        "ex3": 0.199,
+        "ex10": 0.72,
+        "win3": 49.5
+      },
+      "off": {
+        "n": 362,
+        "ex3": 0.146,
+        "ex10": 0.61,
+        "win3": 48.1
+      }
+    }
+  }
+}
