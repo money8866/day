@@ -1,11 +1,11 @@
 {
-  "last_rebalance_date": "2026-10-21",
-  "holding_code": "159883",
-  "holding_name": "医疗器械",
+  "last_rebalance_date": "2026-10-30",
+  "holding_code": "512690",
+  "holding_name": "酒",
   "buy_price": 0.432,
-  "score_at_buy": 91.18,
-  "momentum_at_buy": 1.65,
-  "rsi_at_buy": 40.28,
-  "ige_at_buy": 66.82927705741635,
-  "rebalance_count": 10
+  "score_at_buy": 87.06,
+  "momentum_at_buy": 5.88,
+  "rsi_at_buy": 57.3,
+  "ige_at_buy": 55.11727196683169,
+  "rebalance_count": 11
 }
