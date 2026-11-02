@@ -1,0 +1,255 @@
+{
+  "_comment": "V10.1 动态仓位管理 —— 强势主升识别(S6) + 仓位权限 + 满仓授权 + 组合风险预算 + 分级加仓 + 满仓退出",
+  "_version": "10.5",
+  "_version_history": [
+    {
+      "version": "10.0",
+      "note": "五状态机 S1~S5 + 节点识别；position_advice 只给目标仓位",
+      "date": "2026-10-31"
+    },
+    {
+      "version": "10.1",
+      "note": "新增 S6 强势主升；仓位权限与实际建议仓位分离；满仓授权独立检查；组合风险预算；分级加仓；满仓退出",
+      "date": "2026-10-31",
+      "changes": [
+        "position_authority: S1/S2/S3/S4/S5/S6 各自最高仓位",
+        "full_position_authorization: 十项必要条件独立检查",
+        "portfolio_risk: 单股/单主题/单行业上限 + 总风险预算 + 现金最低比例",
+        "ladder: 20/40/60/80/100 分级加仓",
+        "strong_uptrend: 指数趋势/市场广度/短线赚钱效应/主线持续性 四模块独立输出"
+      ]
+    },
+    {
+      "version": "10.2",
+      "date": "2026-11-02",
+      "note": "选股数据完全移出仓位计算",
+      "changes": [
+        "calculate_target_position 移除「合格机会数量」上限",
+        "full_position_authorization 移除第6/7项 → 11项减为8项，全为市场环境层面",
+        "plan_ladder_add 的「出现有效买点」降级为提示项",
+        "组合风险预算改用 ETF 波动率代理的典型止损距离（新增 etf_mainline.estimate_market_volatility）",
+        "新增 _default_proxy_stop_distance / FullAuthorization.info / LadderResult.info",
+        "修复回放性能：_get_snapshot 透传 hist_pack（单日 562 次 SQL → 全年回放超时）",
+        "全年回放：建议仓位均值 6.8%->31.2%，>=60% 天数 10->32，FULL_ALLOWED 0->1"
+      ]
+    },
+    {
+      "version": "10.3",
+      "date": "2026-11-02",
+      "note": "主线判定修复（半导体行情漏判）",
+      "changes": [
+        "主线模块的 ETF 判定条件改为「相对强度 + 回撤容忍」口径（详见 config_v102_etf_mainline.json）",
+        "2026 上半年半导体行情（+112.7%）在 6/1~6/12 被漏判，主线识别有主线天数 104 → 195",
+        "事实标签验证：每日 top1 主线准确率 38%（基准 20%），分割验证 F1 24.4（旧口径 13.3）"
+      ]
+    },
+    {
+      "version": "10.4",
+      "date": "2026-11-02",
+      "note": "S6 四模块立体优化：绝对口径 → 方向/相对口径",
+      "changes": [
+        "指数趋势：4 个绝对门槛 → 2 个方向条件（站上MA20占比≥站上MA60占比、近5日正占比≥近20日正占比）",
+        "市场广度：核心条件改为「5日均广度≥20日均广度」（改善方向），移除 3 个绝对门槛",
+        "短线赚钱效应：晋级率由「≥25% 正向门槛」改为「≤35% 反向闸门」（情绪高潮=短期顶部），移除「涨停≥40」",
+        "全部阈值依据：2026 全年 198 个交易日 × 3 个事实标签 × 前后半段分割验证",
+        "全子集搜索：13 个候选条件枚举 206 个组合，要求 6 格（3标签×2段）全正 + 通过率 15~70% + 训练验证差 <15pp",
+        "最优组合：指数 r5>=r20 + ratio20>=ratio60 + 广度 ma5>=ma20 + ma5>=45 + 强股上涨比>=50% + 晋级率<35（平均提升 +14.4pp，最小格 +6.9pp）"
+      ]
+    },
+    {
+      "version": "10.5",
+      "date": "2026-11-02",
+      "note": "修复盘中/盘后仓位不一致（投票链断链 + 两套逻辑）",
+      "changes": [
+        "V10.1 save_state 补传 vote_history（原漏传 → 投票链每天被清空 → 状态机冻结）",
+        "V10.0 新增 rebuild_vote_history：链断时从历史节点重算投票（自愈）",
+        "盘中监控改为调用真实 V10.0 状态机 + V10.1 权限表（原为自定义启发式）",
+        "快照 build() 新增 before_date 参数：盘中必须排除当天，否则昨日涨停名单=今日名单",
+        "修复后：20261102 盘后 S3/5% → S4/20%，与盘中一致"
+      ]
+    }
+  ],
+  "_note": "所有阈值均为初始风控配置，不是经过回测验证的最优参数。任何调整都应重新跑历史检验并更新 _version_history。",
+  "strong_uptrend": {
+    "_note": "S6 强势主升的四模块独立检查。四个模块各自输出 passed/evidence/confidence，不合并成单一总分。",
+    "index_trend": {
+      "_note": "A. 指数趋势。★ V10.4 改为方向口径。",
+      "required_above_ma20_ratio": 0.6,
+      "required_above_ma60_ratio": 0.4,
+      "min_ret5": 0.0,
+      "min_ret20": 0.0,
+      "max_recent_drawdown": 0.08,
+      "min_index_count": 4,
+      "smallcap_not_weak_ratio": 0.0,
+      "consistent_new_low": false,
+      "_v104_note": "★ V10.4：判定改为两个方向条件 —— (1) 站上MA20占比 ≥ 站上MA60占比（短周期占优） (2) 近5日正收益占比 ≥ 近20日正收益占比（短期转强）。旧的四个绝对门槛（站上MA20≥60%、站上MA60≥40%、近5日正≥50%、近20日正≥50%）在 2026 全年「未来20日基准>3%」标签下事后强市率为 0.0%（51 样本无一命中），在 5 标签×2 段共 10 格中 8 格为负。绝对门槛已不再参与判定，仅保留在配置中供追溯。"
+    },
+    "breadth": {
+      "_note": "B. 市场广度。★ V10.4 以「改善方向」为核心。",
+      "breadth_ratio_min": 0.55,
+      "breadth_ma5_min": 0.45,
+      "breadth_ma20_min": 0.45,
+      "breadth_improve_min_pp": 0.0,
+      "require_2day_above": false,
+      "zt_count_min": 30,
+      "dt_count_max": 30,
+      "_v104_note": "★ V10.4：核心条件改为「5日均广度 ≥ 20日均广度」（广度改善方向），这是全部候选条件中边际价值最高的（5 标签下 +16/-1.8/+7.2/+1.5/+6.9pp）。移除：当日占比≥55%（-0.5pp）、20日均≥45%（-2.7pp）、连续2日≥55%（-0.6pp）。breadth_ma5_min 由 0.50 放宽至 0.45 作底线。"
+    },
+    "money_effect": {
+      "_note": "C. 短线赚钱效应。★ V10.4 纠正晋级率反向口径。",
+      "zt_count_min": 40,
+      "dt_count_max": 35,
+      "broken_rate_max": 30.0,
+      "promotion_rate_min": 25.0,
+      "promotion_rate_max": 35.0,
+      "strong_stock_mean_pct_min": 0.0,
+      "strong_stock_up_ratio_min": 0.5,
+      "_unit_note": "strong_stock_up_ratio_min 是 0~1 的比例（如 0.5 表示 50%）；promotion_rate_min / broken_rate_max / promotion_rate_max 是百分数（0~100）",
+      "_v104_note": "★ V10.4：晋级率由「正向门槛 ≥25%」改为「反向闸门 ≤35%」。实测晋级率越高未来越差（0~10%档正样本率25%/加速率38%；30~40%档 0%/12%）—— 情绪高潮即短期顶部。原设计等于「必须市场情绪高潮才敢满仓」，逻辑倒挂，且在 10 格中 8 格为负。移除「涨停≥40」（与广度模块重复，8/10 格为负）。dt_count_max 由 25 放宽至 35。"
+    },
+    "mainline": {
+      "_note": "D. 主线持续性。★ V10.2 改用行业 ETF 走势判定（source=etf），主题打分降级为备选（source=theme_scores）。",
+      "source": "etf",
+      "_source_note": "etf = 用行业 ETF 相对强度+趋势+资金+宽度判定（覆盖全年 1410 个交易日）；theme_scores = 原主题打分口径（仅覆盖 20260724 起）。ETF 数据不可用时自动降级到 theme_scores 并在 details.source 标注。",
+      "min_days_strong": 2,
+      "allowed_lifecycle": [
+        "主升",
+        "启动",
+        "高潮",
+        "加速主升"
+      ],
+      "allowed_mainline_type": [
+        "趋势主线",
+        "情绪+趋势共振"
+      ],
+      "min_theme_trend_score": 55.0,
+      "min_theme_zt_count": 3,
+      "min_theme_up_ratio": 50.0,
+      "min_mainline_count": 1
+    },
+    "require_all_modules": true,
+    "_require_all_note": "require_all_modules=true 时四模块必须全部通过才进 S6；false 时至少通过 min_modules_passed 个"
+  },
+  "min_modules_passed": 4,
+  "position_authority": {
+    "_note": "仓位权限：市场环境允许持有的最高仓位。与实际建议仓位分离 —— 允许100%不等于应该买100%。★ V10.2：形成 S3(5)→S4(10)→S5(40)→S2(30)/S1(60)→S6(100) 的连续梯度。",
+    "S1": {
+      "max_position": 60,
+      "action": "按现有策略与个股信号执行",
+      "allow_probe": true
+    },
+    "S2": {
+      "max_position": 30,
+      "action": "降低交易频率，减少追高，重新评估持仓风险",
+      "allow_probe": false
+    },
+    "S3": {
+      "max_position": 5,
+      "action": "防守为主，不因指数跌幅大而主动抄底",
+      "allow_probe": false
+    },
+    "S4": {
+      "max_position": 20,
+      "_v102_note": "★ V10.2：原为 10%。S4（卖压衰减）是「恐慌后的改善进程」，语义上应高于 S2 退潮(30%)? 不 —— 权限表按风险从高到低排列：S3(5) < S4(20) < S2(30) < S5(40) < S1(60) < S6(100)。S4 定位为「风险已缓解但尚未确认修复」，给 20% 而非 10%，避免在改善期过度收缩。",
+      "action": "观察为主，不自动买入，不降低原有买入标准",
+      "allow_probe": false
+    },
+    "S5": {
+      "max_position": 40,
+      "_v102_note": "★ V10.2：原为 60，与 S1 完全相同 —— 从恐慌修复回来的市场与「正常市况」给同样的风险预算是语义倒挂。改为 40：修复确认期风险预算低于正常市况，但仍高于观察期，允许有信号时逐步加仓。",
+      "action": "允许逐步提高仓位，但仅在个股信号成立时买入",
+      "allow_probe": true
+    },
+    "S6": {
+      "max_position": 100,
+      "action": "强势主升，仓位上限可放开，但仍需满仓授权与组合风险检查",
+      "allow_probe": true
+    }
+  },
+  "full_position_authorization": {
+    "_note": "满仓授权的必要条件。任一关键条件不满足即不得授权。数据缺失输出 REVIEW 或 DENIED，不得默认通过。",
+    "min_account_liquidity_ok": true,
+    "cap_when_review": 99,
+    "cap_when_denied": 80,
+    "_cap_note": "★ V10.2：满仓授权未通过时的仓位降级上限。原为硬编码（REVIEW→99、其余→60），把「否决」直接等同于「只能6成」，使权限阶梯失去意义。现配置化。",
+    "require_all_conditions": true,
+    "_require_all_note": "true=全过才 ALLOWED；false=仅关键项全过即可（关键项=状态/指数/广度/赚钱效应/主线/数据完整性）",
+    "_v102_note": "★ V10.2：选股数据已移出满仓授权。原「合格个股数量充足」「个股买点质量」两项依赖 stock_picks.db（覆盖率 12%~26%），既会因数据缺失否决环境授权，也与「环境模块只管仓位、选股模块只管标的」的职责划分冲突。现授权只保留 8 项市场环境条件；止损距离的合理性改由组合风险预算把关（ETF 波动率代理）。"
+  },
+  "portfolio_risk": {
+    "_note": "组合风险预算。初始值需按账户规模、策略波动率与回测结果调整，不存在适用于所有账户的统一最优值。",
+    "max_single_stock_pct": 15.0,
+    "max_single_theme_pct": 35.0,
+    "max_single_industry_pct": 30.0,
+    "max_total_risk_pct": 3.0,
+    "_max_total_risk_note": "组合总风险 = 各持仓潜在止损损失之和（占账户净值百分比）。★ V10.2：此值现作为「风险预算上限基准」，实际预算按 risk_budget_by_state 分档取用 —— 固定 3% 会把仓位天花板锁死在 30~40%（单股止损 6%、单股上限 15% 时每只贡献约 0.9% 风险，3% 只够 3~4 只满仓股），与市场判断无关地压制了 60% 以上的升仓空间。",
+    "risk_budget_by_state": {
+      "_note": "按市场状态的组合总风险预算（占净值%）。市场环境越好，允许承担的风险越高。",
+      "S1": 4.5,
+      "S2": 2.0,
+      "S3": 1.0,
+      "S4": 1.5,
+      "S5": 3.5,
+      "S6": 6.0
+    },
+    "min_cash_pct": 10.0,
+    "include_slippage": true,
+    "slippage_pct": 0.15,
+    "cost_pct": 0.05,
+    "max_correlated_group_pct": 40.0,
+    "min_qualified_for_deployment": 2,
+    "_v102_decouple": "★ V10.2：组合风险的止损距离改用 ETF 波动率代理（etf_mainline.estimate_market_volatility），不再取自个股止损价。风险敞口 = 单股上限 × 代理止损距离，与「今天有几只合格票」完全无关。实测：修复前同一状态下合格标的 0 只与 5 只会得出不同仓位（60% vs 43%）。",
+    "_min_qualified_note": "★ V10.2：已废弃 —— 合格标的数不再参与仓位上限计算。保留仅为配置兼容。"
+  },
+  "ladder": {
+    "_note": "分级加仓阶梯。不得一次性从低仓位跳到 100%。",
+    "steps": [
+      20,
+      40,
+      60,
+      80,
+      100
+    ],
+    "recheck_before_each_step": true,
+    "max_single_step_pct": 20,
+    "_note_max_step": "单次加仓幅度上限（百分比），防止一步跳太多"
+  },
+  "exit_check": {
+    "_note": "满仓退出检查。环境恶化不等于所有股票同步卖出。",
+    "breadth_drop_pp": 10.0,
+    "dt_increase_ratio": 1.5,
+    "dt_abs_increase": 20,
+    "broken_rate_increase_pp": 15.0,
+    "mainline_broken": true,
+    "core_holdings_risk_count": 3,
+    "risk_budget_overflow": true,
+    "data_missing": true
+  },
+  "qualified_signal_rules": {
+    "_note": "合格买入信号的判定。复用原有个股系统信号定义，不重新设计买卖信号。",
+    "buy_actions": [
+      "BUY",
+      "核心买点",
+      "可开仓·下蹲买点",
+      "放量突破后缩量回踩买点·CONFIRMED",
+      "RIGHT_BOTTOM",
+      "优选",
+      "买点池"
+    ],
+    "observe_actions": [
+      "可开仓·下蹲待确认(半仓)",
+      "观察",
+      "观察池",
+      "早鸟预警·回踩未满窗，观察量能收敛",
+      "跟踪·等待放量再突破",
+      "放量突破后缩量回踩买点·WATCH"
+    ],
+    "exclude_actions": [
+      "WAIT",
+      "NO_CHASE",
+      "MIDLINE_HOLD"
+    ],
+    "exclude_horizon_mid": true,
+    "_exclude_horizon_note": "horizon=mid 的中线仓（如 rb_trend）与短线仓分开统计，不计入短线可部署仓位"
+  }
+}

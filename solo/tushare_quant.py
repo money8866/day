@@ -518,40 +518,118 @@ def _v8_stage_to_signal(d_stage, score):
     return "中性"
 
 
-def _load_market_analysis_result(trade_date):
-    """读取 market_analysis.py 已生成的 txt 报告（避免重复运行 analyze_market）
-    
+def _load_market_data_direct(trade_date):
+    """直接调用 V10.0 / V10.1 / 趋势分模块取大盘数据（不再读 V9.9 的 txt 报告）。
+
+    ★ 2026-11-01 改造：原实现读 market_analysis_{date}.txt（V9.9 引擎的落盘产物），
+      存在三个问题：
+        1. V9.9 覆盖了老引擎格式后，txt 里已无「总趋势分/市场状态/指数趋势/主题趋势」，
+           导致 tushare_quant 的正则全部落空 → ts/it/tt 恒为默认 50.0、
+           ms 恒为「震荡」，P0 趋势硬门槛实际一直在用中性默认值工作；
+        2. txt 是**上一个交易日**跑出来的快照，与当日实时数据可能不一致；
+        3. 依赖文件落盘 → 报告没跑成就静默降级。
+      现在改为**函数直取**：数据来自同一套 daily_cache / index_daily_cache，
+      当场计算，不依赖任何中间文件。
+
     Returns:
-        (ma_txt, ma_position, ma_reason)
+        dict: {
+            'snapshot': V10 的 MarketSnapshot,
+            'emotion_text': str,       # 大盘段落主体（V10.0 口径渲染）
+            'trend_score': float,      # 总趋势分
+            'market_status': str,      # 市场状态
+            'index_trend': float,      # 指数趋势分
+            'theme_trend': float,      # 主题趋势分
+            'position': int,           # 大盘仓位建议（V10.1 实际建议仓位）
+            'available': bool,
+        }
     """
-    ma_cache_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
-    txt_path = os.path.join(ma_cache_dir, f"market_analysis_{trade_date}.txt")
-    
-    ma_txt = ""
-    ma_position = 0
-    ma_reason = ""
-    
-    if os.path.exists(txt_path):
+    out = {"snapshot": None, "emotion_text": "", "trend_score": 50.0,
+           "market_status": "震荡", "index_trend": 50.0, "theme_trend": 50.0,
+           "position": 0, "available": False, "note": ""}
+    try:
+        import market_regime_v10 as _v10
+        v10_cfg = _v10.load_config()
+        snap = _v10.collect_market_snapshot(str(trade_date), v10_cfg)
+        out["snapshot"] = snap
+        out["available"] = True
+    except Exception as e:
+        out["note"] = f"V10.0 快照不可用: {e}"
+        print(f"[大盘数据] {out['note']}")
+        return out
+
+    # ---------- 趋势分体系（market_analysis 的函数直取，真实算法）----------
+    # ★ 用 market_analysis.calc_trend_score() + calculate_market_trend_score()
+    #   的**原算法**，不另造近似公式 —— 保证与主流程口径一致。
+    try:
+        import market_analysis as _ma
+        b, lim = snap.breadth, snap.limit
+        up_count = b.up_count or 0
+        total_count = (b.up_count or 0) + (b.down_count or 0)
+        idx_results = []
+        for name, code in [('上证指数', '000001.SH'), ('沪深300', '000300.SH'),
+                           ('中证2000', '932000.CSI')]:
+            try:
+                df = _ma.get_index_kline(code, trade_date)
+            except Exception:
+                df = None
+            if df is None or len(df) < 25:
+                continue
+            try:
+                t_score, t_status, _detail = _ma.calc_trend_score(
+                    df, up_count, total_count)
+                # 情绪分：与主流程同口径（供 calculate_market_trend_score 的情绪惩罚）
+                _sent_score, _sent_status = _ma.calc_sentiment_score(
+                    df, lim.zt_count or 0, lim.broken_rate or 0.0,
+                    lim.zhaban_count or 0)
+            except Exception:
+                continue
+            idx_results.append({
+                'name': name, 'code': code,
+                'trend_score': t_score, 'trend_status': t_status,
+                'sentiment_score': _sent_score, 'sentiment_status': _sent_status,
+                'close': float(df['close'].iloc[-1]),
+                'pct_chg': float(df['pct_chg'].iloc[-1]) if 'pct_chg' in df.columns else 0.0,
+                'trend_detail': _detail,
+            })
+        if idx_results:
+            _it = _ma.calculate_market_trend_score(idx_results, None)
+            out['trend_score'] = float(_it[0])
+            out['index_trend'] = float(_it[1])
+            out['theme_trend'] = float(_it[2])
+            print(f"[大盘数据] 趋势分直取成功: 总分 {out['trend_score']:.1f} "
+                  f"指数 {out['index_trend']:.1f} 主题 {out['theme_trend']:.1f}")
+    except Exception as e:
+        print(f"[大盘数据] 趋势分计算失败（用默认值）: {e}")
+
+    # ---------- 市场状态：优先用 V10.1 的 S1~S6 ----------
+    try:
+        import market_regime_v101 as _v101
+        _c101 = _v101.load_config()
+        _r101 = _v101.analyze_trade_date_v101(str(trade_date), _c101, None, persist=False)
+        out['market_status'] = f"{_r101.state} {_r101.state_cn}"
+        out['position'] = int(_r101.target.suggested)
+    except Exception as e:
+        print(f"[大盘数据] V10.1 不可用，回落 V10.0 仓位: {e}")
         try:
-            with open(txt_path, 'r', encoding='utf-8') as f:
-                ma_txt = f.read()
-            
-            # 从txt中提取仓位和理由
-            import re
-            m_pos = re.search(r'总体仓位建议:\s*(\d+)%', ma_txt)
-            if m_pos:
-                ma_position = int(m_pos.group(1))
-            m_reason = re.search(r'理由:\s*(.+)', ma_txt)
-            if m_reason:
-                ma_reason = m_reason.group(1).strip()
-            
-            print(f"[MarketAnalysis] 已加载 {trade_date} 大盘分析报告（仓位{ma_position}%）")
-        except Exception as e:
-            print(f"[MarketAnalysis] 读取txt失败: {e}")
-    else:
-        print(f"[MarketAnalysis] 未找到 {trade_date} 的分析报告，请先运行 market_analysis.py")
-    
-    return ma_txt, ma_position, ma_reason
+            out['position'] = int(_v10.suggest_position(
+                _v10.decide_state(snap, _v10.detect_market_nodes(snap, v10_cfg),
+                                   None, v10_cfg), snap, v10_cfg).target_position or 0)
+        except Exception:
+            out['position'] = 0
+
+    # ---------- 渲染大盘段落主体（V10.0 口径）----------
+    try:
+        import market_regime_v10 as _v10
+        node = _v10.detect_market_nodes(snap, v10_cfg)
+        dec = _v10.decide_state(snap, node, None, v10_cfg)
+        out['emotion_text'] = _v10.render_v10_report(
+            snap, node, dec,
+            _v10.suggest_position(dec, snap, v10_cfg), v10_cfg)
+    except Exception as e:
+        print(f"[大盘数据] 渲染失败: {e}")
+        out['emotion_text'] = "（大盘数据渲染失败）"
+
+    return out
 
 
 def _load_marketnode_block(trade_date):
@@ -629,6 +707,137 @@ def _load_marketnode_block(trade_date):
 
 
 # 缓存/报告目录统一到 d:\mystock\ 下
+def _load_v10_regime_block(trade_date):
+    """V10.0 市场环境状态机 -> 【大盘环境 V10】数据块（fail-soft，失败返回空串）。
+
+    读取 market_regime_v10.py 落盘的报告（market_regime_v10_YYYYMMDD.txt），
+    输出 S1~S5 状态 / 节点类型 / 目标仓位 / 核心证据 / 切换条件，
+    供报告第一段「大盘分析」引用。
+
+    ★ 与 MarketNode V1 的关系：两者是**独立且互补**的判断 ——
+      MarketNode 看「短线情绪冷热与节点轨迹」，V10.0 看「市场环境状态机
+      与风险档位对应的目标仓位」。不互相替代，同时呈现给读者。
+    """
+    try:
+        cache_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
+        txt_path = os.path.join(cache_dir, f"market_regime_v10_{trade_date}.txt")
+        if not os.path.exists(txt_path):
+            print(f"[V10.0] 未找到 {trade_date} 的环境报告，跳过（先跑 market_analysis.py）")
+            return ""
+        with open(txt_path, 'r', encoding='utf-8') as f:
+            txt = f.read()
+        if not txt.strip():
+            return ""
+
+        def _g(label):
+            for line in txt.splitlines():
+                s2 = line.strip()
+                if s2.startswith(label):
+                    return s2[len(label):].strip()
+            return ''
+
+        def _g101(label):
+            """从 V10.1 报告里取字段（仓位权限上限等 V10.1 独有内容）。"""
+            p101 = os.path.join(cache_dir, f"market_regime_v101_{trade_date}.txt")
+            if not os.path.exists(p101):
+                return ''
+            try:
+                with open(p101, 'r', encoding='utf-8') as f:
+                    t101 = f.read()
+            except Exception:
+                return ''
+            for line in t101.splitlines():
+                s3 = line.strip()
+                if s3.startswith(label):
+                    return s3[len(label):].strip()
+            return ''
+
+        node_type = _g('节点类型：')
+        state = _g('当前市场状态：')
+        days = _g('状态持续时间：')
+        conf = _g('状态置信度：')
+        breadth = _g('上涨家数占比：')
+        zt = _g('涨停家数：')
+        dt = _g('跌停家数：')
+        amount = _g('成交额：')
+        amount_vs = _g('较前一交易日：')
+        pattern = _g('量价形态：')
+        target = _g('建议目标仓位：')
+        probe = _g('当前是否允许主动试探：')
+        action = _g('建议动作：')
+        pct = _g('历史分位：')
+
+        lines = [
+            "【大盘环境 V10】(五状态机 · 风险档位对应目标仓位)",
+            f"交易日: {trade_date} | 节点类型: {node_type or '无'} | "
+            f"当前状态: {state or '未知'}"
+            + (f"（{days}）" if days else "")
+            + (f" | 置信度: {conf}" if conf else ""),
+        ]
+        if breadth or zt or dt:
+            seg = []
+            if breadth:
+                # pct 原文自带「（近250日口径）」，取数值部分避免括号嵌套
+                pv = pct.split('（')[0].strip() if pct else ''
+                seg.append(f"广度 {breadth}" + (f"｜历史分位 {pv}" if pv else ""))
+            if zt:
+                seg.append(f"涨停 {zt}")
+            if dt:
+                seg.append(f"跌停 {dt}")
+            lines.append("市场指标: " + " | ".join(seg))
+        if amount or pattern:
+            # amount 原文自带「（全市场日线求和口径）」，变化率单独成段避免嵌套
+            lines.append(f"量价: {amount}"
+                         + (f" | 较前日 {amount_vs}" if amount_vs else "")
+                         + (f" | {pattern}" if pattern else ""))
+        if target or action:
+            lines.append(f"环境目标仓位: {target or '按现有策略'}"
+                         + (f" | 建议动作: {action}" if action else "")
+                         + (f" | 允许主动试探: {probe}" if probe else ""))
+
+        # 赚钱效应（昨日涨停股次日表现）—— 供 AI 照抄「赚钱」字段
+        _money = _g('昨日涨停股次日表现：')
+        if _money:
+            lines.append(f"赚钱效应: {_money}")
+
+        # 仓位权限上限（V10.1 独有：市场环境允许持有的最高仓位）
+        _auth_max = _g101('仓位权限上限：')
+        if _auth_max:
+            lines.append(f"仓位权限上限: {_auth_max}")
+
+        # 核心证据（最多3条）
+        i = txt.find('核心证据：')
+        if i >= 0:
+            j = txt.find('不确定因素：', i)
+            if j < 0:
+                j = txt.find('【', i)
+            seg = txt[i:j] if j > i else ''
+            items = [ln.strip().lstrip('0123456789. ').strip()
+                     for ln in seg.splitlines()
+                     if ln.strip() and ln.strip()[0].isdigit()]
+            for k, it in enumerate(items[:3], 1):
+                lines.append(f"证据{k}: {it}")
+
+        # 切换关键条件：从 ▎ 结论行里截出「切换关键：」之后的部分
+        tail = ''
+        for line in txt.splitlines():
+            s3 = line.strip()
+            if s3.startswith('▎'):
+                body = s3.lstrip('▎').strip()
+                if '切换关键：' in body:
+                    tail = body.split('切换关键：', 1)[1].strip()
+                break
+        if tail:
+            lines.append(f"切换关键: {tail}")
+
+        lines.append("注: 本段为环境状态判断（风险档位），个股买卖信号仍以各自策略为准。")
+        print(f"[V10.0] {state or '未知'} | 目标仓位 {target or '按现有策略'}")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[V10.0] 计算失败（fail-soft，跳过环境块）: {e}")
+        return ""
+
+
 STOCK_DATA_DIR = r"d:\mystock"
 CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
 REPORT_DIR = os.path.join(STOCK_DATA_DIR, "report_daily")   
@@ -9001,21 +9210,21 @@ def run(target_date=None, simple_mode=False):
     
     emotion_stage = "强"
     
-    # 市场情绪 -> 直接读取 market_analysis.py 已生成的 txt 报告
-    ma_txt, ma_position, ma_reason = _load_market_analysis_result(TRADE_DATE)
-
-    # 从txt中提取趋势分和市场状态（用于策略判断）
+    # 市场情绪 -> ★ 2026-11-01 改为**函数直取**（不再读 V9.9 的 txt 报告）
+    #   原实现读 market_analysis_{date}.txt 后用正则抓「总趋势分/市场状态/
+    #   指数趋势/主题趋势」，但 V9.9 覆盖老引擎格式后这些字段已不在 txt 里，
+    #   正则全部落空 → ts/it/tt 恒为 50.0、ms 恒为「震荡」，
+    #   P0 趋势硬门槛实际一直在用中性默认值工作。
+    #   现在改为直接调 V10.0 快照 + market_analysis 的原算法函数。
+    _mkt = _load_market_data_direct(TRADE_DATE)
     import re as _re
-    _m_ts = _re.search(r'总趋势分.*?:\s*(\d+\.?\d*)', ma_txt)
-    ts = float(_m_ts.group(1)) if _m_ts else 50.0
-    _m_ms = _re.search(r'市场状态:\s*(.+)', ma_txt)
-    ms = _m_ms.group(1).strip() if _m_ms else "震荡"
-    _m_it = _re.search(r'指数趋势.*?:\s*(\d+\.?\d*)', ma_txt)
-    it = float(_m_it.group(1)) if _m_it else 50.0
-    _m_tt = _re.search(r'主题趋势.*?:\s*(\d+\.?\d*)', ma_txt)
-    tt = float(_m_tt.group(1)) if _m_tt else 50.0
-    tp = ma_position
+    ts = _mkt['trend_score']
+    ms = _mkt['market_status']
+    it = _mkt['index_trend']
+    tt = _mkt['theme_trend']
+    tp = _mkt['position']
     pr = ""
+    ma_txt = _mkt['emotion_text']
 
     # 根据大盘状态确定操作策略
     if "主升浪" in ms or ts >= 75:
@@ -9032,7 +9241,7 @@ def run(target_date=None, simple_mode=False):
     _p0_on = ("主升浪" in ms) or ts >= 60
     print(f"[P0环境] 总趋势分{ts:.0f} 市场状态:{ms} → 大周期趋势硬门槛{'启用' if _p0_on else '关闭(弱市保留超跌反弹)'}")
 
-    # 直接用 txt 报告原文作为 emotion_text
+    # 大盘段落主体：V10.0 口径的渲染结果（不再读 V9.9 txt）
     emotion_text = ma_txt if ma_txt else "（无大盘分析报告）"
     
     # 过滤掉【指数趋势分】【市场趋势总评分】【市场情绪】三个区块（手机端冗余）
@@ -9050,6 +9259,11 @@ def run(target_date=None, simple_mode=False):
     _mn_block = _load_marketnode_block(TRADE_DATE)
     if _mn_block:
         emotion_text = f"{emotion_text}\n\n{_mn_block}"
+
+    # 追加 V10.0 五状态机环境结论（风险档位 + 目标仓位）
+    _v10_block = _load_v10_regime_block(TRADE_DATE)
+    if _v10_block:
+        emotion_text = f"{emotion_text}\n\n{_v10_block}"
 
     print(emotion_text)
 
@@ -10316,6 +10530,7 @@ def run(target_date=None, simple_mode=False):
 标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分，输出中也显示序号1、2、3、4、....段落名称及换行)：
 1、**大盘分析**：严格按照上述“大盘分析”给定的内容进行分析，【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
+（"大盘节点"来自 MarketNode 引擎，看短线情绪冷热与节点轨迹；"大盘环境 V10"来自 V10.0 五状态机，看市场环境风险档位与对应目标仓位。两者是独立且互补的判断，都要照抄，不得互相替代、不得合并成一句话、不得只挑一个写）
 ** 市场分析
 * 节点：{{照抄"大盘节点"数据块的「当前节点」，并保留"是否新节点"里的"新节点"字样（若为"是"则在节点后加"（新节点）"）；数据块显示"无新节点"则写"无新节点"}} | 状态：{{照抄「市场状态」}} | 情绪：{{照抄「情绪子状态」}} | 强度：{{照抄「节点强度」}} | 置信度：{{照抄「置信度」}}
 * 节点动态：{{照抄"大盘节点"数据块的「节点动态」冒号后的全部内容（含轨迹与今日节点·第N日）；数据块无此行则写"无"}}
@@ -10323,8 +10538,10 @@ def run(target_date=None, simple_mode=False):
 * 市场：XXXXX | 赚钱：XX 
 * 风险：XXXXXX | 节奏：XXXXXX
 * 节点风险：{{照抄"大盘节点"数据块的「失效条件」；数据块无此行则写"无"}}
+* 环境状态：{{照抄"大盘环境 V10"数据块的「当前状态」与「节点类型」（如"S3 恐慌加速｜恐慌加速"）；数据块无此行则写"无"}}
 ** 仓位建议
-* 当前目标：xx%   可加仓空间：xx%
+* 当前目标：xx%
+* 环境目标：{{照抄"大盘环境 V10"数据块的「环境目标仓位」；数据块无此行则写"无"}}
 * 正常区间：xx%～xx%   确认上限：xx%
 * 触发原因：{{仅当"大盘分析"数据块出现「⚠ 关键低点：X已跌破且未收复（日期）」时输出这一行，数值与日期一字不差照抄，写成"跌破关键低点X（日期）未收复 → 强制0仓，等底分型或右侧信号"；数据块无此行时写"无强制闸门"，禁止自行编造原因}}
 * 一句话：XXXXX。
@@ -10438,12 +10655,17 @@ def run(target_date=None, simple_mode=False):
                     final_report = final_report[:_m_etf.start()] + f"{_etf_head}\n\n{etf_tips_text}\n\n" + final_report[_m_etf.end():]
 
         # 先发送微信（即使报告保存失败也要发送）
-        send_wechat(final_report, os.getenv("WECHAT_SCKEY"))
-        # PushPlus 推送（支持markdown，增强阅读体验）
-        send_pushplus(final_report, os.getenv("PUSHPLUS"))
+        # ★ --no-send 门控：该参数此前只是定义而未被使用，导致「不发送」模式
+        #   实际上仍会真发微信/PushPlus/邮件。现统一在此拦截。
+        if not globals().get("_NO_SEND", False):
+            send_wechat(final_report, os.getenv("WECHAT_SCKEY"))
+            # PushPlus 推送（支持markdown，增强阅读体验）
+            send_pushplus(final_report, os.getenv("PUSHPLUS"))
 
-        # 邮件推送（正文 HTML + PDF 附件）并行保留，与微信推送互不影响
-        send_agent_mail(final_report)
+            # 邮件推送（正文 HTML + PDF 附件）并行保留，与微信推送互不影响
+            send_agent_mail(final_report)
+        else:
+            print("[--no-send] 已跳过微信/PushPlus/邮件推送")
 
         # 保存报告（带异常处理）
         try:
@@ -10963,6 +11185,11 @@ if __name__ == "__main__":
                         help='同--yri，但仅输出JSON格式结果（便于程序调用）')
     
     args = parser.parse_args()
+
+    # ★ --no-send 全局标志：发送点在深层函数里，用全局变量传递
+    globals()['_NO_SEND'] = bool(args.no_send)
+    if args.no_send:
+        print("[--no-send] 模式：跳过微信/PushPlus/邮件推送")
     
     # --- YRI-H 历史辨识度分析（独立模式） ---
     if args.yri_json:

@@ -56,10 +56,10 @@ STRATEGY_NAME = "RB 底部抬高(中长线)"
 # ── 形态参数（20261028 以 301550.SZ 标定，均可回溯调整）────────────────────
 WINDOW = 150              # 形态观察窗口（交易日，约 7 个月）
 PIVOT_K = 5               # 摆动点判定：前后各 5 根
-MIN_LOWS = 4              # 递升低点链最少低点数（含链首）：3 个低点只够「两次抬高」，噪声大
+MIN_LOWS = 5              # 递升低点链最少低点数（含链首）：20261031 收紧为 5，至少要 4 次有效抬高
 MIN_CHAIN_SPAN = 35       # 链首→链末低点的最小跨度（交易日）：中长线形态，不能是几周内的短促反弹
 LOW_TOL = 0.97            # 相邻低点容差：新低点 >= 前低 ×0.97 视为「抬高」（不破前低 3%）
-MIN_ELEV_PCT = 20.0       # 链首→链末低点的累计抬高下限（%）
+MIN_ELEV_PCT = 25.0       # 链首→链末低点的累计抬高下限（%）（20261031 收紧）
 BOTTOM_TOL = 1.10         # 链首低点须 <= 窗口最低价 ×1.10（确认底部已探明）
 HH_POS_MIN = 0.55         # 窗口最高价的位置须 >= 窗口的 55%（高点在后段 → 重心上移）
 # 中期趋势判据用 MA20 斜率 + MA20/MA60 相对位置，而不是 MA60 斜率：
@@ -67,16 +67,22 @@ HH_POS_MIN = 0.55         # 窗口最高价的位置须 >= 窗口的 55%（高�
 # 近 20 日 MA60 斜率仅 +0.18%（lag 40 更是 -15.8%），会把形态直接判死；
 # 而 MA20 近 20 日 +6.8% 且 MA20(94.34) 已在 MA60(85.67) 上方 —— 这才是「中期转折已成立」。
 MA20_SLOPE_BARS = 20      # MA20 斜率观察长度（交易日）
-MA20_SLOPE_MIN_PCT = 2.0  # MA20 近 20 日变化率下限（%）
+MA20_SLOPE_MIN_PCT = 3.0  # MA20 近 20 日变化率下限（%）（20261031 收紧）
 MA20_MA60_MIN = 0.995     # MA20 >= MA60 ×0.995（短均线在长均线上方/刚金叉）
+PRICE_MA20_MIN = 0.995    # 收盘 >= MA20 ×0.995：回踩不破 20 日线才算「回踩」，破位阴线不买（20261031 新增）
+SIGNAL_DAY_DROP_MAX = -5.0  # 信号当日跌幅下限（%）：加速下跌日出信号等于接飞刀（20261031 由 -7% 收紧）
 PRICE_MA60_MIN = 0.97     # 收盘 >= MA60 ×0.97（中期趋势未破）
-MAX_DIST_MA60_PCT = 15.0  # 收盘距 MA60 上限（%）：离得太远说明已加速，不是回踩位
-MAX_EXT_FROM_LOW_PCT = 20.0  # 收盘距链末低点上限（%）：不追高，等回踩位
+MAX_DIST_MA60_PCT = 12.0  # 收盘距 MA60 上限（%）：离得太远说明已加速，不是回踩位（20261031 收紧）
+MAX_EXT_FROM_LOW_PCT = 15.0  # 收盘距链末低点上限（%）：不追高，等回踩位（20261031 收紧）
 MIN_EXT_FROM_LOW_PCT = -3.0  # 收盘距链末低点下限（%）：跌破最近低点 3% 视为形态走坏
 LAST_LOW_AGE_MAX = 40     # 链末低点距今天的最大根数（形态新鲜度）
 MIN_BARS = 260            # 上市满一年才参与
-SCORE_WATCH = 60.0        # 观察档
-SCORE_PICK = 72.0         # 优选档
+MIN_TOTAL_MV_YI = 80.0    # 总市值下限（亿元）：剔除小盘壳/边缘股（20261031 收紧）
+MIN_AMOUNT_YI = 0.3       # 近20日均成交额下限（亿元）：流动性阀门（20261031 收紧）
+SCORE_WATCH = 65.0        # 观察档（20261031 收紧）
+SCORE_PICK = 78.0         # 优选档（20261031 收紧）
+SCORE_MIN_OUTPUT = 70.0   # 输出下限：技术分低于此值不进入报告/邮件/落库（20261031 再收紧）
+MAX_OUTPUT = 5            # 每日最多输出条数：按综合分取前 N，宁缺毋滥（20261031 再收紧）
 
 # ── 量价健康度过滤（20261028）──────────────────────────────────────────────
 # 底部抬高只说明「价格结构」在改善，还要确认是资金在承接、而不是缩量阴跌里画出来的抬高：
@@ -100,8 +106,8 @@ THEME_MIN_CNT = 2         # 至少 2 家才认为存在共振
 THEME_FULL_CNT = 7        # 同一概念 7 家以上拿满主题分
 THEME_BONUS_MAX = 15.0    # 主题联动分上限（综合分 = 技术分 + 主题分，满分 115）
 THEME_BROAD_FACTOR = 0.5  # 宽泛概念（人工智能/数据中心等）家数折半，避免大主题垄断
-SCORE_PICK_THEME = 65.0   # 主题晋升：技术分达到此值且主题分达标即可升「优选」
-THEME_BONUS_PROMOTE = 9.0 # 主题晋升所需的主题分（约同概念 4~5 家）
+SCORE_PICK_THEME = 70.0   # 主题晋升：技术分达到此值且主题分达标即可升「优选」（20261031 收紧）
+THEME_BONUS_PROMOTE = 10.0 # 主题晋升所需的主题分（约同概念 5~6 家）（20261031 收紧）
 
 # ── 邮件推送（与项目内 daily_news_digest / theme3_opportunity 同一 agently-cli 通道）──
 MAIL_CLI = r"C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd"
@@ -120,6 +126,10 @@ _CONCEPT_SKIP = re.compile(
     r'东方财富|同花顺|雪球|热股|人气榜|关注度|'
     r'高成长股|成长股|价值股|趋势股|反转股|超跌|强势股|题材股|业绩股|白马|'
     r'大盘成长|中盘成长|小盘成长|大盘价值|消费风格|科技风格|金融风格|周期风格|风格指数|'
+    # 指数成分/风格/持仓/技术状态标签：不是产业链题材，共振统计剔除（20261031 修噪声）
+    r'HS300|中证A500|中盘价值|小盘价值|'
+    r'证金持股|中央汇金|红利股|低波红利|中字头|权重股|私募重仓|风格|'
+    r'百日新高|近期新高|创历史新高|历史新高|'
     # 财务/业绩类标签
     r'预盈预增|预增|预减|业绩预|中报|年报|季报|首亏|扭亏|续盈|略增|略减|净利润|营收|'
     r'高派息|高股息|送转|回购|拟增持|员工持股|重组|摘帽|解禁|'
@@ -208,6 +218,30 @@ def index_close(conn, end_date, bars=90):
         return None
     d = d.sort_values("trade_date")
     return pd.to_numeric(d["close"], errors="coerce").to_numpy(dtype=float)
+
+
+def _load_mv_map(trade_date):
+    """返回 {ts_code: 总市值(亿元)}。daily_basic_cache.total_mv 单位万元，/10000 得亿元。
+
+    用于市值硬过滤（剔除小盘壳/边缘股）。数据缺失时返回空 dict，主流程自动跳过该过滤。
+    """
+    try:
+        import stock_cache as sc
+    except Exception:
+        return {}
+    db = sc.get_daily_basic_by_date(trade_date)
+    if db is None or db.empty:
+        return {}
+    mv = {}
+    for _, row in db.iterrows():
+        v = row.get("total_mv")
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            continue
+        try:
+            mv[str(row["ts_code"])] = float(v) / 10000.0
+        except (TypeError, ValueError):
+            continue
+    return mv
 
 
 # ── 主题/概念 ─────────────────────────────────────────────────────────────
@@ -344,8 +378,8 @@ def evaluate(g, idx_close, rs_base=None):
 
     if vol[-1] <= 0 or close[-1] <= 0:
         return None
-    # 当日大跌/跌停不列：买点落在崩塌日没有意义
-    if len(close) >= 2 and (close[-1] / close[-2] - 1) * 100 <= -7.0:
+    # 当日大跌不列：买点落在崩塌日没有意义（20261031 由 -7% 收紧到 -5%）
+    if len(close) >= 2 and (close[-1] / close[-2] - 1) * 100 <= SIGNAL_DAY_DROP_MAX:
         return None
 
     piv = pivot_lows(low)
@@ -391,6 +425,9 @@ def evaluate(g, idx_close, rs_base=None):
         return None
     px = float(close[-1])
     if px < ma60_now * PRICE_MA60_MIN:
+        return None
+    # 回踩不破 20 日线：收盘须站上 MA20，否则是破位阴线而非回踩位（20261031 新增）
+    if px < ma20_now * PRICE_MA20_MIN:
         return None
 
     dist_ma60 = (px / ma60_now - 1) * 100
@@ -479,6 +516,7 @@ def scan(trade_date=None, verbose=True):
         return trade_date, []
 
     hits = []
+    mv_map = _load_mv_map(trade_date)
     for ts_code, g in df.groupby("ts_code", sort=False):
         if not ts_code.endswith((".SZ", ".SH")):
             continue
@@ -489,6 +527,13 @@ def scan(trade_date=None, verbose=True):
             continue
         if str(g["trade_date"].iloc[-1]) != str(trade_date):
             continue  # 当日停牌
+        # 市值阀门：总市值（亿元）下限，剔除小盘壳/边缘股（mv_map 为空则跳过本过滤）
+        if mv_map and mv_map.get(ts_code, 0.0) < MIN_TOTAL_MV_YI:
+            continue
+        # 流动性阀门：近20日均成交额（千元 → /100000 得亿元）下限，剔除无人问津的死票
+        amt20 = pd.to_numeric(g["amount"], errors="coerce").dropna().tail(20)
+        if len(amt20) == 0 or float(amt20.mean()) / 100000.0 < MIN_AMOUNT_YI:
+            continue
         try:
             r = evaluate(g, rs_base)
         except Exception:
@@ -501,9 +546,13 @@ def scan(trade_date=None, verbose=True):
     hits.sort(key=lambda x: -x["score"])
     concepts = load_concepts()
     attach_themes(hits, concepts)
+    # 输出闸门：先砍掉技术分不达标的弱信号，再按综合分截断到 MAX_OUTPUT 条
+    n_raw = len(hits)
+    hits = [h for h in hits if h["score"] >= SCORE_MIN_OUTPUT][:MAX_OUTPUT]
     if verbose:
-        print("[RB] %s 命中 %d 只（主题覆盖 %d 只）" % (
-            trade_date, len(hits), sum(1 for h in hits if h["theme"])))
+        print("[RB] %s 命中 %d 只 → 输出 %d 只（技术分≥%.0f 且取前 %d；主题覆盖 %d 只）" % (
+            trade_date, n_raw, len(hits), SCORE_MIN_OUTPUT, MAX_OUTPUT,
+            sum(1 for h in hits if h["theme"])))
         for i, h in enumerate(hits[:30], 1):
             print("  %2d. %s %-6s 综合%5.1f(技%5.1f+题%4.1f) 收%8.2f %+6.2f%% | %s | %s(%d家)"
                   % (i, h["ts_code"], h["stock_name"], h["total"], h["score"],

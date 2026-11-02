@@ -347,6 +347,11 @@ W7_T0_MIN_BASE_SCORE = 40.0  # 兜底分下限：HVT-V3 BaseScore ≥40（替代
 #   RANGE 虽同样偏弱，但样本仅 300 只（占全市场 6%）且 2024 年该环境下类型A 反而为正
 #   （T+10 超额 +1.02%），跨期不一致 → 不作硬阻断，仅在报告中提示，按此开关可一键启用。
 W7_REGIME_BLOCK_TYPE_A = ("BEAR",)   # 阻断类型A 的市场环境集合；加入 "RANGE" 可启用震荡市过滤
+# 20261031 补：类型B 在 BEAR 下同样负期望（全市场回测 20260803~20261028，new 口径 4 个 BEAR 日
+#   20261015/1022/1027/1028 共 20 条信号全部为 T0_REBREAK，T+3 超额 -6.79%、胜率 0%），
+#   而旧门只拦类型A → 类型B 在熊市全放行。BEAR 环境下突破追高的期望更差（高波动+普跌），
+#   故默认把 BEAR 也加入类型B 的阻断集合；RANGE 仍不放（类型B 的 RANGE 证据与类型A 一样跨期不一致）。
+W7_REGIME_BLOCK_TYPE_B = ("BEAR",)   # 阻断类型B（T0_REBREAK）的市场环境集合
 # 20261002 阈值标定（全市场总市值 ≥80 亿 2078 只，2026-09 全月）：命中 40 只 / 66 次，
 # 9/11 全市场 7 只、9/30 当日 3 只 → 属可人工复核规模；301080 全历史仅 7/29、9/11 两次（均事后成立）。
 # V5.2 质量过滤（20260917 加入三条；20260930 复检后只保留①，②③废止）。
@@ -2575,11 +2580,13 @@ def w7_quality_gate(x):
       ③ 执行状态硬门：仅 EXECUTION / EXECUTION_WAIT_VOLUME 进可操作榜，两类 *_WATCH 仅观察；
       ④ 流动性下限：当日成交额 < W7_T0_MIN_AMOUNT（5000 万元）的微盘票不落库——
          原实现对成交额零门槛，微盘/低流动性票可凭形态入选，实盘无法成交；
-      ⑤ 市场环境门：BEAR（指数 r20<-6% 且 r60<-3%）时只保留类型B（突破确认），
-         类型A（回踩低吸）不产——弱市里低吸形态的 T+3/T+10 实测为负
+      ⑤ 市场环境门：BEAR（指数 r20<-6% 且 r60<-3%）时类型A（回踩低吸）与类型B（突破确认）均不产——
+         弱市里低吸形态的 T+3/T+10 实测为负
          （202610 现役门控 55 个信号 T+3 -3.19%、同期上证 -4.29% 仍为负超额）；
-         RANGE（震荡市）同样只保留类型B——标定显示 RANGE 下类型A T+10 超额 -1.58%、
-         类型B -2.45%，而 RECOVERY 下类型A +0.23% / 类型B +0.53%（300 只样本 / 2024-2026）；
+         BEAR 下类型B 同样全负（全市场回测 4 个 BEAR 日 20 条 T0_REBREAK，T+3 超额 -6.79%、胜率 0%，
+         20261031 补入）；RANGE（震荡市）两类均**不硬拦**——标定显示 RANGE 下类型A T+10 超额
+         -1.58%、类型B -2.45%，但 2024 年 RANGE 下类型A 反而为正（T+10 +1.02%），跨期不一致
+         → 只在报告里提示控制仓位，不阻断（把 "RANGE" 加进 W7_REGIME_BLOCK_TYPE_A/B 可一键启用）；
          BULL 下两类均为正（类型A +1.59%），全环境放行；
       ⑥ 结构内生门：类型A 的信号日收盘须 ≥ T0 开盘价、类型B 的收盘须 > T0 收盘价
          （两条均已内生于探测器，此处只做兜底复核，防止探测器口径被改动后失效）。
@@ -2599,10 +2606,15 @@ def w7_quality_gate(x):
         return False, (f"当日成交额{amt / 10:.0f}万元 < {W7_T0_MIN_AMOUNT / 10:.0f}万元"
                        f"（流动性不足，实盘难成交）")
     # ⑤ 市场环境门
-    if (x.get("market_regime") in W7_REGIME_BLOCK_TYPE_A
+    _regime = x.get("market_regime")
+    if (_regime in W7_REGIME_BLOCK_TYPE_A
             and x.get("state") == "T0_PULLBACK_HOLD"):
-        return False, (f"市场环境{x.get('market_regime')}（弱市低吸形态期望为负："
+        return False, (f"市场环境{_regime}（弱市低吸形态期望为负："
                        f"标定 T+10 超额 -1.58%，跟踪库 202610 T+3 -3.19%），只保留突破确认")
+    if (_regime in W7_REGIME_BLOCK_TYPE_B
+            and x.get("state") == "T0_REBREAK"):
+        return False, (f"市场环境{_regime}（熊市突破追高期望更差："
+                       f"全市场回测 BEAR 日 20 条类型B T+3 超额 -6.79%、胜率 0%），只保留低吸观察")
     # ⑥ 结构内生兜底
     st = x.get("state")
     if st == "T0_PULLBACK_HOLD":
@@ -2676,17 +2688,26 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
     lines = [f"# W7 二波·两类统一信号（今日可操作 · C池等待）\n\n交易日：{date}　|　候选总数：{len(results)}"]
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进可操作榜）")
     if mkt_regime:
-        lines.append(f"市场环境：{mkt_regime}"
-                     + (f"（{mkt_regime}：指数 r20/r60 判定。"
-                        + ("弱市低吸形态期望为负（标定 T+10 超额 -1.58%），本日只保留类型B「回踩后突破 T0 收盘价」）"
-                           if mkt_regime in W7_REGIME_BLOCK_TYPE_A else
-                           "两类信号均可参与；震荡市下低吸形态历史偏弱（RANGE T+10 超额 -1.58%），建议控制仓位）")))
+        if mkt_regime in W7_REGIME_BLOCK_TYPE_A and mkt_regime in W7_REGIME_BLOCK_TYPE_B:
+            _regime_txt = ("熊市环境：低吸形态期望为负（标定 T+10 超额 -1.58%），"
+                           "突破追高同样全负（回测 BEAR 日类型B T+3 超额 -6.79%、胜率 0%），"
+                           "本日两类信号均不产")
+        elif mkt_regime in W7_REGIME_BLOCK_TYPE_A:
+            _regime_txt = ("弱市低吸形态期望为负（标定 T+10 超额 -1.58%），"
+                           "本日只保留类型B「回踩后突破 T0 收盘价」）")
+        elif mkt_regime in W7_REGIME_BLOCK_TYPE_B:
+            _regime_txt = "熊市突破追高全负（T+3 超额 -6.79%），本日只保留类型A 低吸"
+        else:
+            _regime_txt = ("两类信号均可参与；震荡市下低吸形态历史偏弱（RANGE T+10 超额 -1.58%），"
+                           "建议控制仓位")
+        lines.append(f"市场环境：{mkt_regime}（{mkt_regime}：指数 r20/r60 判定。{_regime_txt}）")
     lines.append(f"今日可操作（当日买点）＝ {n_action} 只：类型A 回踩止跌低吸 {n_typeA} 只 + 类型B 回踩后突破T0收盘 {n_typeB} 只；"
                  f"其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
     lines.append(f"质量过滤（全市场候选）：当日买点原始 {len(_buy_signal)} 只 → 通过 {n_action} 只、过滤 {n_gated} 只"
                  f"（剔除 SECOND_WAVE/BREAKOUT_CONFIRM/RE_EXPANSION 三态；"
                  f"成交额下限 {W7_T0_MIN_AMOUNT / 10:.0f} 万元（微盘票实盘难成交）；"
                  f"{'/'.join(W7_REGIME_BLOCK_TYPE_A)} 环境下类型A 不产（标定：弱市低吸 T+10 超额为负）；"
+                 f"{'/'.join(W7_REGIME_BLOCK_TYPE_B)} 环境下类型B 不产（回测：BEAR 日类型B T+3 超额 -6.79%、胜率 0%）；"
                  f"买点档 WATCH（三因子 0 命中）与非执行区（TRIGGER_WATCH/PULLBACK_WATCH）不落库。"
                  f"被过滤标的见文末「过滤观察」。）")
     cnt_state = {}

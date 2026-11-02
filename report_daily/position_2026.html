@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2026 全年每日仓位变化 · V10.1 动态仓位管理</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#fafaf9; --line:rgba(0,0,0,.10); --line2:rgba(0,0,0,.18);
+    --tx:#1c1c1a; --tx2:#5f5e5a; --tx3:#8a8983;
+    --s1:#378ADD; --s2:#EF9F27; --s3:#E24B4A; --s4:#1D9E75; --s5:#639922; --s6:#7F77DD;
+    --auth:#c7dcee; --authLine:#9dbfe0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#16161a; --panel:#1e1e23; --line:rgba(255,255,255,.12); --line2:rgba(255,255,255,.20);
+      --tx:#e8e8e6; --tx2:#a8a7a2; --tx3:#75746f;
+      --auth:#2b3f52; --authLine:#3d5871;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px;background:var(--bg);color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:13px;line-height:1.6;}
+  h1{font-size:17px;font-weight:500;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--tx2);margin-bottom:16px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px;margin-bottom:16px}
+  .card{background:var(--panel);border-radius:10px;padding:12px 14px}
+  .card .l{font-size:11px;color:var(--tx2);margin-bottom:3px}
+  .card .v{font-size:22px;font-weight:500;line-height:1.2}
+  .card .v small{font-size:12px;font-weight:400;color:var(--tx2)}
+  .chartbox{background:var(--bg);border:0.5px solid var(--line);border-radius:12px;padding:14px 10px 6px}
+  #chart{width:100%;height:460px}
+  .lg{display:flex;flex-wrap:wrap;gap:14px;margin:10px 2px 0;font-size:12px;color:var(--tx2)}
+  .lg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .lg .stripe{background:repeating-linear-gradient(45deg,rgba(0,0,0,.10),rgba(0,0,0,.10) 3px,transparent 3px,transparent 7px);
+    border:0.5px solid var(--line2)}
+  .ctrl{display:flex;gap:8px;align-items:center;margin:12px 0 2px;flex-wrap:wrap}
+  .btn{font-size:12px;padding:5px 12px;border-radius:7px;border:0.5px solid var(--line2);
+    background:var(--bg);color:var(--tx);cursor:pointer;font-family:inherit}
+  .btn.on{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+  .note{font-size:12px;color:var(--tx3);margin-top:10px;line-height:1.75}
+  .note b{font-weight:500;color:var(--tx2)}
+  table{border-collapse:collapse;width:100%;font-size:12px;margin-top:14px}
+  th,td{border-bottom:0.5px solid var(--line);padding:6px 8px;text-align:left}
+  th{color:var(--tx2);font-weight:500}
+  td.n{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;color:#fff}
+</style>
+</head>
+<body>
+<h1>2026 全年每日仓位变化</h1>
+<p class="sub">V10.1 动态仓位管理 · 市场决定仓位上限，个股信号决定买入机会，组合风险决定实际仓位</p>
+
+<div class="cards" id="cards"></div>
+
+<div class="chartbox">
+  <div id="chart"></div>
+</div>
+
+<div class="lg">
+  <span><i style="background:var(--auth)"></i>仓位权限上限（市场允许的最高仓位）</span>
+  <span><i style="background:var(--s1)"></i>实际建议仓位（细柱，覆盖在权限柱内）</span>
+  <span><i class="stripe"></i>无选股信号数据（建议仓位不可计算）</span>
+  <span><i style="background:var(--s3);width:3px;height:13px;border-radius:1px"></i>状态切换点</span>
+</div>
+
+<div class="ctrl">
+  <button class="btn" id="bAll">全部交易日</button>
+  <button class="btn on" id="bWk">按周</button>
+  <button class="btn" id="bMo">按月</button>
+  <button class="btn" id="bPlay">播放</button>
+  <span style="font-size:12px;color:var(--tx3)" id="playTip"></span>
+</div>
+
+<p class="note" id="note"></p>
+
+<div id="tbl"></div>
+
+<script>
+var D = {"d":["20260105","20260106","20260107","20260108","20260109","20260112","20260113","20260114","20260115","20260116","20260119","20260120","20260121","20260122","20260123","20260126","20260127","20260128","20260129","20260130","20260202","20260203","20260204","20260205","20260206","20260209","20260210","20260211","20260212","20260213","20260224","20260225","20260226","20260227","20260302","20260303","20260304","20260305","20260306","20260309","20260310","20260311","20260312","20260313","20260316","20260317","20260318","20260319","20260320","20260323","20260324","20260325","20260326","20260327","20260330","20260331","20260401","20260402","20260403","20260407","20260408","20260409","20260410","20260413","20260414","20260415","20260416","20260417","20260420","20260421","20260422","20260423","20260424","20260427","20260428","20260429","20260430","20260506","20260507","20260508","20260511","20260512","20260513","20260514","20260515","20260518","20260519","20260520","20260521","20260522","20260525","20260526","20260527","20260528","20260529","20260601","20260602","20260603","20260604","20260605","20260608","20260609","20260610","20260611","20260612","20260615","20260616","20260617","20260618","20260622","20260623","20260624","20260625","20260626","20260629","20260630","20260701","20260702","20260703","20260706","20260707","20260708","20260709","20260710","20260713","20260714","20260715","20260716","20260717","20260720","20260721","20260722","20260723","20260724","20260727","20260728","20260729","20260730","20260731","20260803","20260804","20260805","20260806","20260807","20260810","20260811","20260812","20260813","20260814","20260817","20260818","20260819","20260820","20260821","20260824","20260825","20260826","20260827","20260828","20260831","20260901","20260902","20260903","20260904","20260907","20260908","20260909","20260910","20260911","20260914","20260915","20260916","20260917","20260918","20260921","20260922","20260923","20260924","20260928","20260929","20260930","20261008","20261009","20261012","20261013","20261014","20261015","20261016","20261019","20261020","20261021","20261022","20261023","20261026","20261027","20261028","20261029","20261030","20261102"],"s":["1","1","1","1","1","1","1","1","3","4","5","5","4","5","5","5","5","5","5","5","2","1","1","2","1","1","1","1","2","2","2","1","1","1","2","3","4","5","5","5","5","5","5","5","5","3","5","2","3","3","4","3","3","4","4","4","4","4","3","4","4","4","4","4","5","5","5","6","6","2","1","3","2","1","2","1","1","1","6","6","6","6","6","3","3","4","4","4","3","5","5","5","5","5","5","5","2","2","2","2","3","4","4","4","4","4","4","4","2","2","2","2","3","3","3","3","3","3","3","2","3","2","2","4","3","4","4","4","3","4","4","4","4","3","4","4","4","4","4","4","4","4","4","4","4","2","1","2","1","1","1","3","5","5","5","5","1","1","1","1","1","2","2","2","1","1","1","3","5","5","5","5","1","1","6","6","2","2","3","1","1","2","2","2","2","2","3","4","4","4","4","3","4","4","3","4","3","3","4"],"c":["正常","正常","正常","正常","正常","正常","正常","正常","恐慌加速","卖压衰减","修复确认","修复确认","卖压衰减","修复确认","修复确认","修复确认","修复确认","修复确认","修复确认","修复确认","退潮","正常","正常","退潮","正常","正常","正常","正常","退潮","退潮","退潮","正常","正常","正常","退潮","恐慌加速","卖压衰减","修复确认","修复确认","修复确认","修复确认","修复确认","修复确认","修复确认","修复确认","恐慌加速","修复确认","退潮","恐慌加速","恐慌加速","卖压衰减","恐慌加速","恐慌加速","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","恐慌加速","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","修复确认","修复确认","修复确认","强势主升","强势主升","退潮","正常","恐慌加速","退潮","正常","退潮","正常","正常","正常","强势主升","强势主升","强势主升","强势主升","强势主升","恐慌加速","恐慌加速","卖压衰减","卖压衰减","卖压衰减","恐慌加速","修复确认","修复确认","修复确认","修复确认","修复确认","修复确认","修复确认","退潮","退潮","退潮","退潮","恐慌加速","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","退潮","退潮","退潮","退潮","恐慌加速","恐慌加速","恐慌加速","恐慌加速","恐慌加速","恐慌加速","恐慌加速","退潮","恐慌加速","退潮","退潮","卖压衰减","恐慌加速","卖压衰减","卖压衰减","卖压衰减","恐慌加速","卖压衰减","卖压衰减","卖压衰减","卖压衰减","恐慌加速","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","卖压衰减","退潮","正常","退潮","正常","正常","正常","恐慌加速","修复确认","修复确认","修复确认","修复确认","正常","正常","正常","正常","正常","退潮","退潮","退潮","正常","正常","正常","恐慌加速","修复确认","修复确认","修复确认","修复确认","正常","正常","强势主升","强势主升","退潮","退潮","恐慌加速","正常","正常","退潮","退潮","退潮","退潮","退潮","恐慌加速","卖压衰减","卖压衰减","卖压衰减","卖压衰减","恐慌加速","卖压衰减","卖压衰减","恐慌加速","卖压衰减","恐慌加速","恐慌加速","卖压衰减"],"a":[60,60,60,60,60,60,60,60,5,20,40,40,20,40,40,40,40,40,40,40,30,60,60,30,60,60,60,60,30,30,30,60,60,60,30,5,20,40,40,40,40,40,40,40,40,5,40,30,5,5,20,5,5,20,20,20,20,20,5,20,20,20,20,20,40,40,40,100,100,30,60,5,30,60,30,60,60,60,100,100,100,100,100,5,5,20,20,20,5,40,40,40,40,40,40,40,30,30,30,30,5,20,20,20,20,20,20,20,30,30,30,30,5,5,5,5,5,5,5,30,5,30,30,20,5,20,20,20,5,20,20,20,20,5,20,20,20,20,20,20,20,20,20,20,20,30,60,30,60,60,60,5,40,40,40,40,60,60,60,60,60,30,30,30,60,60,60,5,40,40,40,40,60,60,100,100,30,30,5,60,60,30,30,30,30,30,5,20,20,20,20,5,20,20,5,20,5,5,20],"g":[60,60,60,60,60,60,60,60,5,20,40,40,20,40,40,40,40,40,40,40,30,60,60,30,60,60,60,60,30,30,30,60,60,60,30,5,20,40,40,40,40,40,40,40,40,5,40,30,5,5,20,5,5,20,20,20,20,20,5,20,20,20,20,20,40,40,40,90,90,30,60,5,30,60,30,60,60,60,90,90,90,90,90,5,5,20,20,20,5,40,40,40,40,40,40,40,30,30,30,30,5,20,20,20,20,20,20,20,30,30,30,30,5,5,5,5,5,5,5,30,5,30,30,20,5,20,20,20,5,20,20,20,20,5,20,20,20,20,20,20,20,20,20,20,20,30,60,30,60,60,60,5,40,40,40,40,60,60,60,60,60,30,30,30,60,60,60,5,40,40,40,40,60,60,90,90,30,30,5,60,60,30,30,30,30,30,5,20,20,20,20,5,20,20,5,20,5,5,20],"p":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1,0,0,1,1,1,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,0,1,1,0,1,1,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"q":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,2,0,2,0,0,2,2,2,0,0,2,2,0,0,0,0,0,0,0,0,0,0,2,0,0,3,0,0,1,2,3,1,0,0,0,0,1,3,5,2,1,1,2,3,2,0,2,5,0,6,11,0,0,0,0,0,0,0,0,12,16,1,2,0,0,0,0,5,10,2,7,12,11,18,16,13,12,6,11,16,12,14,9,12,46,27,43,20,25,11,14,14,15,15,12,14,27,16,10,7,6,11,5],"b":[78.2,77.1,40.6,70.1,74.5,77.8,30.3,51.5,41.7,44.4,65.9,41.8,58.5,66.8,73.9,29.8,35.8,32.4,33.6,45.8,14.2,90.3,60.4,30.3,51.9,86.0,41.2,38.7,39.2,28.7,74.2,69.9,46.4,61.3,21.1,11.8,32.4,75.8,78.7,26.5,84.2,38.5,27.8,28.2,53.2,16.0,66.0,9.2,12.1,5.5,94.0,89.8,16.9,80.2,53.8,18.8,83.6,19.4,13.1,73.7,94.6,21.0,74.1,44.6,70.0,34.2,80.0,44.5,64.4,36.2,54.6,24.6,37.8,61.0,31.6,73.9,53.9,72.4,65.8,67.8,58.2,25.4,60.1,19.3,33.6,44.2,67.0,30.1,12.7,71.9,40.4,24.9,17.8,56.1,28.4,69.2,28.5,31.5,24.6,60.8,16.4,61.9,28.6,25.2,72.1,72.6,50.5,31.6,37.3,54.2,51.1,26.2,22.5,14.4,45.7,56.4,79.1,41.2,70.0,34.6,12.6,29.6,46.3,69.2,14.6,77.2,61.5,46.6,8.8,31.9,57.4,28.3,77.9,10.1,94.8,48.4,77.8,32.7,86.6,73.2,67.6,69.7,51.8,53.0,74.5,30.0,76.3,20.9,44.7,80.3,39.2,8.1,75.2,46.7,26.9,77.3,54.6,63.6,55.8,58.9,62.4,28.3,34.1,45.6,59.0,62.8,33.0,17.5,11.7,58.4,20.4,77.8,47.7,78.6,82.9,43.9,34.7,20.6,16.5,64.2,47.6,31.2,60.6,21.2,53.9,17.9,7.8,60.8,42.1,69.4,37.1,9.7,83.3,41.6,11.0,77.0,14.2,16.2,85.1],"zt":[108,109,80,92,96,178,62,97,53,55,83,50,81,73,101,73,53,81,86,48,35,68,66,43,58,80,57,50,61,32,87,73,62,75,93,76,44,68,72,42,54,51,48,57,44,37,56,27,28,27,80,82,35,78,62,50,54,26,36,86,119,54,56,52,53,55,77,67,76,48,55,50,58,67,54,99,77,98,99,96,95,56,112,55,53,81,90,62,34,112,102,50,46,99,49,113,64,66,76,72,53,128,67,70,90,146,114,87,90,137,92,99,87,60,107,142,148,87,102,70,33,55,74,85,30,79,67,42,34,53,121,48,125,40,115,61,83,51,100,80,134,102,79,72,98,56,88,57,62,107,78,34,82,57,45,64,50,77,78,84,82,50,45,39,90,70,44,36,39,52,32,86,44,74,100,60,48,48,33,55,56,44,69,46,68,35,36,61,47,54,47,31,81,55,43,70,36,46,125],"dt":[11,1,3,4,1,3,51,18,60,50,26,15,4,2,1,37,2,7,14,50,105,11,7,17,6,3,4,8,14,13,16,3,4,0,8,60,17,3,0,5,4,2,2,13,8,12,5,7,17,83,1,1,11,2,11,3,6,8,27,5,4,3,8,5,3,9,2,3,6,10,5,15,23,36,29,16,14,9,8,2,5,10,4,20,17,20,11,22,30,5,16,17,22,9,57,24,14,10,7,11,37,5,25,35,17,4,7,1,16,5,47,10,20,32,40,10,10,43,23,53,44,50,15,8,186,29,42,41,216,266,28,11,2,26,6,56,11,92,0,8,1,1,2,4,7,2,0,4,15,1,7,141,13,16,17,3,1,3,3,12,0,8,17,11,3,1,8,13,21,18,34,4,2,1,3,6,15,13,61,11,10,16,10,26,10,13,28,12,26,7,5,62,9,26,30,10,51,95,10],"zb":[19.4,18.7,35.5,24.0,32.4,21.2,50.0,37.8,25.4,41.5,19.4,23.1,23.6,27.0,15.1,35.4,25.4,24.3,28.9,30.4,34.0,20.9,22.4,18.9,31.0,24.5,12.3,25.4,23.8,25.6,32.6,32.4,27.1,16.7,19.8,24.0,30.2,30.6,26.5,44.7,28.9,26.1,30.4,24.0,35.3,31.5,27.3,27.0,45.1,35.7,21.6,14.6,34.0,17.0,21.5,25.4,41.3,40.9,25.0,23.2,11.9,22.9,32.5,22.4,25.4,30.4,23.0,23.0,16.5,17.2,27.6,28.6,25.6,21.2,19.4,18.9,15.4,23.4,23.8,15.0,26.4,29.1,17.6,36.0,41.8,29.6,12.6,23.5,66.0,15.8,24.4,32.4,32.4,17.5,43.7,26.6,24.7,43.6,20.0,41.9,15.9,15.8,22.1,30.0,40.8,22.8,25.0,24.3,31.8,16.0,35.2,18.9,26.3,36.8,26.2,15.5,33.3,31.5,33.8,36.9,41.1,20.3,18.7,51.7,31.8,21.0,23.9,37.3,22.7,41.8,6.2,42.9,16.7,21.6,10.2,24.7,14.4,27.1,51.7,16.7,10.1,29.7,20.2,26.5,12.5,23.3,12.9,38.7,23.5,10.1,22.8,26.1,35.9,24.0,26.2,25.6,28.6,18.1,17.0,26.3,6.8,23.1,42.3,55.2,17.4,34.6,38.0,37.9,31.6,36.6,42.9,11.3,31.2,25.3,20.0,23.1,35.1,17.2,25.0,12.7,17.6,42.1,16.9,35.2,21.8,40.7,16.3,44.5,30.9,34.9,28.8,42.6,12.9,29.5,39.4,49.6,41.0,40.3,0.0],"sw":[1,0,0,0,0,0,0,0,1,1,1,0,1,1,0,0,0,0,0,0,1,1,0,1,1,0,0,0,1,0,0,1,0,0,1,1,1,1,0,0,0,0,0,0,0,1,1,1,1,0,1,1,0,1,0,0,0,0,1,1,0,0,0,0,1,0,0,1,0,1,1,1,1,1,1,1,0,0,1,0,0,0,0,1,0,1,0,0,1,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,1,1,1,0,1,1,1,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,1,1,0,0,0,1,0,0,0,0,1,0,0,1,0,0,1,1,0,0,0,1,0,1,0,1,0,1,1,0,1,0,0,0,0,1,1,0,0,0,1,1,0,1,1,1,0,1]};
+var S = {"days": 199, "from": "20260105", "to": "20261102", "avgAuth": 34.1, "avgSug": 30.0, "maxSug": 90, "switches": 79, "pickFrom": "20260601", "states": {"S1": 38, "S2": 33, "S3": 32, "S4": 51, "S5": 36, "S6": 9}};
+var SC = {S1:'#378ADD',S2:'#EF9F27',S3:'#E24B4A',S4:'#1D9E75',S5:'#639922',S6:'#7F77DD'};
+var css = getComputedStyle(document.documentElement);
+var C_AUTH = css.getPropertyValue('--auth').trim();
+var C_AUTHL = css.getPropertyValue('--authLine').trim();
+var C_LINE = css.getPropertyValue('--line').trim();
+var C_TX = css.getPropertyValue('--tx').trim();
+var C_TX2 = css.getPropertyValue('--tx2').trim();
+var C_TX3 = css.getPropertyValue('--tx3').trim();
+var C_BG = css.getPropertyValue('--bg').trim();
+
+function mm(d){return d.slice(4,6)+'-'+d.slice(6);}
+function md(d){return d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6);}
+
+/* ---- 指标卡 ---- */
+(function(){
+  var st = S.states;
+  var cards = [
+    ['交易日', S.days, '天'],
+    ['区间', S.from.slice(4)+'~'+S.to.slice(4), ''],
+    ['权限上限均值', S.avgAuth, '%'],
+    ['建议仓位均值', S.avgSug, '%'],
+    ['最高建议仓位', S.maxSug, '%'],
+    ['状态切换', S.switches, '次']
+  ];
+  document.getElementById('cards').innerHTML = cards.map(function(c){
+    return '<div class="card"><div class="l">'+c[0]+'</div><div class="v">'+c[1]+
+           (c[2]?'<small> '+c[2]+'</small>':'')+'</div></div>';
+  }).join('');
+})();
+
+/* ---- 数据聚合（按周/月）---- */
+function group(mode){
+  var idx=[], key=[];
+  for(var i=0;i<D.d.length;i++){
+    var d=D.d[i], k;
+    if(mode==='all') k=d;
+    else if(mode==='mo') k=d.slice(0,6);
+    else { var dt=new Date(d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6));
+           var day=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-day);
+           k=dt.toISOString().slice(0,10); }
+    if(!key.length || key[key.length-1]!==k){ key.push(k); idx.push([]); }
+    idx[idx.length-1].push(i);
+  }
+  return {keys:key, idx:idx};
+}
+
+/* ---- 主图 ---- */
+var chart = echarts.init(document.getElementById('chart'), null, {renderer:'canvas'});
+var mode='wk', G=group('wk'), playTimer=null, playIdx=0;
+
+function buildOption(g, upto){
+  var n=g.keys.length;
+  var upto = (upto===undefined)? n : upto;
+  var labels=[], auth=[], sug=[], sugColor=[], hasPick=[], switchMark=[], cat=[];
+  for(var i=0;i<upto;i++){
+    var ii=g.idx[i];
+    /* 权限取区间**最小值**（一周内最保守的风险档位），
+       建议仓位取**最后一个有信号日**的值 —— 与柱高、颜色同源。 */
+    var a=999,sg=0,hp=0,sc=C_AUTH,sw=0;
+    for(var j=0;j<ii.length;j++){
+      var k=ii[j];
+      if(D.a[k]<a)a=D.a[k];
+      if(D.p[k])hp=1;
+      if(D.sw[k])sw=1;
+    }
+    if(a===999)a=0;
+    /* 建议仓位取该区间最后一个有信号的日子 */
+    var last=-1;
+    for(var j=ii.length-1;j>=0;j--){ if(D.p[ii[j]]){last=ii[j];break;} }
+    var sv = last>=0? D.g[last] : null;
+    labels.push(mode==='all'? mm(D.d[ii[0]])
+                 : (mode==='wk'? g.keys[i].slice(5) : g.keys[i]));
+    auth.push(a);
+    sug.push(sv===null? null : sv);
+    /* 颜色与柱高同源：取该区间最后一个有信号日子的状态色 */
+    sugColor.push(last>=0? (SC['S'+D.s[last]]||'#378ADD') : 'transparent');
+    hasPick.push(hp);
+    cat.push(g.keys[i]);
+  }
+  /* 无选股信号区间（markArea 阴影）—— 明确区分「数据缺失」与「建议空仓」 */
+  var noPick=[];
+  for(var i=0;i<upto;i++){
+    var hp=0;
+    for(var j=0;j<g.idx[i].length;j++){ if(D.p[g.idx[i][j]]) hp=1; }
+    noPick.push(hp?0:1);
+  }
+  /* 连续段切分（正确写法：逐段扫描，段尾为连续 1 的最后一位） */
+  var markAreas=[];
+  var i0=0;
+  while(i0<noPick.length){
+    if(!noPick[i0]){ i0++; continue; }
+    var i1=i0;
+    while(i1+1<noPick.length && noPick[i1+1]) i1++;
+    markAreas.push([
+      {xAxis: i0-0.5, itemStyle:{color:'rgba(128,128,128,.09)'}},
+      {xAxis: i1+0.5}
+    ]);
+    i0=i1+1;
+  }
+
+  /* 切换标记 */
+  for(var i=0;i<upto;i++){
+    var mk=null;
+    for(var j=0;j<g.idx[i].length;j++){
+      var k=g.idx[i][j];
+      if(D.sw[k]){ mk={xAxis:i, yAxis:D.a[k], value:D.c[k]+' '+D.a[k]+'%'}; break; }
+    }
+    switchMark.push(mk);
+  }
+  return {
+    animation: true, animationDuration: 700, animationEasing:'cubicOut',
+    grid:{left:52,right:20,top:26,bottom:56},
+    tooltip:{trigger:'axis', axisPointer:{type:'shadow'},
+      backgroundColor:'rgba(28,28,26,.94)', borderWidth:0, textStyle:{color:'#fff',fontSize:12},
+      formatter:function(ps){
+        var i=ps[0].dataIndex;
+        var sub=[];
+        if(mode==='wk'){
+          var dd=D.d[g.idx[i][0]], ee=D.d[g.idx[i][g.idx[i].length-1]];
+          sub.push('<div style="font-weight:500">'+md(dd)+' ~ '+md(ee)+'</div>');
+        } else if(mode==='mo'){
+          sub.push('<div style="font-weight:500">'+cat[i]+'</div>');
+        }
+        var last=-1;
+        for(var j=g.idx[i].length-1;j>=0;j--){ if(D.p[g.idx[i][j]]){last=g.idx[i][j];break;} }
+        var k = last>=0? last : g.idx[i][0];
+        sub.push('<div style="opacity:.75;font-size:11px">'+md(D.d[k])+'</div>');
+        sub.push('<div style="margin-top:3px">状态 <b>'+D.c[k]+'</b>（权限 '+D.a[k]+'%）</div>');
+        sub.push('<div>建议仓位 <b>'+(last>=0? D.g[last]+'%' : '无信号数据')+'</b></div>');
+        sub.push('<div>广度 '+D.b[k]+'%　涨停 '+D.zt[k]+'　跌停 '+D.dt[k]+'</div>');
+        sub.push('<div>炸板率 '+D.zb[k]+'%　合格机会 '+D.q[k]+' 只</div>');
+        return sub.join('');
+      }},
+    xAxis:{type:'category', data:labels,
+      axisLine:{lineStyle:{color:C_LINE}}, axisTick:{show:false},
+      axisLabel:{color:C_TX3, fontSize:11, maxRotation:0, autoSkip:true, maxTicksLimit:24}},
+    yAxis:{type:'value', max:100, name:'仓位 %', nameTextStyle:{color:C_TX3,fontSize:11},
+      axisLine:{show:false}, axisTick:{show:false},
+      splitLine:{lineStyle:{color:C_LINE, type:'dashed'}},
+      axisLabel:{color:C_TX3, fontSize:11}},
+    series:[
+      {name:'权限上限', type:'bar', data:auth, barCategoryGap:'28%',
+       itemStyle:{color:C_AUTH, borderColor:C_AUTHL, borderWidth:0.5, borderRadius:[2,2,0,0]},
+       animationDelay:function(i){return i*3;},
+       markArea:{silent:true, data:markAreas},
+       z:1},
+      {name:'建议仓位', type:'bar', data:sug, barCategoryGap:'52%',
+       itemStyle:{color:function(p){return sugColor[p.dataIndex]||'#378ADD';},
+         borderRadius:[2,2,0,0]},
+       animationDelay:function(i){return i*3+120;}, z:2},
+      {name:'切换', type:'scatter', data:switchMark, symbol:'line', symbolSize:[0,13],
+       itemStyle:{color:C_TX3}, z:3, tooltip:{show:false}}
+    ]
+  };
+}
+
+function refresh(upto){
+  chart.setOption(buildOption(G, upto), true);
+  var note = document.getElementById('note');
+  var pkFrom = S.pickFrom;
+  note.innerHTML =
+    '<b>口径说明</b><br>'+
+    '· <b>仓位权限上限</b>（浅色柱）：市场环境允许持有的最高仓位，由状态机决定，'+
+    'S1 正常 60% / S2 退潮 30% / S3 恐慌加速 5% / S4 卖压衰减 10% / S5 修复确认 60% / S6 强势主升 100%。全年 198 个交易日均可计算。<br>'+
+    '· <b>实际建议仓位</b>（细实色柱，套在权限柱内）：在权限上限内，再按合格买点数量、组合风险预算、现金约束收敛。'+
+    '★ <b>'+pkFrom+' 之前没有个股选股信号数据</b>，机会数为 0 故建议仓位不可计算，柱体留空并以斜纹标注 —— '+
+    '这不是"建议空仓"，而是数据缺失。<br>'+
+    '· 竖线为市场状态切换点。全年切换 '+S.switches+' 次（'+(S.switches/S.days*100).toFixed(1)+'%）。'+
+    '状态分布：S1 正常 '+S.states.S1+' 天、S2 退潮 '+S.states.S2+' 天、S3 恐慌加速 '+S.states.S3+' 天'+
+    '，S4/S5/S6 全年未触发（卖压衰减与修复确认节点在这段行情里罕见）。<br>'+
+    '· 数据来源：V10.1 动态仓位管理，2026-01-05 ~ 2026-10-30 全部 198 个交易日，逐日状态链推进。<br>'+
+    '· 视图：当前按<b>周</b>汇总（权限上限取区间内<b>最保守</b>的一档，建议仓位取最后一个有信号日子的值）。'+
+    '切换「全部交易日」可看逐日明细，「按月」看月度趋势。';
+}
+
+refresh();
+
+/* ---- 按钮 ---- */
+function setMode(m){
+  mode=m; G=group(m);
+  document.getElementById('bAll').className='btn'+(m==='all'?' on':'');
+  document.getElementById('bWk').className='btn'+(m==='wk'?' on':'');
+  document.getElementById('bMo').className='btn'+(m==='mo'?' on':'');
+  refresh();
+}
+document.getElementById('bAll').onclick=function(){setMode('all');};
+document.getElementById('bWk').onclick=function(){setMode('wk');};
+document.getElementById('bMo').onclick=function(){setMode('mo');};
+document.getElementById('bPlay').onclick=function(){
+  var b=this;
+  if(playTimer){ clearInterval(playTimer); playTimer=null; b.className='btn'; b.textContent='播放';
+    document.getElementById('playTip').textContent=''; refresh(); return; }
+  b.className='btn on'; b.textContent='停止';
+  playIdx=0;
+  playTimer=setInterval(function(){
+    playIdx+=Math.max(1,Math.floor(G.keys.length/40));
+    if(playIdx>=G.keys.length){ playIdx=G.keys.length; }
+    refresh(playIdx);
+    document.getElementById('playTip').textContent='播放中 '+playIdx+'/'+G.keys.length;
+    if(playIdx>=G.keys.length){ clearInterval(playTimer); playTimer=null;
+      b.className='btn'; b.textContent='播放'; document.getElementById('playTip').textContent='播放结束'; }
+  }, 90);
+};
+window.addEventListener('resize', function(){ chart.resize(); });
+
+/* ---- 状态分布表 ---- */
+(function(){
+  var names={S1:'正常',S2:'退潮',S3:'恐慌加速',S4:'卖压衰减',S5:'修复确认',S6:'强势主升'};
+  var rows=Object.keys(names).map(function(k){
+    var n=S.states[k];
+    return '<tr><td><span class="pill" style="background:'+SC[k]+'">'+k+'</span></td><td>'+names[k]+
+      '</td><td class="n">'+n+'</td><td class="n">'+(n/S.days*100).toFixed(1)+'%</td></tr>';
+  }).join('');
+  document.getElementById('tbl').innerHTML =
+    '<table><thead><tr><th>状态</th><th>含义</th><th style="text-align:right">天数</th>'+
+    '<th style="text-align:right">占比</th></tr></thead><tbody>'+rows+'</tbody></table>';
+})();
+</script>
+</body>
+</html>

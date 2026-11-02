@@ -6,13 +6,10 @@ Regime-Aware Adaptive Position Engine
 
 七层市场状态模型 → 15种Regime → 动态仓位矩阵 → 多因子乘数 → 紧急制动 → 恢复阶梯
 """
-import os
-import sys
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
 
 # ============================================================
 # 数据模型
@@ -118,21 +115,6 @@ class EngineV9Result:
 
 def _clip(v, lo=0.0, hi=100.0):
     return max(lo, min(hi, v))
-
-def _safe_div(a, b):
-    if b is None or b == 0:
-        return 0.0
-    return a / b
-
-def _percentile_rank(series: pd.Series, value: float) -> float:
-    """计算 value 在 series 中的百分位 (0~100)"""
-    if series is None or len(series) < 5:
-        return 50.0
-    s = series.dropna()
-    if len(s) < 3:
-        return 50.0
-    rank = (s < value).sum() / len(s) * 100
-    return float(rank)
 
 def _calc_ma_slope(close_series: pd.Series, period: int, lookback: int = 5) -> float:
     """计算 MA 斜率（百分比）"""
@@ -513,7 +495,6 @@ def calc_l3_momentum(data: MarketDataBundle, hist_limit: Optional[pd.DataFrame] 
     overview = data.overview
     limit_stats = data.limit_stats
     zt_count = limit_stats.get('zt_count', overview.get('zt_count', 0))
-    dt_count = limit_stats.get('dt_count', overview.get('dt_count', 0))
     max_height = data.max_limit_height
     
     # 各指数多日收益
@@ -2785,7 +2766,6 @@ def build_test_bundle(
     
     # 模拟 prev_result
     if prev_regime != "UNKNOWN":
-        from dataclasses import dataclass as _dc
         prev = EngineV9Result()
         prev.regime = RegimeResult(regime=prev_regime, regime_cn=prev_regime)
         prev.position.recommended_position = REGIME_DEFINITIONS.get(
@@ -2799,21 +2779,4 @@ def build_test_bundle(
 # ============================================================
 # 快速接口（供外部模块调用）
 # ============================================================
-
-def run_position_engine_v9(data: MarketDataBundle) -> EngineV9Result:
-    """
-    便捷接口：运行 V9 仓位引擎
-    """
-    engine = PositionEngineV9()
-    return engine.analyze(data)
-
-
-def generate_v9_report(data: MarketDataBundle) -> str:
-    """
-    便捷接口：生成并返回 V9 报告文本
-    """
-    engine = PositionEngineV9()
-    result = engine.analyze(data)
-    return engine.generate_report(result), result
-
 

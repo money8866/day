@@ -1,0 +1,1277 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""
+A股短线动态仓位引擎 V9.9
+95分实盘版：简单决策 + 量价环境 + 基础行情完整展示
+
+市场决定仓位，主线决定方向，量价决定资金环境，D日决定节奏，风险决定底线。
+"""
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict
+
+from position_engine_v9 import (
+    PositionEngineV9,
+    EngineV9Result,
+)
+
+# ============================================================
+# 一、7种市场状态 + 完整仓位参数表（配置化）
+# ============================================================
+
+SEVEN_REGIMES = {
+    "STRONG_TREND": {
+        "cn": "强趋势",
+        "base": 60,
+        "normal_min": 50,
+        "normal_max": 70,
+        "confirm_cap": 80,
+    },
+    "RANGE_WITH_MAINLINE": {
+        "cn": "震荡有主线",
+        "base": 30,
+        "normal_min": 25,
+        "normal_max": 40,
+        "confirm_cap": 60,
+    },
+    "RANGE_NO_MAINLINE": {
+        "cn": "震荡无主线",
+        "base": 20,
+        "normal_min": 15,
+        "normal_max": 25,
+        "confirm_cap": 35,
+    },
+    "HIGH_DISTRIBUTION": {
+        "cn": "高位分歧",
+        "base": 20,
+        "normal_min": 15,
+        "normal_max": 30,
+        "confirm_cap": 40,
+    },
+    "FAST_DECLINE": {
+        "cn": "快速下跌",
+        "base": 5,
+        "normal_min": 0,
+        "normal_max": 10,
+        "confirm_cap": 20,
+    },
+    "EXTREME_FREEZE": {
+        "cn": "极度冰点",
+        "base": 5,
+        "normal_min": 0,
+        "normal_max": 10,
+        "confirm_cap": 10,
+    },
+    "FREEZE_REPAIR": {
+        "cn": "冰点修复",
+        "base": 15,
+        "normal_min": 10,
+        "normal_max": 25,
+        "confirm_cap": 50,
+    },
+}
+
+# V9.0 15种 → V9.9 7种 映射
+REGIME_MAP = {
+    "STRONG_TREND": "STRONG_TREND",
+    "STRONG_TREND_ACCELERATION": "STRONG_TREND",
+    "STRONG_TREND_LATE": "HIGH_DISTRIBUTION",
+    "RANGE_WITH_MAINLINE": "RANGE_WITH_MAINLINE",
+    "RANGE_MULTI_ROTATION": "RANGE_WITH_MAINLINE",
+    "RANGE_NO_MAINLINE": "RANGE_NO_MAINLINE",
+    "WEAK_RANGE": "RANGE_NO_MAINLINE",
+    "FAST_DECLINE": "FAST_DECLINE",
+    "PANIC_SELLING": "FAST_DECLINE",
+    "EXTREME_FREEZE": "EXTREME_FREEZE",
+    "FREEZE_REPAIR": "FREEZE_REPAIR",
+    "V_SHAPED_REVERSAL": "RANGE_WITH_MAINLINE",
+    "POST_CRASH_REBOUND": "FREEZE_REPAIR",
+    "HIGH_LEVEL_DISTRIBUTION": "HIGH_DISTRIBUTION",
+    "SYSTEMIC_RISK": "EXTREME_FREEZE",
+}
+
+# ============================================================
+# 二、环境调整参数（简单 ±5% 体系）
+# ============================================================
+
+MONEY_EFFECT_ADJ = {"强": +5, "中": 0, "弱": -5, "低": -10, "极差": -15}
+MAINLINE_ADJ     = {"强": +5, "中": 0, "弱": -5, "无": -10}
+RISK_ADJ         = {"正常风险": 0, "高风险": -10}
+# 量价环境调整（最大影响 ±5%，与赚钱效应去重：只使用相对量能+涨跌方向，不重复用上涨比例）
+# ★ 口径说明：这里的"量能"来自 V9.0 L6 流动性层的**指数成交量比**
+#   （5日/20日成交量比，am��_ratio_5_20），**不是全市场成交额变化**。
+#   全市场成交额口径在 V10.0 的 market_regime_v10.py 中单独计算，两者不混用。
+LIQ_ADJ = {
+    "放量上涨": +5,
+    "温和放量上涨": +2,
+    "正常量能": 0,
+    "缩量上涨": -2,
+    "缩量下跌": -2,
+    "放量下跌": -5,
+}
+
+# ============================================================
+# 三、V9.8 输出数据模型
+# ============================================================
+
+@dataclass
+class MarketOverview:
+    """大盘基础行情快照，用于报告展示"""
+    sz_price: float = 0.0
+    sz_chg: float = 0.0
+    hs300_price: float = 0.0
+    hs300_chg: float = 0.0
+    zz2000_price: float = 0.0
+    zz2000_chg: float = 0.0
+    amount: float = 0.0
+    up_count: int = 0
+    down_count: int = 0
+    zt_count: int = 0
+    dt_count: int = 0
+    zb_count: int = 0
+    zb_rate: float = 0.0
+    max_height: int = 0
+
+
+@dataclass
+class PositionV99Result:
+    market_regime: str = "震荡无主线"
+    market_trend: str = "中"
+    money_effect: str = "中"
+    mainline_strength: str = "中"
+    risk_state: str = "正常风险"
+    d_day: int = 0
+    d_day_desc: str = ""
+
+    liquidity_env: str = "正常量能"
+    amount_ratio: float = 1.0
+    up_ratio: float = 0.5
+    prev_up_ratio: Optional[float] = None   # 前一交易日上涨占比（一票否决钝化用）
+    bomb_ratio: float = 0.2
+    weak_veto: bool = False
+
+    # ★ P1：市场状态（普涨/震荡/普跌）—— 闸门阈值按状态自适应
+    market_state: str = "震荡日"
+    breadth_veto_threshold: float = 0.35
+    # 普跌日否决时保留试探仓（而非清仓）
+    bear_trial_floor: int = 10
+
+    # ★ P2：位置 / 波动率择时风控
+    pos_pct: float = 50.0          # 收盘在 60 日区间中的分位
+    vol_pct: float = 50.0          # 20 日波动率在自身 120 日历史中的分位
+    timing_risk_factor: float = 1.0
+    timing_risk_note: str = ""
+
+    # ★ 跌破日线级别关键低点（未收复）→ 强制空仓闸门
+    breakdown_active: bool = False
+    breakdown_key_low: Optional[float] = None
+    breakdown_key_low_date: str = ""
+    breakdown_reason: str = ""
+
+    base_position: int = 20
+    money_adj: int = 0
+    mainline_adj: int = 0
+    risk_adj: int = 0
+    liq_adj: int = 0
+    position_target: int = 20
+    position_normal_min: int = 15
+    position_normal_max: int = 30
+    position_confirm_cap: int = 35
+    add_room: int = 0
+
+    one_sentence: str = ""
+    action: str = "维持"
+    action_detail: str = ""
+    add_conditions: List[str] = field(default_factory=list)
+    reduce_conditions: List[str] = field(default_factory=list)
+    short_term_hint: str = ""
+    final_grade: str = "★★ 防守为主"
+
+    emergency_brake: bool = False
+    prev_position: Optional[int] = None
+    confidence: int = 70
+
+    overview: Optional[MarketOverview] = None
+    v9_full_result: Optional[EngineV9Result] = None
+
+    consistency_checks: Dict[str, str] = field(default_factory=dict)
+
+
+# ============================================================
+# 四、5维判断（复用 V9.0 底层数据）
+# ============================================================
+
+def _judge_market_trend(v9):
+    s = v9.l1_index.score
+    return "强" if s >= 65 else ("弱" if s < 40 else "中")
+
+def _judge_money_effect(v9):
+    s = v9.stle
+    return "强" if s >= 65 else ("弱" if s < 45 else "中")
+
+def _judge_mainline(v9):
+    state = v9.l5_theme.details.get('mainline_state', 'NONE')
+    mp = {"STRONG_SINGLE": "强", "STRONG_MULTI": "中", "ROTATION": "中", "WEAK": "弱"}
+    return mp.get(state, "无")
+
+def _judge_risk(v9):
+    r = v9.l7_risk.score
+    brake = v9.position.emergency_brake
+    # 量价环境参与风险识别：放量下跌是重要风险增强信号
+    liq_env = _judge_liquidity_env(v9)[0]
+    if liq_env == "放量下跌":
+        up = v9.l2_breadth.details.get('up_ratio', 50)
+        zb = v9.l4_sentiment.details.get('broken_rate', 0)
+        if up < 45 and zb > 30:
+            return "高风险"
+    return "高风险" if (r >= 50 or brake in ("LEVEL2","LEVEL3","LEVEL4")) else "正常风险"
+
+# ============================================================
+# 二·二、市场状态识别与广度阈值（★ P1：闸门方向性修正）
+# ============================================================
+# 审计发现：三道闸门中有两道方向是反的 —— 广度否决在普跌日底部误杀、
+# 炸板率在普涨日误杀。以下阈值全部由 198 个交易日全样本实证标定。
+
+MARKET_STATE_RISE = "普涨日"
+MARKET_STATE_FLAT = "震荡日"
+MARKET_STATE_FALL = "普跌日"
+
+# 广度否决阈值（按市场状态自适应）
+#   普跌日 30%：普跌日 91% 的日子广度<30%，广度低是常态；实证 35% 以下 fwd1 为正
+#   其他日 35%：非普跌日广度低才是真异常
+BREADTH_VETO_THRESHOLD = {
+    MARKET_STATE_FALL: 0.30,
+    MARKET_STATE_FLAT: 0.35,
+    MARKET_STATE_RISE: 0.35,
+}
+
+# 钝化解除阈值（仅非普跌日适用）
+#   65%：实证解除组 fwd1 -0.12% vs 维持组 -1.77%；45%~55% 区间是全样本最差，
+#        切勿下调到 45%（会放进最差的那一段）
+BREADTH_RELEASE_THRESHOLD = 0.65
+
+# 普跌日否决时的试探仓下限（普跌日广度低=底部特征，清仓会踏空反弹）
+BEAR_TRIAL_POSITION_FLOOR = 10
+
+# ============================================================
+# 二·三、位置 / 波动率风控（P2：接入全样本唯二有显著预测力的维度）
+# ============================================================
+# 数据依据（2026-01~10 全样本 168 个交易日，中证2000）：
+#   位置分位（收盘在 60 日区间中的分位）：
+#       0-20   N=26  fwd5 -0.80%  胜率 46.2%
+#       20-40  N=25  fwd5 +0.44%  胜率 60.0%   ← 最好
+#       40-60  N=56  fwd5 -0.09%  胜率 48.2%
+#       60-80  N=38  fwd5 -1.35%  胜率 34.2%
+#       80-100 N=23  fwd5 -1.86%  胜率 30.4%   ← 最差
+#       ρ(pos60, fwd5) = -0.206 (p=0.008)
+#   波动率分位（20 日标准差在自身 120 日历史中的分位）：
+#       0-30   N=33  fwd5 -2.12%  胜率 24.2%   ← 最差
+#       85-100 N=28  fwd5 +2.99%  胜率 78.6%   ← 最好
+#       ρ(std20, fwd5) = +0.352 (p<0.001)
+#
+# 两个维度都是"越高越危险"或"越低越危险"的单边风控，
+# 因此只做**上限折扣**，不做加仓信号（避免在弱市里反向加码）。
+
+HIGH_POSITION_THRESHOLD = 80      # 位置分位 ≥80 → 高位均值回归风险
+HIGH_POSITION_FACTOR = 0.7        # 仓位上限打 7 折
+
+LOW_VOL_THRESHOLD = 30            # 波动率分位 ≤30 → 低波（上涨末期）
+LOW_VOL_FACTOR = 0.8              # 仓位上限打 8 折
+
+
+def _calc_position_vol_regime(index_data, pos_lookback=60, vol_lookback=120):
+    """计算多指数的位置分位与波动率分位（取中证2000 优先，其次上证指数）。
+
+    与 market_analysis.calc_position_vol_regime 同口径，但接受 {名称: DataFrame} 字典，
+    便于在 V9.9 内部直接使用 index_data。
+    """
+    res = {'pos_pct': 50.0, 'vol_pct': 50.0}
+    idx = index_data or {}
+    df = None
+    for name in ("中证2000", "上证指数"):
+        cand = idx.get(name)
+        if cand is None or len(cand) < 25:
+            continue
+        df = cand
+        break
+    if df is None:
+        return res
+    try:
+        d = df.reset_index(drop=True)
+        w = d['close'].tail(pos_lookback)
+        if len(w) >= 20:
+            lo, hi = float(w.min()), float(w.max())
+            if hi > lo:
+                res['pos_pct'] = (float(d['close'].iloc[-1]) - lo) / (hi - lo) * 100
+        if 'pct_chg' in d.columns:
+            std_series = d['pct_chg'].rolling(20).std().dropna()
+            if len(std_series) >= 20:
+                hist = std_series.tail(vol_lookback)
+                cur = float(std_series.iloc[-1])
+                res['vol_pct'] = float((hist < cur).mean() * 100)
+    except Exception:
+        pass
+    return res
+
+
+def _judge_market_state(index_data):
+    """判定当日市场状态（普涨 / 震荡 / 普跌）。
+
+    口径：中证2000 与 上证指数 当日涨跌幅的均值（短线小盘代表 + 大盘代表）。
+    ±0.5% 为分界，与 P1 实证分析中的分层口径保持一致。
+
+    ★ P1：闸门必须区分市场状态，否则会在两个方向上同时出错 ——
+      普跌日把底部当异常来否决，普涨日把活跃当退潮来减仓。
+    """
+    rets = []
+    idx = index_data or {}
+    for name in ("中证2000", "上证指数"):
+        df = idx.get(name)
+        if df is None or len(df) < 2:
+            continue
+        try:
+            r = float(df['pct_chg'].iloc[-1])
+            if r == r:  # 非 NaN
+                rets.append(r)
+        except Exception:
+            continue
+    if not rets:
+        return MARKET_STATE_FLAT
+    avg = sum(rets) / len(rets)
+    if avg > 0.5:
+        return MARKET_STATE_RISE
+    if avg < -0.5:
+        return MARKET_STATE_FALL
+    return MARKET_STATE_FLAT
+
+
+def _is_weak_veto(up_ratio, prev_up_ratio=None, market_state=MARKET_STATE_FLAT):
+    """广度一票否决判定（★ P1：阈值按市场状态自适应 + 解除阈值上调）。
+
+    ── 数据依据（全样本 198 个交易日，中证2000，fwd = 后续N日收益）──
+
+    普跌日按广度分层的 fwd5 / 胜率：
+        up<15%    N=18  fwd5 +0.11%  胜率 62.5%
+        15-25%    N=21  fwd5 -0.25%  胜率 45.0%
+        25-35%    N=21  fwd5 +0.12%  胜率 52.4%   ← fwd1 +0.57%（最好）
+        35-50%    N=10  fwd5 -0.79%  胜率 44.4%
+        50-65%    N= 1  fwd5 -10.66% 胜率  0.0%
+    → 普跌日 35% 是分界：35% 以下 fwd1 基本为正，35% 以上转负。
+      而普跌日本身就有 91% 的日子广度<30%（广度低是普跌日的常态，不是异常），
+      所以普跌日把阈值压到 35% 属于**误杀底部**。
+
+    钝化解除阈值（昨日<35% 的日子，今日广度达到多少才解除）：
+        T=45%  解除组 N=39  fwd1 -0.44%   维持组 N= 8  fwd1 -0.63%
+        T=55%  解除组 N=33  fwd1 -0.46%   维持组 N=14  fwd1 -2.07%
+        T=65%  解除组 N=24  fwd1 -0.12%   维持组 N=23  fwd1 -1.77%
+    → 解除阈值**上调**到 65% 明显更优（解除日 fwd1 从 -0.46% 改善到 -0.12%）。
+      ★ 注意：45%~55% 区间是全样本最差（fwd5 -3.98%，胜率 33.3%），
+      所以不能下调到 45%。
+
+    普跌日特殊处理：普跌日 up>=65% 无样本（普涨日才有），若沿用 65% 解除阈值，
+    普跌日一旦进入钝化将永远无法解除 → 长期锁死空仓。
+    因此**普跌日只做"上限约束"，不进入钝化状态**。
+    """
+    thr = BREADTH_VETO_THRESHOLD.get(market_state, 0.35)
+    if market_state == MARKET_STATE_FALL:
+        # 普跌日：广度低是常态，只做上限约束，不设"钝化"标记
+        return up_ratio < thr
+    if up_ratio < thr:
+        return True
+    # 出场钝化：昨日仍在否决区时，今日须达到释放阈值才解除
+    if prev_up_ratio is not None and prev_up_ratio < thr and up_ratio < BREADTH_RELEASE_THRESHOLD:
+        return True
+    return False
+
+
+def _judge_liquidity_env(v9):
+    """量价环境判断：复用 V9.0 L6 流动性层的相对量能数据（5日/20日量比 + 涨跌方向）
+    返回 (环境名, 调整值)。严格使用相对量能，不看绝对成交额。"""
+    l6d = v9.l6_liquidity.details
+    ratio = float(l6d.get('amount_ratio_5_20', 1.0) or 1.0)
+    is_up = bool(l6d.get('is_up_day', True))
+
+    # 量价环境判定（6种）：
+    # 放量上涨：量比>1.2 + 上涨
+    # 温和放量上涨：量比 1.1~1.2 + 上涨
+    # 正常量能：量比 0.9~1.1
+    # 缩量上涨：量比<0.9 + 上涨
+    # 缩量下跌：量比<0.9 + 下跌
+    # 放量下跌：量比>1.1 + 下跌
+    if ratio >= 1.2:
+        env = "放量上涨" if is_up else "放量下跌"
+    elif ratio >= 1.1:
+        env = "温和放量上涨" if is_up else "放量下跌"
+    elif ratio > 0.9:
+        env = "正常量能"
+    else:
+        env = "缩量上涨" if is_up else "缩量下跌"
+    return env, LIQ_ADJ.get(env, 0), round(ratio, 2)
+
+# ★ D1~D7 的含义（重要，避免误读为"连续N天"）：
+#   D2 确认期   —— 动量处于"修复"、情绪中性/温和
+#   D3 首分窗口 —— 动量正常 + 情绪温和/高涨（默认兜底档）
+#   D4 趋势延续 —— 动量加速 + 情绪高涨
+#   D5 高位     —— 动量钝化 + 情绪中性（涨幅停滞）
+#   D6 下跌防守 —— 动量衰退或急杀
+#   D7 冰点     —— 情绪冰点或退潮
+#   这些是「动量状态 × 情绪状态」的**组合标签**，**不是连续天数**。
+#   例如 D6 表示"动量正在衰退/急杀"，与"连续下跌6天"无关。
+#   D1 不存在（_judge_dday 永不返回 1）。
+D_DAY_MEANING = {
+    2: "确认期（动量修复+情绪中性/温和）",
+    3: "首分窗口（动量正常+情绪温和/高涨）",
+    4: "趋势延续（动量加速+情绪高涨）",
+    5: "高位（动量钝化+情绪中性）",
+    6: "下跌防守（动量衰退或急杀）",
+    7: "冰点（情绪冰点或退潮）",
+}
+
+
+def _judge_dday(v9):
+    mom = v9.l3_momentum.details.get('mom_state', '')
+    sent = v9.l4_sentiment.details.get('sentiment_state', '')
+    if mom == "加速" and sent == "情绪高涨":
+        return 4, "D4 趋势延续"
+    if mom == "正常" and sent in ("情绪高涨", "情绪温和"):
+        return 3, "D3 首分窗口"
+    if mom == "修复" and sent in ("情绪温和", "情绪中性"):
+        return 2, "D2 确认期"
+    if mom == "钝化" and sent == "情绪中性":
+        return 5, "D5 高位"
+    if mom in ("衰退", "急杀"):
+        return 6, "D6 下跌防守"
+    if sent in ("情绪冰点", "情绪退潮"):
+        return 7, "D7 冰点"
+    return 3, "D3 中性"
+
+
+# ============================================================
+# 五、Regime 识别（V9→7种 + 5维投票修正）
+# ============================================================
+
+def _classify_regime(v9, trend, money, mainline):
+    v9r = v9.regime.regime
+    key = REGIME_MAP.get(v9r, "RANGE_NO_MAINLINE")
+
+    # 5维投票修正
+    if v9.stle >= 80 and money == "强" and mainline in ("强", "中"):
+        key = "STRONG_TREND"
+    elif trend == "强" and money == "强" and mainline in ("强", "中"):
+        key = "STRONG_TREND"
+    elif mainline in ("强", "中") and money in ("强", "中") and key == "RANGE_NO_MAINLINE":
+        key = "RANGE_WITH_MAINLINE"
+    elif mainline in ("无", "弱") and money == "弱" and key == "RANGE_WITH_MAINLINE":
+        key = "RANGE_NO_MAINLINE"
+
+    return key
+
+
+# ============================================================
+# 六、加减仓条件严格检查
+# ============================================================
+
+def _check_level1_add(v9):
+    """一级加仓：至少满足2项"""
+    up = v9.l2_breadth.details.get('up_ratio', 50)
+    zb = v9.l4_sentiment.details.get('broken_rate', 0)
+    mainline = v9.l5_theme.details.get('mainline_state', 'NONE')
+    top1 = v9.l5_theme.details.get('top1_score', 0)
+    count = 0
+    if up > 55:
+        count += 1
+    if zb < 25:
+        count += 1
+    if mainline in ("STRONG_SINGLE", "STRONG_MULTI") and top1 > 60:
+        count += 1
+    return count >= 2
+
+def _check_level2_add(v9):
+    """二级加仓：至少满足3项，且风险正常"""
+    if _judge_risk(v9) == "高风险":
+        return False
+    up = v9.l2_breadth.details.get('up_ratio', 50)
+    zb = v9.l4_sentiment.details.get('broken_rate', 0)
+    zt = v9.l4_sentiment.details.get('zt_count', 0)
+    top1 = v9.l5_theme.details.get('top1_score', 0)
+    count = 0
+    if up > 60:
+        count += 1
+    if zb < 20:
+        count += 1
+    if zt > 60:
+        count += 1
+    if top1 > 80:
+        count += 1
+    return count >= 3
+
+def _check_level1_reduce(v9, market_state=MARKET_STATE_FLAT):
+    """一级减仓：至少满足2项
+
+    ★ P1：普涨日不计「炸板率高」这一项 —— 实证普涨日炸板>35% 组 fwd5 为正
+    （>45% 组 N=2 fwd5 +9.83%，而 ≤25% 组 N=25 fwd5 -1.41%），
+    普涨日炸板率高是打板资金活跃的表现，不应作为减分项。
+    """
+    up = v9.l2_breadth.details.get('up_ratio', 50)
+    zb = v9.l4_sentiment.details.get('broken_rate', 0)
+    dt = v9.l4_sentiment.details.get('dt_count', 0)
+    mainline = v9.l5_theme.details.get('mainline_state', 'NONE')
+    count = 0
+    if up < 40:
+        count += 1
+    if zb > 35 and market_state != MARKET_STATE_RISE:
+        count += 1
+    if dt > 10:
+        count += 1
+    if mainline in ("WEAK", "NONE"):
+        count += 1
+    return count >= 2
+
+def _check_level2_reduce(v9):
+    """二级减仓：指数快速下跌+跌停增加+赚钱效应恶化"""
+    ret1 = v9.l1_index.details.get('avg_ret1', 0)
+    dt = v9.l4_sentiment.details.get('dt_count', 0)
+    stle = v9.stle
+    return ret1 <= -1.5 and dt >= 10 and stle <= 40
+
+
+# ============================================================
+# 七、文本生成
+# ============================================================
+
+def _one_sentence(
+    regime_cn,
+    mainline,
+    risk,
+    liq_env = '正常量能'
+):
+    if regime_cn == "情绪冰点/退潮":
+        return "情绪退潮，一票否决防守，等待上涨家数回暖再恢复。"
+    if risk == "高风险":
+        if regime_cn == "快速下跌":
+            return "快速下跌行情，防守第一，等待企稳信号。"
+        if regime_cn == "极度冰点":
+            return "情绪极度冰点，控制抄底冲动，等修复确认。"
+        return "风险偏高，防守为主，降低仓位和交易频率。"
+    if liq_env == "放量下跌":
+        return "放量下跌，资金在撤，防守优先。"
+    if regime_cn == "强趋势":
+        return "强趋势行情，敢于重仓，回踩就是加仓机会。"
+    if regime_cn == "震荡有主线":
+        if mainline == "强":
+            return "指数一般，但赚钱效应和主线较强，聚焦主线结构性进攻。"
+        if liq_env == "缩量上涨":
+            return "震荡市有主线，但缩量反弹有效性一般，等放量确认。"
+        return "震荡市有主线机会，只做主线，不追杂毛。"
+    if regime_cn == "震荡无主线":
+        return "震荡无主线，降低仓位和频率，快进快出不恋战。"
+    if regime_cn == "高位分歧":
+        return "高位分歧阶段，不追高，等待分歧后的真正强者。"
+    if regime_cn == "冰点修复":
+        return "冰点修复初期，小仓位试错，确认后再加仓。"
+    return "市场中性，保持谨慎。"
+
+def _final_grade(
+    regime_cn,
+    money,
+    mainline,
+    liq_env = '正常量能'
+):
+    """星级严格对应市场状态+赚钱+主线+量价+仓位"""
+    if regime_cn == "强趋势" and money == "强" and mainline == "强" and liq_env in ("放量上涨", "温和放量上涨"):
+        return "★★★★★ 全面进攻"
+    if regime_cn == "强趋势":
+        return "★★★★ 趋势进攻"
+    if regime_cn == "震荡有主线" and money == "强" and mainline == "强" and liq_env in ("放量上涨", "温和放量上涨"):
+        return "★★★★ 结构性进攻"
+    if regime_cn == "震荡有主线":
+        return "★★★ 结构性机会"
+    if regime_cn == "冰点修复" and money in ("强", "中"):
+        return "★★★ 修复中"
+    if regime_cn == "高位分歧":
+        return "★★★ 谨慎参与"
+    if regime_cn == "震荡无主线":
+        return "★★ 轻仓参与"
+    if regime_cn == "冰点修复":
+        return "★★ 逐步恢复"
+    if regime_cn in ("快速下跌", "极度冰点", "情绪冰点/退潮"):
+        return "★ 防守为主"
+    return "★★★ 中性"
+
+
+# ============================================================
+# 八、仓位滞回
+# ============================================================
+
+# ============================================================
+# 八·二、日线级别关键低点跌破检测（强制空仓闸门）
+# ============================================================
+
+BREAKDOWN_FRACTAL_K = 5   # 分形口径：前后各 5 根K线内的最低 → 日线级别低点
+
+
+def _detect_key_low_breakdown(index_data, k=BREAKDOWN_FRACTAL_K):
+    """检测「跌破日线级别关键低点且未收复」的强制空仓状态（以上证指数为准）。
+
+    口径：
+      1. 日线级别低点 = 分形低点：该K线 low 为其前 k 根、后 k 根范围内的最低
+         （后 k 根须已出现 → 该低点已"确认"，不含未来函数）。
+      2. 关键低点 = 当前时点「最近一个已确认」的分形低点（随行情滚动，不做冻结）。
+         早期版本在空仓期间冻结锚点，但冻结会使结果依赖「取数窗口从哪天开始」
+         （同一个低点是否落在窗口前 k 根之外，会决定它能否成为候选），
+         窗宽一变判定就跳变；改为滚动锚点后与窗宽无关，且语义更直白：
+         「跌破最近一个支撑就空仓，重新站上最近一个支撑（或底分型）就解除」。
+      3. 跌破有效 = 当日收盘价 < 关键低点（收盘未收回，非仅盘中插针）。
+      4. 解除条件 = 出现"底分型"（近3根中间K线的最低与最高均低于左右两根）
+         或"右侧买入信号"（收盘重新站上关键低点）。
+
+    逐日推进的状态机，结果与"当日实时判断"完全一致（无未来函数）。
+    返回 dict(avail, active, key_low, key_low_date, reason)
+    """
+    res = {"avail": False, "active": False, "key_low": None,
+           "key_low_date": "", "reason": ""}
+    df = (index_data or {}).get("上证指数")
+    if df is None or len(df) < 2 * k + 3:
+        return res
+    try:
+        d = df.reset_index(drop=True)
+        low = d["low"].astype(float).tolist()
+        high = d["high"].astype(float).tolist()
+        close = d["close"].astype(float).tolist()
+        dts = (d["trade_date"].astype(str).tolist()
+               if "trade_date" in d.columns else [""] * len(d))
+    except Exception:
+        return res
+
+    n = len(low)
+    res["avail"] = True
+
+    # 已确认的分形低点（须已有后 k 根 → 不含未来数据）
+    swing = [i for i in range(k, n - k)
+             if low[i] == min(low[i - k:i + k + 1])]
+    if not swing:
+        return res
+
+    def _bottom_fractal_at(j):
+        return (1 <= j <= n - 2
+                and low[j] < low[j - 1] and low[j] < low[j + 1]
+                and high[j] < high[j - 1] and high[j] < high[j + 1])
+
+    state = False
+    key_low = None
+    key_date = ""
+
+    for t in range(1, n):
+        # 1) 关键低点 = 当前时点最近一个已确认的分形低点（滚动，不冻结）
+        confirmed = [i for i in swing if i <= t - k]
+        if confirmed:
+            ci = confirmed[-1]
+            key_low, key_date = low[ci], dts[ci]
+        if key_low is None:
+            continue
+        # 2) 收盘跌破关键低点 → 进入空仓
+        if close[t] < key_low:
+            state = True
+        elif state:
+            # 3) 解除：收盘重新站上关键低点（右侧信号）或出现已确认底分型
+            if close[t] > key_low or _bottom_fractal_at(t - 1):
+                state = False
+
+    if state:
+        res["active"] = True
+        res["key_low"] = round(key_low, 2)
+        res["key_low_date"] = key_date
+        res["reason"] = "收盘%.2f跌破关键低点%.2f（%s）后未收复" % (
+            close[-1], key_low, key_date)
+    elif key_low is not None:
+        res["key_low"] = round(key_low, 2)
+        res["key_low_date"] = key_date
+    return res
+
+
+# ============================================================
+# 九、大盘基础行情提取
+# ============================================================
+
+def _extract_overview(data, v9):
+    """从输入数据和V9结果中提取大盘概况"""
+    ov = MarketOverview()
+
+    # 指数数据（从 index_data 中取，key 是中文名称，value 是 DataFrame）
+    index_data = getattr(data, 'index_data', {}) or {}
+    if index_data:
+        def _get_last(idx_name):
+            """从DataFrame取最后一行的收盘和涨跌幅"""
+            df = index_data.get(idx_name)
+            if df is None or len(df) == 0:
+                return 0.0, 0.0
+            try:
+                last = df.iloc[-1]
+                close = float(last.get('close', last.get('Close', 0)))
+                # 涨跌幅：如果有 pct_chg 就用，没有就从前一行算
+                if 'pct_chg' in df.columns:
+                    chg = float(last['pct_chg'])
+                elif 'chg_pct' in df.columns:
+                    chg = float(last['chg_pct'])
+                elif len(df) >= 2:
+                    prev = float(df.iloc[-2].get('close', 0))
+                    chg = (close - prev) / prev * 100 if prev > 0 else 0.0
+                else:
+                    chg = 0.0
+                return close, chg
+            except Exception:
+                return 0.0, 0.0
+
+        ov.sz_price, ov.sz_chg = _get_last("上证指数")
+        ov.hs300_price, ov.hs300_chg = _get_last("沪深300")
+        ov.zz2000_price, ov.zz2000_chg = _get_last("中证2000")
+
+    # 如果index_data没有，从v9结果中兜底
+    if ov.sz_price == 0:
+        ov.sz_price = v9.l1_index.details.get('sz_close', 0)
+        ov.sz_chg = v9.l1_index.details.get('sz_chg', 0)
+
+    # overview 数据
+    overview = getattr(data, 'overview', None)
+    if overview:
+        ov.amount = overview.get('amount', overview.get('total_amount', 0)) or 0
+        ov.up_count = int(overview.get('up_count', overview.get('up', 0)) or 0)
+        ov.down_count = int(overview.get('down_count', overview.get('down', 0)) or 0)
+
+    # 从 V9 l2_breadth 兜底上涨/下跌数
+    if ov.up_count == 0 and v9.l2_breadth.details:
+        up_ratio = v9.l2_breadth.details.get('up_ratio', 50)
+        total = v9.l2_breadth.details.get('total_stocks', 5000)
+        ov.up_count = int(total * up_ratio / 100)
+        ov.down_count = int(total * (100 - up_ratio) / 100)
+
+    # 涨跌停数据（优先 overview 涨停池/跌停池口径，与大盘概况一致；limit_stats 作兜底）
+    if overview:
+        ov.zt_count = int(overview.get('zt_count', 0) or 0)
+        ov.dt_count = int(overview.get('dt_count', 0) or 0)
+        ov.zb_count = int(overview.get('zb_count', 0) or 0)
+        ov.zb_rate = float(overview.get('zb_rate', 0) or 0)
+    if ov.zt_count == 0:
+        limit_stats = getattr(data, 'limit_stats', None)
+        if limit_stats:
+            ov.zt_count = int(limit_stats.get('zt_count', limit_stats.get('limit_up', 0)) or 0)
+            ov.dt_count = int(limit_stats.get('dt_count', limit_stats.get('limit_down', 0)) or 0)
+            ov.zb_count = int(limit_stats.get('zb_count', limit_stats.get('broken_count', limit_stats.get('broken', 0))) or 0)
+            ov.zb_rate = float(limit_stats.get('zb_rate', limit_stats.get('broken_rate', 0)) or 0)
+
+    # 从 V9 l4_sentiment 兜底
+    if ov.zt_count == 0:
+        ov.zt_count = int(v9.l4_sentiment.details.get('zt_count', 0))
+        ov.dt_count = int(v9.l4_sentiment.details.get('dt_count', 0))
+        ov.zb_rate = float(v9.l4_sentiment.details.get('broken_rate', 0))
+    if ov.zb_count == 0 and ov.zb_rate > 0 and ov.zt_count > 0:
+        # 炸板数 = 涨停数 * 炸板率 / (1 - 炸板率)
+        zb_est = ov.zt_count * ov.zb_rate / max(100 - ov.zb_rate, 1)
+        ov.zb_count = int(round(zb_est))
+
+    # 最高连板
+    ov.max_height = int(getattr(data, 'max_limit_height', 0) or 0)
+
+    # 成交额（亿）：如果是元级别转成亿
+    if ov.amount > 100000:
+        ov.amount = round(ov.amount / 100000000, 0)
+
+    return ov
+
+
+# ============================================================
+# 十、6项一致性自动检查
+# ============================================================
+
+def _run_consistency_checks(r, v9):
+    checks = {}
+
+    # 检查1：仓位一致（目标在正常区间内，极端风险/一票否决/跌破关键低点除外）
+    if r.emergency_brake or r.weak_veto or r.breakdown_active:
+        checks["仓位一致"] = "PASS"
+    elif r.position_normal_min <= r.position_target <= r.position_normal_max:
+        checks["仓位一致"] = "PASS"
+    else:
+        checks["仓位一致"] = "FAIL（目标%d%%，区间%d%%~%d%%）" % (
+            r.position_target, r.position_normal_min, r.position_normal_max)
+
+    # 检查2：量价一致（使用相对量能判断，且调整不超过±5%）
+    if -5 <= r.liq_adj <= 5 and 0 < r.amount_ratio <= 3:
+        checks["量价一致"] = "PASS"
+    else:
+        checks["量价一致"] = "FAIL（量价调整%d%%或量比%.2f异常）" % (r.liq_adj, r.amount_ratio)
+
+    # 检查3：加仓一致
+    if r.action == "加仓":
+        if _check_level1_add(v9) or _check_level2_add(v9):
+            checks["加仓一致"] = "PASS"
+        else:
+            checks["加仓一致"] = "FAIL（无满足的加仓条件）"
+    else:
+        checks["加仓一致"] = "PASS"
+
+    # 检查4：D日一致（D1/D2/D3不能单独触发加仓）
+    if r.action == "加仓" and r.d_day <= 3:
+        # 加仓必须是因为满足一级/二级条件，而不是因为D日
+        if _check_level1_add(v9) or _check_level2_add(v9):
+            checks["D日一致"] = "PASS"
+        else:
+            checks["D日一致"] = "FAIL（D%d单独触发了加仓）" % r.d_day
+    else:
+        checks["D日一致"] = "PASS"
+
+    # 检查5：风险优先
+    if r.emergency_brake:
+        if r.position_target <= 10:
+            checks["风险优先"] = "PASS"
+        else:
+            checks["风险优先"] = "FAIL（紧急制动但仓位%d%%>10%%）" % r.position_target
+    else:
+        checks["风险优先"] = "PASS"
+
+    # 检查6：星级一致（跌破关键低点/一票否决时星级由风控锁定，不参与区间核对）
+    star_count = r.final_grade.count("★")
+    if r.breakdown_active or r.weak_veto:
+        checks["星级一致"] = "PASS"
+    else:
+        if r.market_regime == "强趋势":
+            expected_min, expected_max = 4, 5
+        elif r.market_regime in ("震荡有主线", "高位分歧", "冰点修复"):
+            expected_min, expected_max = 3, 4
+        elif r.market_regime in ("震荡无主线",):
+            expected_min, expected_max = 2, 3
+        else:
+            expected_min, expected_max = 1, 2
+        if expected_min <= star_count <= expected_max:
+            checks["星级一致"] = "PASS"
+        else:
+            checks["星级一致"] = "FAIL（%s，星级%d）" % (r.market_regime, star_count)
+
+    # 检查7：基础行情完整
+    ov = r.overview
+    if ov and ov.sz_price > 0 and ov.zt_count >= 0 and ov.amount > 0 and ov.max_height >= 0:
+        checks["基础行情"] = "PASS"
+    else:
+        checks["基础行情"] = "FAIL"
+
+    return checks
+
+
+# ============================================================
+# 十一、主引擎
+# ============================================================
+
+class PositionEngineV99:
+    VERSION = "V9.9"
+
+    def __init__(self):
+        self.v9 = PositionEngineV9()
+
+    def analyze(self, data, prev_pos=None):
+        v9 = self.v9.analyze(data)
+        r = PositionV99Result(prev_position=prev_pos, v9_full_result=v9)
+
+        # 提取大盘基础行情
+        r.overview = _extract_overview(data, v9)
+
+        # 5维判断 + 量价环境
+        r.market_trend = _judge_market_trend(v9)
+        r.money_effect = _judge_money_effect(v9)
+        r.mainline_strength = _judge_mainline(v9)
+        r.risk_state = _judge_risk(v9)
+        r.d_day, r.d_day_desc = _judge_dday(v9)
+        r.liquidity_env, r.liq_adj, r.amount_ratio = _judge_liquidity_env(v9)
+
+        # 极弱风控数据：上涨家数比例 + 炸板率比例（一票否决闸门用）
+        up_ratio = v9.l2_breadth.details.get('up_ratio', 50) / 100.0
+        bomb_ratio = v9.l4_sentiment.details.get('broken_rate', 0) / 100.0
+        r.up_ratio = up_ratio
+        r.bomb_ratio = bomb_ratio
+        prev_up_ratio = getattr(data, 'prev_up_ratio', None)
+        r.prev_up_ratio = (None if prev_up_ratio is None else float(prev_up_ratio) / 100.0)
+
+        # ★ P1：先判定市场状态，闸门阈值按状态自适应
+        r.market_state = _judge_market_state(getattr(data, 'index_data', {}) or {})
+        r.breadth_veto_threshold = BREADTH_VETO_THRESHOLD.get(r.market_state, 0.35)
+
+        # ★ P2：位置 / 波动率风控（高位均值回归风险 + 低波上涨末期）
+        regime = _calc_position_vol_regime(getattr(data, 'index_data', {}) or {})
+        r.pos_pct = regime['pos_pct']
+        r.vol_pct = regime['vol_pct']
+        r.timing_risk_factor = 1.0
+        r.timing_risk_note = ""
+        if r.pos_pct >= HIGH_POSITION_THRESHOLD:
+            r.timing_risk_factor *= HIGH_POSITION_FACTOR
+            r.timing_risk_note = "高位(位置分位%.0f%%)均值回归风险" % r.pos_pct
+        if r.vol_pct <= LOW_VOL_THRESHOLD:
+            r.timing_risk_factor *= LOW_VOL_FACTOR
+            r.timing_risk_note = (r.timing_risk_note + " " if r.timing_risk_note else "") + \
+                                 "低波(波动分位%.0f%%)上涨末期" % r.vol_pct
+
+        # ★ P1 广度钝化：阈值按市场状态自适应（普跌日 30%），解除阈值上调至 65%
+        weak_veto = _is_weak_veto(up_ratio, r.prev_up_ratio, r.market_state)
+        r.weak_veto = weak_veto
+        # 普跌日否决 ≠ 情绪退潮：广度低是普跌日的常态（91% 的日子广度<30%），
+        # 实证普跌日广度<35% 组 fwd1 为正、胜率 53%，硬清仓会踏空底部反弹
+        is_bear_veto = weak_veto and r.market_state == MARKET_STATE_FALL
+        # 一票否决时赚钱效应降级为"低"（上涨占比仅30%的盘面，不能再标"中"）
+        if weak_veto:
+            r.money_effect = "低"
+
+        # Regime
+        regime_key = _classify_regime(v9, r.market_trend, r.money_effect, r.mainline_strength)
+        info = SEVEN_REGIMES[regime_key]
+        r.market_regime = info["cn"]
+        r.base_position = info["base"]
+        normal_min = info["normal_min"]
+        normal_max = info["normal_max"]
+        r.position_confirm_cap = info["confirm_cap"]
+
+        # 极弱风控一票否决：上涨家数低于阈值 → 上限强制封死15%
+        if weak_veto:
+            if not is_bear_veto:
+                r.market_regime = "情绪冰点/退潮"
+            r.position_confirm_cap = min(r.position_confirm_cap, 15)
+            normal_max = min(normal_max, 15)
+            if normal_min > normal_max:
+                normal_min = normal_max
+
+        # ★ 新增：跌破日线级别关键低点且未收复 → 强制空仓（直到底分型/右侧买入信号）
+        brk = _detect_key_low_breakdown(getattr(data, 'index_data', {}) or {})
+        r.breakdown_active = bool(brk.get("active"))
+        r.breakdown_key_low = brk.get("key_low")
+        r.breakdown_key_low_date = brk.get("key_low_date", "")
+        r.breakdown_reason = brk.get("reason", "")
+        if r.breakdown_active:
+            r.position_confirm_cap = min(r.position_confirm_cap, 10)
+
+        # 环境调整
+        r.money_adj = MONEY_EFFECT_ADJ.get(r.money_effect, 0)
+        r.mainline_adj = MAINLINE_ADJ.get(r.mainline_strength, 0)
+        r.risk_adj = RISK_ADJ.get(r.risk_state, 0)
+        r.liq_adj = LIQ_ADJ.get(r.liquidity_env, 0)
+
+        # 基准目标 = 基础仓位 + 负向调整（正向调整不主动加，需确认后逐步兑现）
+        neg_adj = min(0, r.money_adj) + min(0, r.mainline_adj) + min(0, r.risk_adj) + min(0, r.liq_adj)
+        base_target = r.base_position + neg_adj
+        # 潜在上限 = 基础仓位 + 全部调整（正向调整是潜在可兑现空间）
+        potential_target = r.base_position + r.money_adj + r.mainline_adj + r.risk_adj + r.liq_adj
+        potential_target = max(0, min(r.position_confirm_cap, potential_target))
+
+        target = max(0, min(r.position_confirm_cap, base_target))
+
+        # 极端风险闸门
+        r.emergency_brake = _check_level2_reduce(v9) or (v9.position.emergency_brake in ("LEVEL3", "LEVEL4"))
+        if r.emergency_brake:
+            target = min(target, 10)
+            potential_target = min(potential_target, 10)
+            r.position_confirm_cap = min(r.position_confirm_cap, 10)
+            normal_min = 0
+            normal_max = 10
+
+        # ★ P2：位置/波动率择时风控 → 仓位上限折扣
+        #   高位（位置分位≥80）均值回归风险 ρ(fwd5)=-0.206 (p=0.008)
+        #   低波（波动分位≤30）上涨末期     ρ(fwd5)=-2.12%/胜率24.2%（最差档）
+        #   两个维度都只做上限折扣，不做加仓信号，避免在弱市反向加码。
+        if r.timing_risk_factor < 1.0:
+            base_target = int(round(base_target * r.timing_risk_factor))
+            potential_target = int(round(potential_target * r.timing_risk_factor))
+            target = int(round(target * r.timing_risk_factor))
+            r.position_confirm_cap = max(0, int(round(r.position_confirm_cap * r.timing_risk_factor)))
+            if normal_max > r.position_confirm_cap:
+                normal_max = r.position_confirm_cap
+            if normal_min > normal_max:
+                normal_min = normal_max
+
+        # 动作判断（严格：条件不满足绝不输出"加仓"）
+        # 一票否决：上涨家数低于阈值 → 减仓/防守（优先于一切）
+        if weak_veto:
+            if is_bear_veto:
+                # ★ P1：普跌日广度低是底部特征 → 控仓保留试探仓，不做清仓式防守
+                r.action = "减仓/控仓"
+                r.action_detail = "普跌日广度%.0f%%＜%.0f%%（底部特征，保留试探仓）" % (
+                    up_ratio * 100, r.breadth_veto_threshold * 100)
+            else:
+                r.action = "减仓/防守"
+                if up_ratio < r.breadth_veto_threshold:
+                    r.action_detail = "极弱风控（上涨%.0f%%＜%.0f%%）" % (
+                        up_ratio * 100, r.breadth_veto_threshold * 100)
+                else:
+                    # 广度翻过阈值但前一日仍在否决区 → 钝化，需达到释放阈值(65%)才确认
+                    r.action_detail = "广度未确认（昨%.0f%%→今%.0f%%，需≥%.0f%%）" % (
+                        (r.prev_up_ratio or 0.0) * 100, up_ratio * 100,
+                        BREADTH_RELEASE_THRESHOLD * 100)
+        elif up_ratio > 0.55 and bomb_ratio < 0.20:
+            # 加仓必须赚钱效应确认：上涨>55% 且 炸板率<20%（修复"弱势却加仓"BUG）
+            if _check_level2_add(v9):
+                r.action = "加仓"
+                r.action_detail = "5～10%"
+                target = min(potential_target, normal_max, target + 10)
+            elif _check_level1_add(v9):
+                r.action = "加仓"
+                r.action_detail = "5%"
+                target = min(potential_target, normal_max, target + 5)
+            else:
+                r.action = "维持"
+                r.action_detail = ""
+        elif up_ratio < 0.40 or (bomb_ratio > 0.30 and r.market_state != MARKET_STATE_RISE) or r.d_day >= 6:
+            # 弱势/高炸板/下跌防守 → 减仓控仓
+            # ★ P1：普涨日不因高炸板率减仓 —— 实证普涨日炸板>35% 组 fwd5 为正
+            #   （>45% 组 N=2 fwd5 +9.83%，≤25% 组 N=25 fwd5 -1.41%），
+            #   普涨日炸板率高是打板资金活跃的表现，不是见顶信号。
+            r.action = "减仓/控仓"
+            r.action_detail = "弱势环境（涨%.0f%%/炸板%.0f%%/D%d）" % (
+                up_ratio * 100, bomb_ratio * 100, r.d_day)
+        elif _check_level2_reduce(v9):
+            r.action = "快速减仓"
+            r.action_detail = "10～20%"
+            target = max(0, target - 15)
+        elif _check_level1_reduce(v9, r.market_state):
+            r.action = "减仓"
+            r.action_detail = "5～10%"
+            target = max(0, target - 8)
+        else:
+            r.action = "维持"
+            r.action_detail = ""
+
+        # 目标仓位计算：
+        # 1) 各动作先给出「期望目标」（基于当日市场状态的合理持仓水平）
+        # 2) ★ 统一以 prev 为锚做「单日变化上限」夹紧，杜绝"一日跳档"
+        if r.action == "加仓":
+            target = min(potential_target, normal_max, base_target + 10)
+        elif r.action == "快速减仓":
+            target = max(0, base_target - 15)
+        elif r.action == "减仓":
+            target = max(0, base_target - 8)
+        elif r.action in ("减仓/防守", "减仓/控仓"):
+            # 防守/控仓：在当前仓位上减 10%，且不超过风控上限（一票否决15%/普通确认上限）
+            cap = r.position_confirm_cap
+            if is_bear_veto:
+                # ★ P1：普跌日保留试探仓下限 —— 广度低是底部特征，
+                #   清仓式防守会踏空反弹（普跌日广度<35% 组 fwd1 为正、胜率 53%）
+                base = (prev_pos - 10) if prev_pos is not None else base_target
+                target = max(BEAR_TRIAL_POSITION_FLOOR, min(base, cap))
+            else:
+                target = (max(0, min(prev_pos - 10, cap))
+                          if prev_pos is not None else min(base_target, cap))
+        else:  # 维持
+            target = base_target
+
+        # 最终上限
+        target = max(0, min(r.position_confirm_cap, target))
+
+        # ★ 单日变化上限统一化（以 prev 为锚；极端风险制动与跌破关键低点除外）
+        #   加仓 ≤ +8%；减仓/防守 ≤ -15%；维持 仅在 prev 附近 ±5% 内收敛
+        if prev_pos is not None and not r.emergency_brake and not r.breakdown_active:
+            if "加仓" in r.action:
+                target = min(target, prev_pos + 8)
+            elif "减仓" in r.action or "空仓" in r.action:
+                target = max(target, prev_pos - 15)
+            else:  # 维持
+                target = max(prev_pos - 5, min(prev_pos + 5, target))
+
+        # 目标仓位落在正常区间内：normal_max 作硬顶；normal_min 仅作「指引」
+        # （不再把 normal_min 当作当日硬地板——否则状态切档会凭空制造 25pp 台阶）
+        if not r.emergency_brake and not r.weak_veto and not r.breakdown_active \
+                and r.action != "快速减仓":
+            if target > normal_max:
+                target = normal_max
+
+        target = int(round(target))
+
+        # ★ 跌破日线级别关键低点且未收复 → 强制空仓（覆盖以上全部结果）
+        if r.breakdown_active:
+            target = 0
+            r.action = "空仓/等待"
+            r.action_detail = "跌破关键低点%.2f（%s）未收复，等底分型/右侧信号" % (
+                r.breakdown_key_low, r.breakdown_key_low_date)
+            normal_min = 0
+            normal_max = min(normal_max, 10)
+
+        r.position_target = target
+        r.position_normal_min = normal_min
+        r.position_normal_max = normal_max
+
+        # 可加仓空间
+        r.add_room = r.position_confirm_cap - r.position_target
+
+        # 一句话
+        if r.breakdown_active:
+            r.one_sentence = "跌破日线级别关键低点%.2f（%s）后未收复，空仓等待，直到底分型或右侧买入信号。" % (
+                r.breakdown_key_low, r.breakdown_key_low_date)
+        else:
+            r.one_sentence = _one_sentence(
+                r.market_regime, r.mainline_strength,
+                r.risk_state, r.liquidity_env
+            )
+
+        # 加减仓条件
+        r.add_conditions = self._build_add_conditions(v9)
+        r.reduce_conditions = self._build_reduce_conditions(v9)
+
+        # 短线策略
+        r.short_term_hint = self._build_short_term_hint(r)
+
+        # 评级（跌破关键低点/一票否决时直接锁定防守星级）
+        if r.breakdown_active or r.weak_veto:
+            r.final_grade = "★ 防守为主"
+        else:
+            r.final_grade = _final_grade(r.market_regime, r.money_effect, r.mainline_strength, r.liquidity_env)
+
+        # 置信度
+        r.confidence = int(v9.regime.confidence * 100)
+
+        # 一致性检查
+        r.consistency_checks = _run_consistency_checks(r, v9)
+
+        return r
+
+    def _build_add_conditions(self, v9):
+        conds = []
+        up = v9.l2_breadth.details.get('up_ratio', 50)
+        zb = v9.l4_sentiment.details.get('broken_rate', 0)
+        if up <= 55:
+            conds.append("上涨家数 >55%%（当前 %.0f%%）" % up)
+        if zb >= 25:
+            conds.append("炸板率 <25%%（当前 %.0f%%）" % zb)
+        conds.append("主线强度继续提升")
+        return conds[:3]
+
+    def _build_reduce_conditions(self, v9):
+        conds = []
+        up = v9.l2_breadth.details.get('up_ratio', 50)
+        zb = v9.l4_sentiment.details.get('broken_rate', 0)
+        if up > 40:
+            conds.append("上涨家数 <40%%（当前 %.0f%%）" % up)
+        if zb < 35:
+            conds.append("炸板率 >35%%（当前 %.0f%%）" % zb)
+        conds.append("主线龙头破位或退潮")
+        return conds[:3]
+
+    def _build_short_term_hint(self, r):
+        if r.breakdown_active:
+            return "空仓等待：跌破关键低点未收复，等底分型/右侧信号再入场"
+        if r.market_regime in ("快速下跌", "极度冰点", "情绪冰点/退潮"):
+            return "空仓观望为主，不抄底"
+        if r.mainline_strength == "无":
+            return "无主线，少动多看"
+        if r.d_day <= 2:
+            return "D1-D2：确认后小仓位试错"
+        if r.d_day == 3:
+            return "D3：首分低吸重点窗口"
+        if r.d_day in (4, 5):
+            return "D4-D5：趋势延续，持有或回踩加仓"
+        if r.d_day in (6, 7):
+            return "D6-D7：下跌防守，不追涨"
+        return "等待新一轮启动信号"
+
+    def generate_report(self, r):
+        L = []
+        L.append("═" * 42)
+        L.append("       A股短线仓位建议  V9.9")
+        L.append("═" * 42)
+
+        # 大盘概况
+        ov = r.overview
+        if ov:
+            def _fmt_chg(v):
+                return ("+%.2f%%" % v) if v >= 0 else ("%.2f%%" % v)
+            sz_line = ""
+            if ov.sz_price > 0:
+                sz_line = "上证%.2f（%s）" % (ov.sz_price, _fmt_chg(ov.sz_chg))
+            hs_line = ""
+            if ov.hs300_price > 0:
+                hs_line = "  沪深300 %.2f（%s）" % (ov.hs300_price, _fmt_chg(ov.hs300_chg))
+            zz_line = ""
+            if ov.zz2000_price > 0:
+                zz_line = "  中证2000 %.2f（%s）" % (ov.zz2000_price, _fmt_chg(ov.zz2000_chg))
+            L.append(sz_line + hs_line + zz_line)
+
+            amount_line = ""
+            if ov.amount > 0:
+                amount_line = "成交%.0f亿" % ov.amount
+            ud_line = ""
+            if ov.up_count > 0 or ov.down_count > 0:
+                ud_line = "  涨%d/跌%d" % (ov.up_count, ov.down_count)
+            ztdt_line = "  涨%d/跌%d" % (ov.zt_count, ov.dt_count)
+            L.append(amount_line + ud_line + ztdt_line)
+
+            zb_line = ""
+            if ov.zb_rate > 0:
+                zb_line = "炸板%d（%.1f%%）" % (ov.zb_count, ov.zb_rate)
+            lb_line = ""
+            if ov.max_height > 0:
+                lb_line = "  最高连板%d板" % ov.max_height
+            L.append(zb_line + lb_line)
+        else:
+            L.append("（暂无大盘数据）")
+
+        L.append("─" * 42)
+
+        # 市场判断
+        L.append("市场：%s | 赚钱：%s | 主线：%s" % (r.market_regime, r.money_effect, r.mainline_strength))
+        liq_line = "量价：%s" % r.liquidity_env
+        if r.amount_ratio > 0:
+            liq_line += "（量比%.2f）" % r.amount_ratio
+        # 节奏标签用完整含义说明（d_day_desc 是简称，避免"下跌防守（下跌防守…）"式重复）
+        L.append("%s | 风险：%s | 节奏：D%d %s" % (
+            liq_line, r.risk_state, r.d_day,
+            D_DAY_MEANING.get(r.d_day, "中性")))
+        # ★ P1：输出市场状态与生效的广度阈值，便于核对闸门口径
+        L.append("市场状态：%s（广度否决阈值 %.0f%%）" % (
+            r.market_state, r.breadth_veto_threshold * 100))
+        # ★ P2：输出位置/波动率择时维度
+        L.append("择时维度：位置分位 %.0f%% | 波动分位 %.0f%%%s" % (
+            r.pos_pct, r.vol_pct,
+            ("  ⚠ " + r.timing_risk_note) if r.timing_risk_note else ""))
+        if r.breakdown_active:
+            L.append("⚠ 关键低点：%s已跌破且未收复（%s）" % (
+                r.breakdown_key_low, r.breakdown_key_low_date))
+        L.append("")
+        L.append("当前目标：%d%%   可加仓空间：%d%%" % (r.position_target, r.add_room))
+        L.append("正常区间：%d%%～%d%%   确认上限：%d%%" % (r.position_normal_min, r.position_normal_max, r.position_confirm_cap))
+        L.append("")
+        L.append("一句话：%s" % r.one_sentence)
+        L.append("─" * 42)
+
+        # 动作
+        action_line = "【动作】%s" % r.action
+        if r.action_detail:
+            action_line += "（%s）" % r.action_detail
+        L.append(action_line)
+
+        if r.action == "维持" and not _check_level1_add(r.v9_full_result):
+            L.append("暂不加仓，等待市场进一步确认。")
+
+        L.append("")
+        L.append("加仓：")
+        for i, c in enumerate(r.add_conditions, 1):
+            L.append("  %s %s" % (_circled_num(i), c))
+        L.append("减仓：")
+        for i, c in enumerate(r.reduce_conditions, 1):
+            L.append("  %s %s" % (_circled_num(i), c))
+
+        L.append("─" * 42)
+
+        # 策略
+        L.append("【策略】%s" % r.short_term_hint)
+        if r.breakdown_active or r.weak_veto:
+            L.append("主线：少做  非主线：不做")
+        elif r.mainline_strength in ("强", "中"):
+            L.append("主线：做    非主线：少做")
+        else:
+            L.append("主线：少做  非主线：不做")
+        L.append("最终：%s" % r.final_grade)
+        L.append("═" * 42)
+        return "\n".join(L)
+
+
+def _circled_num(n):
+    """数字转带圈字符 ①②③..."""
+    if 1 <= n <= 20:
+        return chr(0x2460 + n - 1)
+    return "%d." % n
+
+
+# ============================================================
+# 十二、便捷接口
+# ============================================================

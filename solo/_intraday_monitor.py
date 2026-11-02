@@ -1,0 +1,425 @@
+# -*- coding: utf-8 -*-
+"""盘中动态分析器
+
+按「关键时点」抓取实时快照 → 跑 V10.1 判定 → 输出仓位建议与时点敏感度提示。
+
+★ 为什么这样设计（依据 _bt_intraday_timing.py 的实证）：
+  用 20 个交易日 × 6 个指数的 5 分钟 K 线，测「某时点读数」与「当日收盘方向」的一致性：
+
+    时点        方向一致率   假信号率   结论
+    09:45~10:30   40~44%    29~33%   不可用于决策（甚至负相关）
+    11:00~11:30   51~59%    20~24%   仅作早期预警
+    13:30          72.8%      13.2%   第一个可用决策点
+    14:30          92.1%       1.8%   ★ 主决策点
+    14:50          94.7%       0.0%   ★ 最终确认点
+
+  所以：
+    · 09:45~10:30 只做「记录」，不做「建议」
+    · 11:30 输出「初步判断 + 置信折扣」
+    · 13:30 起输出「可执行建议」
+    · 14:30/14:50 输出「最终仓位」
+
+用法：
+    python _intraday_monitor.py                # 自动判断当前该做什么
+    python _intraday_monitor.py --slot 1430    # 指定时点
+    python _intraday_monitor.py --push         # 推送到微信
+"""
+import os
+import sys
+import argparse
+import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import numpy as np
+import pandas as pd
+
+import market_regime_v10 as v10
+import market_regime_v101 as v101
+import etf_mainline as em
+import _realtime_snapshot as rt
+import _prev_snapshot as pvs
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+
+# ★ 关键时点表：名称 -> (时刻, 决策权重, 说明)
+SLOTS = {
+    '0945': ('09:45', 0.00, '开盘定调（仅记录，不作决策）'),
+    '1030': ('10:30', 0.00, '早盘中段（仅记录，不作决策）'),
+    '1130': ('11:30', 0.55, '午盘收盘（早期预警，置信打折）'),
+    '1330': ('13:30', 0.75, '午后开盘（第一个可执行决策点）'),
+    '1400': ('14:00', 0.80, '午后中段（可执行）'),
+    '1430': ('14:30', 0.95, '★ 主决策点（读数基本等同收盘）'),
+    '1450': ('14:50', 1.00, '★ 最终确认点（尾盘决策窗口）'),
+}
+
+
+def now_slot():
+    """根据当前时间判断处于哪个时点窗口，返回 (slot_key, minutes_since_slot)"""
+    t = datetime.datetime.now()
+    hm = t.hour * 100 + t.minute
+    for key in sorted(SLOTS, reverse=True):
+        h, m = SLOTS[key][0].split(':')
+        target = int(h) * 100 + int(m)
+        if hm >= target:
+            return key, hm - target
+    return None, None
+
+
+def _fetch_all(trade_date):
+    """抓实时快照并修正停牌"""
+    mkt = rt.fetch_market(trade_date)
+    etf = rt.fetch_etf(trade_date)
+    return mkt, etf
+
+
+def _broadth_history(snap):
+    """历史广度序列 —— 从前日快照取（收盘口径，与盘后一致）
+
+    ★ 不再全表重算：①快 ②口径与盘后报告一致（盘中重算会混入未收盘数据）
+    """
+    bs = (snap or {}).get('breadth_series') or []
+    return [x['ratio'] for x in bs]
+
+
+def _state_via_v10(trade_date, mkt, etf, snap, ratio, zt, dt_, promo,
+                   strong_mean, strong_up, ma5, ma20, hist):
+    """★ V10.5：盘中仓位判定 = **真实状态机 + 真实权限表**。
+
+    做法：
+      1. 用昨日收盘快照做底（指数、成交额等盘中拿不到的字段沿用昨日值）
+      2. 用实时数据覆盖 breadth / limit 的可盘中计算字段
+      3. 跑 V10.0 的 detect_market_nodes + decide_state（与盘后完全同一套）
+      4. 用 V10.1 的 position_authority 取该状态的仓位权限
+
+    返回 (state, cap, reasons)
+    """
+    import copy
+    import market_regime_v10 as v10
+    import market_regime_v101 as v101
+
+    v10cfg = v10.load_config()
+    v101cfg = v101.load_config()
+
+    # ---- 1) 底：昨日收盘快照 ----
+    base = None
+    try:
+        base = v10.collect_market_snapshot(snap.get('trade_date'), v10cfg)
+    except Exception:
+        base = None
+
+    if base is None:
+        # 无昨日快照 → 退化为"只有广度"的最小快照
+        base = v10.MarketSnapshot(trade_date=trade_date)
+
+    s2 = copy.deepcopy(base)
+    s2.trade_date = trade_date
+
+    # ---- 2) 覆盖 breadth ----
+    #   广度历史序列口径：
+    #     · 基准用**昨日收盘快照**的 _hist（收盘口径，与盘后一致）
+    #     · 末位替换为今日实时值（不是追加，否则今日会被算两次）
+    #     · 前日广度 = 序列倒数第二位（今日实时值的前一天）
+    b = s2.breadth
+    hist_full = list(b._hist or [])
+    if not hist_full:
+        # 无基准序列 → 用快照里的 breadth_series 兜底
+        bs = snap.get('breadth_series') or []
+        hist_full = [x['ratio'] for x in bs]
+    if hist_full:
+        hist_full = hist_full[:-1] + [ratio * 100]
+        prev_ratio_pct = hist_full[-2] if len(hist_full) >= 2 else (ratio * 100)
+    else:
+        hist_full = [ratio * 100]
+        prev_ratio_pct = ratio * 100
+    b._hist = hist_full
+    b.breadth_ratio = ratio
+    b.prev_breadth_ratio = prev_ratio_pct / 100.0
+    b.delta_pp = (ratio * 100) - prev_ratio_pct
+
+    # ---- 3) 覆盖 limit ----
+    lim = s2.limit
+    lim.zt_count = zt
+    lim.dt_count = dt_
+    if promo is not None:
+        lim.promotion_rate = promo
+    if strong_mean is not None:
+        lim.strong_stock_mean_pct = strong_mean
+    if strong_up is not None:
+        lim.strong_stock_up_ratio = strong_up / 100.0
+
+    # ---- 4) 跑真实状态机 ----
+    try:
+        node = v10.detect_market_nodes(s2, v10cfg)
+        prev = v10.load_prev_state(trade_date)
+        dec = v10.decide_state(s2, node, prev, v10cfg)
+        state = dec.state
+        reasons = list(dec.reasons or [])
+    except Exception as e:
+        reasons = [f"状态机盘中计算失败：{e}"]
+        state, dec = 'S3', None
+
+    # ---- 5) 权限表 ----
+    try:
+        pa = v101.position_authority(state, v101cfg)
+        cap = int(pa.max_position)
+    except Exception:
+        cap = 5
+    return state, cap, reasons
+
+
+def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
+    """核心分析：返回结构化结果
+
+    snap: 前日状态快照（从盘后报告提取），提供连续计算所需的基准
+    """
+    cfg = v101.load_config()
+    slot_time, weight, note = SLOTS[slot_key]
+    if snap is None:
+        # ★ 必须排除当天：盘后刚跑完时今天的报告已存在，
+        #   不排除会把「今日」当成「昨日」→ 晋级率恒 100%、强股表现失真
+        snap = pvs.build(before_date=trade_date)
+
+    if mkt is None or etf is None:
+        mkt, etf = _fetch_all(trade_date)
+
+    # ---- 广度 ----
+    up = int((mkt.pct_chg > 0).sum()); dn = int((mkt.pct_chg < 0).sum())
+    ratio = up / (up + dn) if (up + dn) else 0.0
+    from market_regime_v10 import _limit_thresholds as _v10thr
+    thr = mkt.ts_code.map(_v10thr)
+    zt = int(((mkt.pct_chg >= thr * 0.99) & (mkt.pct_chg < thr + 0.1)).sum())
+    dt_ = int(((mkt.pct_chg <= -thr * 0.99) & (mkt.pct_chg > -thr - 0.1)).sum())
+    amt_so_far = mkt.amount.sum() / 1e8
+    # 按已过交易时段比例折算成预估全日成交额
+    # A股：09:30-11:30 (120min) + 13:00-15:00 (120min) = 240min
+    _now = datetime.datetime.now()
+    _hm = _now.hour * 60 + _now.minute
+    if _hm <= 690:      # 11:30 之前
+        _elapsed = max(1, _hm - 570)
+    else:               # 13:00 之后
+        _elapsed = 120 + max(1, _hm - 780)
+    _elapsed = min(_elapsed, 240)
+    amt_est = amt_so_far * 240 / _elapsed if _elapsed else amt_so_far
+    amt_half = amt_est      # 变量名沿用，实际存的是「预估全日」
+
+    hist = _broadth_history(snap)
+    ma5 = float(np.mean(hist[-4:] + [ratio * 100])) if len(hist) >= 4 else None
+    ma20 = float(np.mean(hist[-19:] + [ratio * 100])) if len(hist) >= 19 else None
+
+    # ---- 主线（ETF 实时）----
+    ecfg = em.load_config()
+    panel = em.load_etf_panel()
+    panel = panel[panel.trade_date < trade_date].copy()
+    rows = []
+    # ★ 单位归一（实测验证）：新浪 hq.sinajs.cn 的 amount 单位是**元**，
+    #   而 etf_daily 库内存的是 tushare 的**千元**（相差 1000 倍）。
+    #   不归一会让量能比 amt_ratio 虚高约 1000 倍
+    #   （实测传媒 amt_ratio 显示 19.71 倍，实际约 1.3 倍）。
+    #
+    #   换算系数的实证依据（新浪日K volume × 收盘价 反推成交额）：
+    #     159805.SZ 10/30: 53,838,000 股 × 1.030 = 55,453,140 元
+    #                     库内 amount = 56,861  → 比值 975
+    #     512980.SH 10/30: 358,813,600 股 × 0.740 = 265,522,064 元
+    #                     库内 amount = 269,892 → 比值 984
+    #     512880.SH 10/30: 1,437,634,944 股 × 0.962 = 1,383,004,816 元
+    #                     库内 amount = 1,390,266 → 比值 995
+    #   三只独立样本都指向 1000（差异来自 VWAP 与收盘价的微小差别）。
+    for _, r in etf.iterrows():
+        h = panel[panel.ts_code == r.ts_code].sort_values('trade_date')
+        if h.empty:
+            continue
+        nav_new = h.nav.iloc[-1] * (1 + r.pct_chg / 100)
+        amt_new = float(r.amount) / 1000.0     # 元 → 千元
+        rows.append({'ts_code': r.ts_code, 'trade_date': trade_date,
+                     'nav': nav_new, 'amount': amt_new, 'pct_chg': r.pct_chg})
+    if rows:
+        panel_rt = pd.concat([panel, pd.DataFrame(rows)], ignore_index=True)
+        ml = em.detect_mainlines(trade_date, ecfg, panel_rt)
+    else:
+        ml = {'industries': [], 'details': {}}
+    det = ml.get('details') or {}
+
+    # ---- 模块判定 ----
+    b = cfg['strong_uptrend']['breadth']
+    m = cfg['strong_uptrend']['money_effect']
+    c_breadth_ma = (ma5 is None or ma20 is None or ma5 >= ma20)
+    c_breadth_lv = (ma5 is None or ma5 >= b['breadth_ma5_min'])
+    c_breadth_zt = zt >= b['zt_count_min']
+    c_breadth_dt = dt_ <= b['dt_count_max']
+    breadth_pass = all([c_breadth_ma, c_breadth_lv, c_breadth_zt, c_breadth_dt])
+
+    # 注：赚钱效应的细分判定放在「昨日涨停股表现」计算之后
+
+    # ---- 状态机基准：直接取前日快照（不再重算历史）----
+    st_row = snap.get('state_row') or {}
+    v10r = snap.get('v10') or {}
+    prev_state = (st_row.get('state') or v10r.get('state')
+                  or 'S1')
+    prev_days = st_row.get('consecutive_days') or v10r.get('state_days') or 1
+    prev_pending = (st_row.get('pending_target') or '',
+                    st_row.get('pending_days') or 0)
+    prev_votes = st_row.get('vote_history') or []
+
+    # ---- 昨日涨停股今日表现 + 连板晋级率（盘中可算！用昨日名单）----
+    zt_list = snap.get('limit_up_list') or []
+    promo = None
+    strong_mean = None
+    strong_up = None
+    if zt_list and mkt is not None:
+        sub = mkt[mkt.ts_code.isin(zt_list)]
+        if len(sub):
+            from market_regime_v10 import _limit_thresholds as _v10thr
+            thr = sub.ts_code.map(_v10thr)
+            pcts = sub.pct_chg.values
+            strong_mean = float(pcts.mean())
+            strong_up = float((pcts > 0).mean() * 100)
+            cont = int(((pcts >= thr.values*0.99) & (pcts < thr.values+0.1)).sum())
+            promo = cont / len(zt_list) * 100
+
+    # ---- 短线赚钱效应判定（跌停/炸板率需收盘，晋级率与强股表现盘中可算）----
+    c_money_dt = dt_ <= m['dt_count_max']
+    c_money_promo = (promo is None) or (promo <= m.get('promotion_rate_max', 100))
+    c_money_strong = (strong_mean is None) or (strong_mean >= m['strong_stock_mean_pct_min'])
+    c_money_su = (strong_up is None) or (strong_up >= m['strong_stock_up_ratio_min']*100)
+    money_pass = all([c_money_dt, c_money_promo, c_money_strong, c_money_su])
+
+    # ---- 仓位建议：★ V10.5 改为调用**真实的状态机 + 权限表** ----
+    #   原实现是自定义启发式（自己判 S3/S4/S5、自己定 5/20/40 的档位），
+    #   与盘后的 V10.1 状态机是两套独立逻辑 → 同一天必然给出不同结论。
+    #   实测 2026-11-02：盘中给 20%（启发式），盘后给 5%（状态机卡在 S3）。
+    #   现改为：构造盘中快照 → 跑 V10.0 状态机 → 取 V10.1 权限表，
+    #   保证**盘中与盘后同一套判定**，差异只来自数据本身的时效性。
+    state_guess, cap, state_reasons = _state_via_v10(
+        trade_date, mkt, etf, snap, ratio, zt, dt_, promo,
+        strong_mean, strong_up, ma5, ma20, hist)
+
+    # 时点置信折扣：早盘读数不可信 → 但仓位建议本身取整到 5%，
+    # 避免出现 19%、28% 这种伪精确数字（真实档位只有 5/20/30/40/60/100）
+    if weight > 0 and weight < 1:
+        cap = int(round(cap * weight / 5.0) * 5)
+    cap = max(5, min(100, cap))
+
+    return {
+        'trade_date': trade_date, 'slot': slot_key, 'slot_time': slot_time,
+        'weight': weight, 'note': note,
+        'ratio': ratio, 'up': up, 'dn': dn, 'zt': zt, 'dt': dt_,
+        'amt_half': amt_half, 'amt_so_far': amt_so_far, 'ma5': ma5, 'ma20': ma20,
+        'breadth_pass': breadth_pass, 'money_pass': money_pass,
+        'ma_ok': c_breadth_ma, 'lv_ok': c_breadth_lv,
+        'mainlines': ml.get('industries') or [], 'ml_details': det,
+        'prev_state': prev_state, 'state_guess': state_guess, 'cap': cap,
+        'state_reasons': state_reasons,
+        'prev_days': prev_days, 'prev_pending': prev_pending,
+        'prev_votes': prev_votes,
+        'promo': promo, 'strong_mean': strong_mean, 'strong_up': strong_up,
+        'zt_list_count': len(zt_list),
+        'prev_date': snap.get('trade_date'),
+        'prev_v10': v10r, 'prev_v101': snap.get('v101') or {},
+        'prev_zt': v10r.get('zt_count'), 'prev_dt': v10r.get('dt_count'),
+        'prev_breadth': v10r.get('breadth_ratio'),
+        'prev_amount': v10r.get('amount'),
+        'prev_broken': v10r.get('broken_rate'),
+        'prev_promo': v10r.get('promotion_rate'),
+        'prev_target_pos': v10r.get('target_position'),
+    }
+
+
+def render(r):
+    L = []
+    flag = '★' if r['weight'] >= 0.9 else ('○' if r['weight'] >= 0.5 else '·')
+    L.append(f"{flag} 盘中动态 · {r['trade_date']} {r['slot_time']}（{r['note']}）")
+    L.append("")
+    L.append("【实时读数】")
+    L.append(f"上涨占比 {r['ratio']*100:.1f}%（{r['up']}↑ / {r['dn']}↓）")
+    L.append(f"涨停 {r['zt']} 家　跌停 {r['dt']} 家")
+    L.append(f"成交额 {r['amt_so_far']:.0f} 亿（预估全日 {r['amt_half']:.0f} 亿）")
+    if r['ma5'] is not None and r['ma20'] is not None:
+        d = r['ma5'] - r['ma20']
+        L.append(f"5日均 {r['ma5']:.1f}% vs 20日均 {r['ma20']:.1f}%（{d:+.1f}pp）"
+                 f" {'✓改善' if r['ma_ok'] else '✗未改善'}")
+    L.append("")
+    L.append("【模块判定】")
+    L.append(f"市场广度：{'✓通过' if r['breadth_pass'] else '✗未过'}"
+             f"（改善方向{'✓' if r['ma_ok'] else '✗'}／底线{'✓' if r['lv_ok'] else '✗'}）")
+    L.append(f"短线赚钱效应：{'✓通过' if r['money_pass'] else '✗未过'}")
+    if r['promo'] is not None:
+        L.append(f"　连板晋级率 {r['promo']:.1f}%（要求 ≤{35:.0f}%，过热=短期顶部）"
+                 f"{'✓' if r['promo'] <= 35 else '✗'}")
+    if r['strong_mean'] is not None:
+        L.append(f"　昨日涨停股今日均值 {r['strong_mean']:+.2f}%"
+                 f"（要求 ≥0%）{'✓' if r['strong_mean'] >= 0 else '✗'}"
+                 f"　上涨比 {r['strong_up']:.1f}%")
+    if r['mainlines']:
+        for ind in r['mainlines'][:2]:
+            x = r['ml_details'][ind]
+            L.append(f"主线：{ind}｜连续强态 {x.get('days_strong')}日｜"
+                     f"超额20日 {x['excess20']:.1f}%")
+    else:
+        L.append("主线：无")
+    L.append("")
+    L.append(f"【前日对照】{r['prev_date']}")
+    L.append(f"　广度 {r['prev_breadth']}%　涨停 {r['prev_zt']}　跌停 {r['prev_dt']}"
+             f"　炸板率 {r['prev_broken']}%　晋级率 {r['prev_promo']}%")
+    L.append(f"　成交额 {r['prev_amount']} 亿　建议仓位 {r['prev_target_pos']}%"
+             f"　昨日涨停名单 {r['zt_list_count']} 只")
+    L.append("")
+    L.append("【仓位建议】")
+    L.append(f"上一交易日状态：{r['prev_state']}（持续 {r['prev_days']} 日）")
+    L.append(f"当前推断：{r['state_guess']}")
+    if r['weight'] >= 0.5:
+        L.append(f"建议仓位：{r['cap']}%")
+        if r['weight'] < 0.9:
+            L.append(f"※ 时点折扣已计入（该时点读数与收盘方向一致率不足）")
+    else:
+        # 早盘读数与收盘方向几乎无关 → 不给仓位，避免自相矛盾
+        L.append("建议仓位：本时点不给出（早盘读数与收盘方向几乎无关）")
+        L.append(f"参考：若按当前读数推断为 {r['state_guess']}（{r['cap']}%），仅供记录，不作决策依据")
+    L.append("")
+    if r['weight'] >= 0.9:
+        L.append("💡 该时点读数基本等同收盘，可作为最终仓位依据。")
+    elif r['weight'] >= 0.5:
+        L.append("💡 午后开盘是第一个可执行决策点，但仍有 13% 假信号率，建议等 14:30 确认。")
+    else:
+        L.append("💡 早盘读数与收盘方向几乎无关（方向一致率约 40%），请勿据此操作。")
+    return '\n'.join(L)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--slot', help='时点 key: ' + ','.join(SLOTS))
+    ap.add_argument('--date', help='交易日标签 YYYYMMDD')
+    ap.add_argument('--push', action='store_true', help='推送到微信')
+    args = ap.parse_args()
+
+    today = datetime.datetime.now().strftime('%Y%m%d')
+    trade_date = args.date or today
+
+    slot = args.slot
+    if not slot:
+        slot, _ = now_slot()
+        if slot is None:
+            print('当前不在交易时段')
+            return
+    if slot not in SLOTS:
+        print(f'未知时点 {slot}，可选：{", ".join(SLOTS)}')
+        return
+
+    print(f'分析 {trade_date} {SLOTS[slot][0]} …')
+    r = analyze(trade_date, slot)
+    msg = render(r)
+    print()
+    print('=' * 66)
+    print(msg)
+    print('=' * 66)
+
+    if args.push:
+        try:
+            from wechat_clawbot_push_local import push
+            push(msg)
+            print('\n✓ 已推送微信')
+        except Exception as e:
+            print(f'\n推送失败: {e}')
+
+
+if __name__ == '__main__':
+    main()

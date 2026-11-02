@@ -39,7 +39,17 @@
     ① 量比硬门槛 volr < 0.60          —— 选股日量 / 前20日均量
     ② 逆势环境门 上证 20 日涨跌幅 < 0  —— 该形态是「强势股回踩」，市场越弱越有效
     ③ 回踩新鲜度 age >= 8 根            —— 必须真回踩完，不能买在突破当天/次日
-    ④ 结构止损 max(结构位, close×0.95)  —— 优于固定 −5%(−3.31%)/−8%(−4.07%)
+    ④ 结构止损 min(结构位, close×0.95)  —— 至少留 5% 空间
+       （20261031 修正：原为 max()，导致结构位距现价仅 0.3% 时也照用，
+        实测 145 条中 137 条触及止损，"按止损执行"根本兑现不了表观 +1.31%。
+        改为 min() 后止损不再贴脸。
+        162 条样本按止损执行重算（20261031）：
+            旧止损 T+5 +1.81%/中位-1.34%/胜35.8%/最差-5.0%
+            新止损 T+5 +1.84%/中位-1.20%/胜45.1%/最差-18.5%
+            新止损 T+10 +0.60%/中位-5.00%/胜37.0%
+            新止损 T+20 -0.99%/胜23.5%
+        → 均值几乎不变（收益由少数右尾贡献），止损放宽换来胜率+9pt，
+          代价是单笔最大亏损从 -5% 扩到 -18.5%。本质仍是右尾彩票，非稳定边际。
 另加流动性下限 5000 万元（与新口径 W7_T0_MIN_AMOUNT 一致）。
 
 局限：模块当前样本 145 条（age>=8），但「age>=8」这一条本身是从这批样本里扫出来的，
@@ -75,7 +85,7 @@ STRATEGY_NAME = "W7 逆势缩量回踩低吸(BREAKOUT_RETEST优化版)"
 # ── 标定阈值（勿随意改，改前须重跑 _tmp_w7_retest_eval.py 复检）──
 RETEST_VOLR_MAX = 0.60       # 量比硬门槛：选股日量 / 前20日均量 < 0.60
 RETEST_MKT_R20_MAX = 0.0     # 逆势门：上证 20 日涨跌幅 < 0
-RETEST_STOP_FLOOR = 0.95     # 结构止损下限：max(结构位, close×0.95)
+RETEST_STOP_FLOOR = 0.95     # 止损必须低于入场至少 5%：stop = min(结构位, close×0.95)
 RETEST_MIN_AMOUNT = 50000.0  # 流动性下限：当日成交额 ≥ 50000 千元（amount 单位＝千元 → 5000 万元），与新口径 W7_T0_MIN_AMOUNT 一致
 RETEST_MIN_BARS = 120        # 最少 K 线（比引擎 MIN_BARS 宽，因本形态不依赖天量锚）
 RETEST_MIN_AGE = 8           # 回踩新鲜度下限：突破日距信号日 ≥8 根
@@ -248,7 +258,10 @@ def detect_one(g, r20):
     if seg.empty:
         return None
     pull_low = float(np.nanmin(seg.low.to_numpy(dtype=float)))
-    stop = max(pull_low, close * RETEST_STOP_FLOOR)
+    # 结构失效位取「回踩段最低价」与 close×0.95 中更低者（= 更宽），保证初始风险至少 5%。
+    # 原实现用 max() → 结构位距现价仅 0.3% 时也照用，实测 94% 样本在 5 日内被震出，
+    # 表观 T+5 +1.31% 无法按纪律兑现。改为 min() 后止损不再贴脸。
+    stop = min(pull_low, close * RETEST_STOP_FLOOR)
     if stop >= close:
         stop = close * RETEST_STOP_FLOOR
 
@@ -452,8 +465,8 @@ def main():
                                f"量比{h['volr']:.2f}（<{RETEST_VOLR_MAX}），"
                                f"回踩{h['age']}根（≥{RETEST_MIN_AGE}），"
                                f"T0={h['t0_date']}，突破={h['b_date']}，"
-                               f"失效位{h['stop']:.2f}（结构{max(h['pull_low'], h['close']*RETEST_STOP_FLOOR):.2f}与"
-                               f"{h['close']*RETEST_STOP_FLOOR:.2f}取宽），"
+                               f"失效位{h['stop']:.2f}（结构{h['pull_low']:.2f}与"
+                               f"入场×{RETEST_STOP_FLOOR:.2f}={h['close']*RETEST_STOP_FLOOR:.2f}取更宽者），"
                                f"额{h['amount']/10:.0f}万"),
                     "stop_price": h["stop"], "target_price": None,
                     "details": None,

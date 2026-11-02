@@ -1,0 +1,150 @@
+{
+  "_comment": "V10.0 市场节点识别 + 五状态机 + 动态仓位建议 —— 全部阈值配置化",
+  "_version": "10.0",
+  "_note": "这些是初始风控配置，不是经过回测验证的最优参数。任何调整都应重新跑历史检验。",
+  "breadth": {
+    "_note": "breadth_ratio = 上涨家数 / (上涨家数 + 下跌家数)，平盘家数单列不参与分母",
+    "panic_ratio": 0.2,
+    "extreme_percentile": 0.1,
+    "easing_rebound_pp": 8.0,
+    "repair_ratio": 0.55,
+    "repair_delta_pp": 10.0,
+    "drawdown_ratio": 0.35,
+    "normal_lower_ratio": 0.4
+  },
+  "limit_down": {
+    "_note": "跌停家数为收盘口径（daily_cache pct_chg 判定，区分主板10%/双创20%）",
+    "panic_increase_ratio": 1.5,
+    "panic_abs_count": 30,
+    "easing_decrease_ratio": 0.7,
+    "easing_abs_decrease": 10,
+    "repair_decrease_ratio": 0.8,
+    "high_percentile": 0.9
+  },
+  "broken_rate": {
+    "_note": "炸板率 = 炸板家数 / (封住家数 + 炸板家数)",
+    "extreme_percentile": 0.85,
+    "easing_max": 0.35,
+    "repair_max": 0.3
+  },
+  "promotion_rate": {
+    "_note": "连板晋级率 = 昨日涨停股中今日继续涨停的比例",
+    "extreme_percentile": 0.2,
+    "repair_min": 0.25
+  },
+  "strong_stock": {
+    "_note": "昨日涨停股今日表现（负反馈强弱）",
+    "extreme_mean_pct": -2.0,
+    "easing_mean_pct": -1.0,
+    "repair_mean_pct": 0.0,
+    "repair_up_ratio": 0.45
+  },
+  "amount": {
+    "_note": "全市场成交额口径 = daily_cache 全市场 amount 求和（千元→亿元）。不使用指数量比替代。",
+    "panic_expand_ratio": 1.15,
+    "easing_shrink_ratio": 0.95,
+    "min_history_days": 20
+  },
+  "index_relative": {
+    "_note": "小盘相对大盘 = 中证2000涨跌幅 - 沪深300涨跌幅",
+    "panic_gap_pct": -1.0,
+    "repair_gap_min": -0.3
+  },
+  "index_trend": {
+    "_note": "主要指数 MA20 / MA60 位置",
+    "ma20_window": 20,
+    "ma60_window": 60,
+    "repair_above_ma20_ratio": 0.5,
+    "drawdown_below_ma20_ratio": 0.5,
+    "near_low_lookback": 60,
+    "near_low_pct": 3.0
+  },
+  "position_percentile": {
+    "_note": "位置分位口径：收盘价在最近 N 个交易日 [最低,最高] 区间中的位置",
+    "close_lookback": 250,
+    "drawdown_lookback": 250,
+    "min_bars": 120
+  },
+  "nodes": {
+    "_note": "节点识别为多指标联合判断，各节点所需最少命中项数",
+    "panic_min_hits": 3,
+    "extreme_min_hits": 2,
+    "easing_min_hits": 2,
+    "repair_min_hits": 3
+  },
+  "state_machine": {
+    "_note": "状态确认与退出条件。confirm_days 为进入某状态所需的连续命中日数。",
+    "confirm_days": {
+      "S2": 1,
+      "S3": 1,
+      "S4": 2,
+      "S5": 2
+    },
+    "exit_days": {
+      "S2": 2,
+      "S3": 3,
+      "S4": 2,
+      "S5": 2
+    },
+    "fast_risk_escalation": true,
+    "unknown_confidence": "低"
+  },
+  "position_advice": {
+    "_note": "初始风控配置，非回测最优参数",
+    "S1": {
+      "target": null,
+      "action": "按现有策略与个股信号执行",
+      "allow_probe": true
+    },
+    "S2": {
+      "target": 30,
+      "action": "降低交易频率，减少追高，重新评估持仓风险",
+      "allow_probe": false
+    },
+    "S3": {
+      "target": 5,
+      "target_max": 5,
+      "action": "防守为主，不因指数跌幅大而主动抄底",
+      "allow_probe": false
+    },
+    "S4": {
+      "target": 5,
+      "target_max": 5,
+      "action": "观察为主，不自动买入，不降低原有买入标准",
+      "allow_probe": false
+    },
+    "S5": {
+      "target": 20,
+      "action": "允许重新评估试探性仓位，但仅在个股信号成立时买入",
+      "allow_probe": true
+    }
+  },
+  "observation": {
+    "_note": "明日观察重点，按状态给出",
+    "S3": [
+      "跌停家数是否见顶回落",
+      "市场广度是否止跌回升",
+      "前期强势股负反馈是否收敛"
+    ],
+    "S4": [
+      "跌停家数是否连续下降",
+      "指数低点是否不再下移",
+      "炸板率是否同步改善"
+    ],
+    "S5": [
+      "修复的持续性（连续第2日广度回升）",
+      "主线板块是否普遍走强",
+      "强势股溢价能否延续"
+    ],
+    "S2": [
+      "跌停家数与广度是否继续恶化",
+      "成交额是放量还是缩量下跌",
+      "强势股是否出现集中补跌"
+    ],
+    "S1": [
+      "广度与跌停结构是否出现变化",
+      "成交额与指数方向是否背离",
+      "主线持续性"
+    ]
+  }
+}

@@ -1,0 +1,11124 @@
+###===自选复盘 - tushare接口===###
+
+import io
+import json
+import re
+import subprocess
+import urllib.parse
+import os
+import struct
+import sys
+
+from sqlalchemy import true
+
+# =========================
+# Windows GBK 控制台输出修复：强制 UTF-8 编码
+# =========================
+#sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+#sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+# =========================
+# 终极方案：patch os.path.expanduser，不让 tushare 访问用户根目录
+# 必须在导入 tushare 之前执行！
+# =========================
+original_expanduser = os.path.expanduser
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 现在可以安全导入 tushare 了
+import markdown2 # type: ignore
+import requests
+import pandas as pd
+import numpy as np
+import time
+import warnings
+warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
+
+# =========================
+# 代理配置
+# =========================
+PROXY = 'http://127.0.0.1:7897'
+PROXY_ENABLED = True  # 设为 True 启用代理
+
+# 创建带代理的 requests Session
+def get_requests_session():
+    """获取 requests Session，支持代理"""
+    session = requests.Session()
+    if PROXY_ENABLED:
+        session.proxies = {
+            'http': PROXY,
+            'https': PROXY
+        }
+    return session
+
+# 默认 Session
+default_session = get_requests_session()
+
+from pathlib import Path
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+import tushare as ts
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import sqlite3
+
+# 新增：引用新版大盘/主题分析
+import daily_analysis_summarizer as das
+
+# SQLite 统一缓存模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stock_cache as sc
+
+# =========================
+# 产业资金定价AI模型（ICPM）延迟导入
+# =========================
+_MF_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'multi_factor_picker')
+if _MF_DIR not in sys.path:
+    sys.path.insert(0, _MF_DIR)
+_ICPM_AVAILABLE = True  # 标记可用，实际 import 在用到时执行
+
+# =========================
+# 环境变量
+# =========================
+load_dotenv("d:/mystock/config/.env")
+
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY") or os.getenv("GLM_API_KEY")
+MINI_MAX_API_KEY = os.getenv("MINI_MAX_API_KEY")
+QWEN_API_KEY = os.getenv("QWEN_API_KEY")
+DOUBAO_API_KEY = os.getenv("DOUBAO_API_KEY")
+DOUBAO_BASE_URL = os.getenv("DOUBAO_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3")
+DOUBAO_MODEL = os.getenv("DOUBAO_MODEL", "ark-code-latest")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+_V24_MAP_CACHE = None
+
+
+def _load_v24_map_raw():
+    """加载 V2.4 生产映射原始 JSON，进程内缓存（避免同一文件被反复解析）。
+
+    文件：cache_daily/theme_stock_map_latest.json —— 即 V2.4 主题分析的当日产物
+    （每日另存 theme_stock_map_v2_{date}.json，latest 为当日副本）。
+    结构：{themes: {主题: [成员...]}, stocks: {代码: {name, industry, themes, concepts}}}
+    注意：V2.4 只覆盖 35 个主题 / 约 3000 只，非全市场；读取失败返回 {}（fail-soft）。
+    """
+    global _V24_MAP_CACHE
+    if _V24_MAP_CACHE is not None:
+        return _V24_MAP_CACHE
+    _V24_MAP_CACHE = {}
+    json_path = os.path.join(
+        os.path.dirname(BASE_DIR), "cache_daily", "theme_stock_map_latest.json"
+    )
+    if not os.path.exists(json_path):
+        return _V24_MAP_CACHE
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            _V24_MAP_CACHE = json.load(f) or {}
+    except (json.JSONDecodeError, OSError):
+        _V24_MAP_CACHE = {}
+    return _V24_MAP_CACHE
+
+
+def _load_theme_stock_map_from_json():
+    """直接从 JSON 文件加载主题-个股映射。
+
+    返回: (theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts)
+    """
+    theme_stock_map = {}
+    name_map_basic = {}
+    stock_basic_industry = {}
+    stock_concepts = {}
+
+    data = _load_v24_map_raw()
+    if not data:
+        return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+
+    themes = data.get("themes", {}) or {}
+    stocks = data.get("stocks", {}) or {}
+
+    # 构建 theme_stock_map
+    for theme_name, stock_list in themes.items():
+        if not isinstance(stock_list, list):
+            continue
+        code_map = {}
+        for item in stock_list:
+            if not isinstance(item, dict):
+                continue
+            code = item.get("code")
+            if not code:
+                continue
+            code_map[code] = {
+                "via": item.get("via", ""),
+                "chain_distance": item.get("chain_distance", 0),
+                "industry_match": bool(item.get("industry_match", False)),
+                "score": item.get("score", 0),
+            }
+        theme_stock_map[theme_name] = code_map
+
+    # 构建 name_map_basic / stock_basic_industry / stock_concepts
+    for code, info in stocks.items():
+        if not isinstance(info, dict):
+            continue
+        name = info.get("name")
+        if name:
+            name_map_basic[code] = name
+        industry = info.get("industry")
+        if industry:
+            stock_basic_industry[code] = industry
+        concepts = info.get("concepts")
+        if isinstance(concepts, list):
+            stock_concepts[code] = concepts
+
+    return theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts
+
+
+def _load_fusion_result(expected_date=None):
+    """加载 FUSION 融合排名结果。
+
+    优先读取 fusion_rank 生成的 JSON，
+    若不存在则回退到 _load_v6_result() 的逻辑。
+
+    Args:
+        expected_date: 交易日(YYYYMMDD)，None时不验证
+
+    Returns:
+        list: 融合排名结果列表（按融合分降序），含 meta + data 字段
+              回退时返回 _load_v6_result 的原始结果
+    """
+    fusion_path = None
+    if expected_date:
+        fusion_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                   f'theme_fusion_rank_{expected_date}.json')
+
+    if fusion_path and os.path.exists(fusion_path):
+        try:
+            with open(fusion_path, 'r', encoding='utf-8') as f:
+                payload = json.load(f)
+            meta = payload.get("meta", {})
+            data = payload.get("data", payload)  # 兼容旧格式（无meta包装）
+            if isinstance(data, list) and len(data) > 0:
+                print(f"[FUSION] 加载融合排名: {len(data)}个主题 | "
+                      f"大盘={meta.get('大盘状态','?')} | 模式={meta.get('模式','?')}")
+                return data
+            else:
+                print(f"[FUSION] 融合排名数据异常，回退V6/V8")
+        except Exception as e:
+            print(f"[FUSION] 读取失败: {e}，回退V6/V8")
+    else:
+        print(f"[FUSION] 融合排名文件不存在，回退V6/V8")
+
+    # 回退：使用 V6/V8 原始结果
+    return _load_v6_result(expected_date)
+
+
+def _load_er20_top2(trade_date=None):
+    db_path = os.path.join(BASE_DIR, 'report_daily', 'er20_v22_scores.db')
+    if not os.path.exists(db_path):
+        return []
+
+    query = """
+        SELECT
+            ts_code,
+            name,
+            grade,
+            alpha,
+            next5_score,
+            next5_rank,
+            next_day_signal,
+            ttype,
+            ts,
+            ees,
+            rel_risk,
+            overheat,
+            entry_date,
+            entry_price_model
+        FROM er20_v22_scores
+        WHERE scan_date = ?
+          AND CAST(next_day_signal AS INTEGER) = 1
+        ORDER BY CAST(next5_score AS REAL) DESC,
+                 CAST(ees AS REAL) DESC,
+                 CAST(alpha AS REAL) DESC
+        LIMIT 2
+    """
+
+    try:
+        with sqlite3.connect(db_path) as conn:
+            df = pd.read_sql_query(query, conn, params=[str(trade_date or '')])
+        if df.empty:
+            return []
+        df = df.where(pd.notna(df), None)
+        return df.to_dict('records')
+    except (sqlite3.Error, pd.errors.DatabaseError, OSError) as e:
+        print(f"[ER20 TOP2] 读取失败: {e}")
+        return []
+
+
+def _format_er20_top2(records):
+    lines = ["【ER20 TOP2 次日信号】"]
+    if not records:
+        lines.append("暂无 ER20 Top2 次日信号")
+        return "\n".join(lines)
+
+    TTYPE_CN = {
+        'T2_PULLBACK': '次日回踩买入',
+        'T3_RECLAIM': '次日收复买入',
+        'T1_BREAKOUT': '次日突破买入（不追，等回踩）',
+        'NO_TRIGGER': '无触发信号',
+    }
+
+    for i, row in enumerate(records, 1):
+        code = str(row.get('ts_code') or '-')
+        name = str(row.get('name') or '-')
+        grade = str(row.get('grade') or '-')
+        ttype = str(row.get('ttype') or '')
+        buy_cn = TTYPE_CN.get(ttype, ttype or '无触发')
+        entry_date = str(row.get('entry_date') or 'T+1')
+        entry_price = row.get('entry_price_model')
+        try:
+            price_text = f"建议买入价 {float(entry_price):.2f}"
+        except (TypeError, ValueError):
+            price_text = f"买入方式：{str(entry_price or '次日开盘价')}"
+        next5 = float(row.get('next5_score') or 0)
+        ees = float(row.get('ees') or 0)
+        alpha = float(row.get('alpha') or 0)
+        risk = float(row.get('rel_risk') or 0)
+        lines.append(
+            f"{i}. {name} ({code}) | {buy_cn} | {price_text} | "
+            f"ER20次日分={next5:.1f} | EES={ees:.1f} | Alpha={alpha:.1f} | "
+            f"等级={grade} | 相对风险={risk:.1f}"
+        )
+    return "\n".join(lines)
+
+
+def _load_v2_theme_scores(trade_date):
+    """加载 theme_score_v2.py 输出的 CSV 评分结果。
+
+    Args:
+        trade_date: 交易日(YYYYMMDD)
+
+    Returns:
+        list[dict]: 按综合分降序排列的评分列表, None 表示不可用
+    """
+    v2_csv = os.path.join(BASE_DIR, 'report_daily', f'theme_scores_v2_{trade_date}.csv')
+    if not os.path.exists(v2_csv):
+        print(f"[V2评分] 文件不存在: {v2_csv}")
+        return None
+
+    try:
+        import pandas as pd
+        df = pd.read_csv(v2_csv)
+        if df.empty:
+            return None
+        # 填充 NaN
+        df = df.where(pd.notna(df), None)
+        records = df.to_dict('records')
+        # 从扁平列重建 migration_factors 嵌套dict
+        factor_keys = ['proximity', 'momentum', 'confirmation', 'money_resonance', 'leader_health', 'regime', 'age_penalty', 'macro_filter']
+        for r in records:
+            mf = {}
+            for k in factor_keys:
+                if k in r and r[k] is not None:
+                    mf[k] = float(r[k])
+            r['migration_factors'] = mf
+        print(f"[V2评分] 加载完成: {len(records)} 个主题 (日期 {trade_date})")
+        return records
+    except Exception as e:
+        print(f"[V2评分] 读取失败: {e}")
+        return None
+
+
+# 主题热度 V2.4 内存缓存（{trade_date: {theme: row}}），避免逐股重复读盘
+_THEME_HEAT_CACHE = {}
+
+
+def _load_theme_heat(trade_date):
+    """加载 主题热度 V2.4 结果（report_daily/theme_heat_v24_{date}.json）。
+
+    主题强度的唯一来源：strength = TODAY Heat 与 WEEK Heat 的均值。
+    V2.4 结果缺失或读取失败返回 {}，由调用方回退 V2/V8。
+    """
+    key = str(trade_date or '')
+    if key in _THEME_HEAT_CACHE:
+        return _THEME_HEAT_CACHE[key]
+    heat = {}
+    try:
+        import theme_heat_v22 as theme_heat
+        heat = theme_heat.load_heat(key) or {}
+    except Exception as e:
+        print(f"[主题热度V2.4] 读取失败: {e}")
+    if heat:
+        print(f"[主题热度V2.4] 已加载 {len(heat)} 个主题 (日期 {key})")
+    else:
+        print(f"[主题热度V2.4] 无 {key} 结果，主题强度回退 V2/V8")
+    _THEME_HEAT_CACHE[key] = heat
+    return heat
+
+
+def _v2_strength(v):
+    """V2 trend_score → 主题热度 V2.4 的同一强度尺度（V2.4 缺失时的回退统一口径）"""
+    try:
+        import theme_heat_v22 as theme_heat
+        s = theme_heat.v2_to_heat(v)
+        return float(s) if s is not None else float(v or 0)
+    except Exception:
+        return float(v or 0)
+
+
+# 主题热度 V2.5.1 演变结果内存缓存（{trade_date: {theme: row}}）
+_THEME_EVO_CACHE = {}
+
+
+def _load_theme_evolution(trade_date):
+    """加载 主题热度 V2.5.1 主题雷达（report_daily/theme_heat_v25_{date}.json）。
+
+    消费端唯一入口 = theme_heat_v22.load_evolution()；返回 {主题: 状态类字段}，
+    含 state / marginal / radar / status / evidence / confirm_* / invalid_* / outlook_*。
+    缺失或读取失败返回 {}，由调用方回退 V2.4 三窗口 Top5。
+    """
+    key = str(trade_date or '')
+    if key in _THEME_EVO_CACHE:
+        return _THEME_EVO_CACHE[key]
+    evo = {}
+    try:
+        import theme_heat_v22 as theme_heat
+        evo = theme_heat.load_evolution(key) or {}
+    except Exception as e:
+        print(f"[主题热度V2.5] 读取失败: {e}")
+    if evo:
+        print(f"[主题热度V2.5] 已加载 {len(evo)} 个主题状态 (日期 {key})")
+    else:
+        print(f"[主题热度V2.5] 无 {key} 结果，主题喂料回退 V2.4")
+    _THEME_EVO_CACHE[key] = evo
+    return evo
+
+
+def _load_v6_result(expected_date=None):
+    """加载 Theme Alpha V8.0 引擎结果，并验证 trade_date 是否匹配。
+    优先尝试 V8 CSV (theme_alpha_v6_result_v8_{date}.csv)，
+    其次 V8 JSON，最后回退到 V6 JSON。
+
+    Args:
+        expected_date: 期望的交易日(YYYYMMDD)，None时不验证
+
+    Returns:
+        list: 结果列表，若文件不存在或日期不匹配则返回None
+    """
+    v8_csv_path = None
+    v8_json_path = None
+    if expected_date:
+        v8_csv_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                    f'theme_alpha_v6_result_v8_{expected_date}.csv')
+        v8_json_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                    f'theme_alpha_v6_result_v8_{expected_date}.json')
+
+    v6_result_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache', 'theme_alpha_v6_result.json')
+
+    load_path = None
+    source = None
+    if v8_csv_path and os.path.exists(v8_csv_path):
+        load_path = v8_csv_path
+        source = "V8_CSV"
+    elif v8_json_path and os.path.exists(v8_json_path):
+        load_path = v8_json_path
+        source = "V8"
+    else:
+        # 不再回退到无日期后缀的 V6 旧文件：旧主题结果会让当日评分
+        # 静默使用过期数据（如热度、高潮/衰退信号），导致结论失真。
+        # 宁可返回 None 走"数据不足"中性处理，也不能用过期结果。
+        print(f"[V8] 引擎结果不存在: {v8_csv_path}")
+        print(f"  请先运行: python theme_alpha_v6/main.py --date {expected_date or ''}")
+        if expected_date and os.path.exists(v6_result_path):
+            print(f"  [提示] 存在旧V6结果({v6_result_path})，因日期可能过期已不回退，请生成当天V8结果")
+        return None
+
+    try:
+        if source == "V8_CSV":
+            import csv
+            data = []
+            NUMERIC_FIELDS = {'排名', 'V7综合得分', '资金分', '梯队分', '趋势分', '基础分',
+                              '资金_换手率Z分', '资金_自由流通市值流入比', '资金_大阳线渗透率',
+                              '梯队_龙头涨幅', '梯队_龙头创新高', '梯队_龙头连板',
+                              '梯队_中军数量', '梯队_中军5日涨幅', '梯队_中军破位比例',
+                              '梯队_中军缩量比例', '梯队_跟风>3%比例', '梯队_跟风>5%比例',
+                              '梯队_跟风上涨比例', '趋势_RSRS强度', '趋势_均线多头天数',
+                              '基础_催化得分', '基础_业绩预期分', '基础_事件驱动分',
+                              'T_start', 'T_MA', 'R_volume'}
+            with open(load_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    for field in NUMERIC_FIELDS:
+                        if field in row and row[field]:
+                            try:
+                                row[field] = float(row[field]) if '.' in row[field] else int(row[field])
+                            except ValueError:
+                                pass
+                    data.append(row)
+        else:
+            with open(load_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+    except Exception as e:
+        print(f"[{source}] 读取结果失败: {e}")
+        return None
+
+    if not data:
+        print(f"[{source}] 引擎结果为空")
+        return None
+
+    # 验证 trade_date（CSV 无该列，跳过）
+    if expected_date and source != "V8_CSV":
+        v_date = data[0].get('trade_date', '')
+        if not v_date:
+            pass
+        elif v_date and v_date != expected_date:
+            print(f"⚠️ [{source}] 日期不匹配: 结果日期={v_date}, 期望日期={expected_date}")
+            print(f"  请先运行 python main.py --date {expected_date} 生成当天结果")
+            return None
+
+    # V8/V8_CSV → V6 字段兼容映射
+    if source in ("V8", "V8_CSV"):
+        for r in data:
+            r['theme'] = r.get('主题', '')
+            r['composite_score'] = r.get('V7综合得分', r.get('V7综合得分', 0))
+            r['stage'] = r.get('D阶段', r.get('V7阶段', ''))
+            r['trade_signal'] = _v8_stage_to_signal(r.get('D阶段', ''), r.get('V7综合得分', 0))
+            r['trend_score'] = r.get('趋势分', 0)
+            r['capital_score'] = r.get('资金分', 0)
+            r['forward_alpha'] = r.get('FA分', 0)
+            r['sentiment_score'] = 0
+            r['continuation_score'] = 0
+            r['alpha_gate'] = ''
+            r['leader'] = ''
+            r['divergence_buy'] = ''
+            r['theme_status'] = ''
+            if not r.get('trade_date'):
+                r['trade_date'] = expected_date or ''
+
+    return data
+
+
+def _v8_stage_to_signal(d_stage, score):
+    """V8 天数阶段 → V6 信号映射"""
+    if d_stage in ("D1-D2",):
+        if score >= 60: return "强买"
+        elif score >= 50: return "看多"
+        else: return "关注"
+    if d_stage in ("D3",):
+        if score >= 65: return "强买"
+        elif score >= 50: return "看多"
+        else: return "关注"
+    if d_stage in ("D4-D5",):
+        if score >= 60: return "强买"
+        elif score >= 45: return "看多"
+        else: return "关注"
+    if d_stage in ("D6-D7",):
+        return "关注"
+    if d_stage in ("D8+", "潜伏期", "数据不足"):
+        return "中性"
+    return "中性"
+
+
+def _load_market_analysis_result(trade_date):
+    """读取 market_analysis.py 已生成的 txt 报告（避免重复运行 analyze_market）
+    
+    Returns:
+        (ma_txt, ma_position, ma_reason)
+    """
+    ma_cache_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
+    txt_path = os.path.join(ma_cache_dir, f"market_analysis_{trade_date}.txt")
+    
+    ma_txt = ""
+    ma_position = 0
+    ma_reason = ""
+    
+    if os.path.exists(txt_path):
+        try:
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                ma_txt = f.read()
+            
+            # 从txt中提取仓位和理由
+            import re
+            m_pos = re.search(r'总体仓位建议:\s*(\d+)%', ma_txt)
+            if m_pos:
+                ma_position = int(m_pos.group(1))
+            m_reason = re.search(r'理由:\s*(.+)', ma_txt)
+            if m_reason:
+                ma_reason = m_reason.group(1).strip()
+            
+            print(f"[MarketAnalysis] 已加载 {trade_date} 大盘分析报告（仓位{ma_position}%）")
+        except Exception as e:
+            print(f"[MarketAnalysis] 读取txt失败: {e}")
+    else:
+        print(f"[MarketAnalysis] 未找到 {trade_date} 的分析报告，请先运行 market_analysis.py")
+    
+    return ma_txt, ma_position, ma_reason
+
+
+def _load_marketnode_block(trade_date):
+    """MarketNode V1 大盘节点结论 -> 【大盘节点】数据块（fail-soft，失败返回空串）。
+
+    直接调用 marketnode 规则引擎（复用 features.parquet 缓存，不重复下载行情），
+    输出节点类型 / 进攻-观察-防守 / 情绪子状态 / 强度 / 置信度 / 触发原因 / 失效条件，
+    供报告第一段「大盘分析」引用。
+    """
+    try:
+        from marketnode import load_config
+        from marketnode.features import build_features
+        from marketnode.engine import MarketNodeEngine
+        from marketnode.report import NODE_NAME, REASON_TEXT, NEXT_ACTION, dynamic_summary_parts
+    except Exception as e:
+        print(f"[MarketNode] 模块不可用: {e}")
+        return ""
+
+    try:
+        cfg = load_config()
+        feat = build_features(cfg)
+        td = str(trade_date)
+        if td not in feat.index:
+            print(f"[MarketNode] 特征无 {td}（缓存末日 {feat.index[-1]}），跳过节点结论")
+            return ""
+        eng = MarketNodeEngine(cfg, feat)
+        det = eng.detect_date(td)
+        dyn = eng.node_dynamics(td)
+        i = feat.index.get_loc(td)
+        prev_nt = eng.detect_date(feat.index[i - 1])["node_type"] if i > 0 else None
+    except Exception as e:
+        print(f"[MarketNode] 计算失败（fail-soft，跳过节点结论）: {e}")
+        return ""
+
+    nt = det.get("node_type")
+    node_txt = f"{nt} {NODE_NAME[nt]}" if nt else "无新节点"
+    is_new = bool(nt) and nt != prev_nt
+    codes = det.get("reason_codes") or []
+    reasons = "、".join(f"{c}({REASON_TEXT.get(c, c)})" for c in codes) if codes else "—"
+    # 判断理由：去掉与节点名同义的首项，避免「冰点修复——冰点修复、…」
+    _nm = NODE_NAME.get(nt, "")
+    core = "、".join(t for t in (REASON_TEXT.get(c, c) for c in codes) if t != _nm)
+    reason_line = f"{_nm}——{core}，短线情绪温度 {det['node_score']:.0f}。" if nt else \
+        "短线情绪与市场广度均未触发节点阈值，处于常态。"
+
+    dyn_lines = []
+    if dyn:
+        _p = dynamic_summary_parts(dyn, det, node_txt, nt)
+        _trail = f"轨迹 {_p['trail']}｜" if _p["trail"] else ""
+        dyn_lines = [
+            f"节点动态: {_trail}{_p['head']}",
+            f"强度与状态: {_p['score_state']}",
+            f"指标边际: {_p['metrics']}",
+            f"动态解读: {_p['summary']}",
+        ]
+
+    lines = [
+        "【大盘节点】(MarketNode V1 规则引擎)",
+        f"交易日: {td} | 当前节点: {node_txt} | 是否新节点: {'是' if is_new else '否'}",
+        f"市场状态: {det['market_state']} | 情绪子状态: {det['sentiment_state']} | "
+        f"节点强度: {det['node_score']:.0f}/100 | 置信度: {det['confidence']}",
+        *dyn_lines,
+        f"触发原因: {reasons}",
+        f"判断理由: {reason_line}",
+        f"下一步: {NEXT_ACTION.get(det['market_state'], '—')}",
+        f"失效条件: {det.get('invalidation_conditions') or '—'}",
+    ]
+    if det.get("missing_fields"):
+        lines.append(f"数据缺失(已降置信度): {', '.join(det['missing_fields'])}")
+    print(f"[MarketNode] {node_txt} | {det['market_state']}/{det['sentiment_state']} | "
+          f"强度{det['node_score']:.0f} | 置信度{det['confidence']}")
+    if dyn:
+        print(f"[MarketNode] 节点动态: {dyn.get('summary', '')}（第 {dyn.get('days', 0)} 日）")
+    return "\n".join(lines)
+
+
+# 缓存/报告目录统一到 d:\mystock\ 下
+def _load_v10_regime_block(trade_date):
+    """V10.0 市场环境状态机 -> 【大盘环境 V10】数据块（fail-soft，失败返回空串）。
+
+    读取 market_regime_v10.py 落盘的报告（market_regime_v10_YYYYMMDD.txt），
+    输出 S1~S5 状态 / 节点类型 / 目标仓位 / 核心证据 / 切换条件，
+    供报告第一段「大盘分析」引用。
+
+    ★ 与 MarketNode V1 的关系：两者是**独立且互补**的判断 ——
+      MarketNode 看「短线情绪冷热与节点轨迹」，V10.0 看「市场环境状态机
+      与风险档位对应的目标仓位」。不互相替代，同时呈现给读者。
+    """
+    try:
+        cache_dir = os.path.join(BASE_DIR, 'cache_backbone_tushare')
+        txt_path = os.path.join(cache_dir, f"market_regime_v10_{trade_date}.txt")
+        if not os.path.exists(txt_path):
+            print(f"[V10.0] 未找到 {trade_date} 的环境报告，跳过（先跑 market_analysis.py）")
+            return ""
+        with open(txt_path, 'r', encoding='utf-8') as f:
+            txt = f.read()
+        if not txt.strip():
+            return ""
+
+        def _g(label):
+            for line in txt.splitlines():
+                s2 = line.strip()
+                if s2.startswith(label):
+                    return s2[len(label):].strip()
+            return ''
+
+        node_type = _g('节点类型：')
+        state = _g('当前市场状态：')
+        days = _g('状态持续时间：')
+        conf = _g('状态置信度：')
+        breadth = _g('上涨家数占比：')
+        zt = _g('涨停家数：')
+        dt = _g('跌停家数：')
+        amount = _g('成交额：')
+        amount_vs = _g('较前一交易日：')
+        pattern = _g('量价形态：')
+        target = _g('建议目标仓位：')
+        probe = _g('当前是否允许主动试探：')
+        action = _g('建议动作：')
+        pct = _g('历史分位：')
+
+        lines = [
+            "【大盘环境 V10】(五状态机 · 风险档位对应目标仓位)",
+            f"交易日: {trade_date} | 节点类型: {node_type or '无'} | "
+            f"当前状态: {state or '未知'}"
+            + (f"（{days}）" if days else "")
+            + (f" | 置信度: {conf}" if conf else ""),
+        ]
+        if breadth or zt or dt:
+            seg = []
+            if breadth:
+                # pct 原文自带「（近250日口径）」，取数值部分避免括号嵌套
+                pv = pct.split('（')[0].strip() if pct else ''
+                seg.append(f"广度 {breadth}" + (f"｜历史分位 {pv}" if pv else ""))
+            if zt:
+                seg.append(f"涨停 {zt}")
+            if dt:
+                seg.append(f"跌停 {dt}")
+            lines.append("市场指标: " + " | ".join(seg))
+        if amount or pattern:
+            # amount 原文自带「（全市场日线求和口径）」，变化率单独成段避免嵌套
+            lines.append(f"量价: {amount}"
+                         + (f" | 较前日 {amount_vs}" if amount_vs else "")
+                         + (f" | {pattern}" if pattern else ""))
+        if target or action:
+            lines.append(f"环境目标仓位: {target or '按现有策略'}"
+                         + (f" | 建议动作: {action}" if action else "")
+                         + (f" | 允许主动试探: {probe}" if probe else ""))
+
+        # 核心证据（最多3条）
+        i = txt.find('核心证据：')
+        if i >= 0:
+            j = txt.find('不确定因素：', i)
+            if j < 0:
+                j = txt.find('【', i)
+            seg = txt[i:j] if j > i else ''
+            items = [ln.strip().lstrip('0123456789. ').strip()
+                     for ln in seg.splitlines()
+                     if ln.strip() and ln.strip()[0].isdigit()]
+            for k, it in enumerate(items[:3], 1):
+                lines.append(f"证据{k}: {it}")
+
+        # 切换关键条件：从 ▎ 结论行里截出「切换关键：」之后的部分
+        tail = ''
+        for line in txt.splitlines():
+            s3 = line.strip()
+            if s3.startswith('▎'):
+                body = s3.lstrip('▎').strip()
+                if '切换关键：' in body:
+                    tail = body.split('切换关键：', 1)[1].strip()
+                break
+        if tail:
+            lines.append(f"切换关键: {tail}")
+
+        lines.append("注: 本段为环境状态判断（风险档位），个股买卖信号仍以各自策略为准。")
+        print(f"[V10.0] {state or '未知'} | 目标仓位 {target or '按现有策略'}")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[V10.0] 计算失败（fail-soft，跳过环境块）: {e}")
+        return ""
+
+
+STOCK_DATA_DIR = r"d:\mystock"
+CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
+REPORT_DIR = os.path.join(STOCK_DATA_DIR, "report_daily")   
+DB_PATH = os.path.join(REPORT_DIR, "stock_result.db")
+NEWS_CACHE_DIR = os.path.join(STOCK_DATA_DIR, "news_cache")
+# Tushare API 数据缓存（研报、调研）
+TUSHARE_API_CACHE_DIR = os.path.join(STOCK_DATA_DIR, "tushare_api_cache")
+FUND_CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_fundamental")
+MONEYFLOW_STOCK_DIR = os.path.join(CACHE_DIR, "moneyflow_stock")
+
+os.makedirs(STOCK_DATA_DIR, exist_ok=True)
+os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(REPORT_DIR, exist_ok=True)
+os.makedirs(NEWS_CACHE_DIR, exist_ok=True)
+os.makedirs(TUSHARE_API_CACHE_DIR, exist_ok=True)
+os.makedirs(FUND_CACHE_DIR, exist_ok=True)
+os.makedirs(MONEYFLOW_STOCK_DIR, exist_ok=True)
+
+# ═══════════════════════════════════════════════════════
+# 缓存API调用（统一入口：sc.* 详见 stock_cache.py）
+# ═══════════════════════════════════════════════════════
+
+def get_list_date(ts_code):
+    """委托给 sc.get_list_date"""
+    return sc.get_list_date(ts_code)
+
+def cached_stk_factor_pro(ts_code, start_date, end_date):
+    """委托给 sc.cached_stk_factor_compat"""
+    return sc.cached_stk_factor_compat(ts_code, start_date, end_date)
+
+# ═══════════════════════════════════════════════════════
+
+# =========================
+# 主题个股池路径
+# =========================
+THEME_STOCKS_CACHE = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'theme_pattern_stocks.csv')
+
+# DC热榜缓存目录
+DC_HOT_CACHE_DIR = os.path.join(BASE_DIR, 'cache_backbone_tushare', 'dc_hot')
+
+
+def _add_daily_indicators(df):
+    """用日线缓存(daily_cache)本地计算技术指标列，替代窄表三表链路的 *_bfq 指标
+
+    覆盖 detect_breakout 使用到的全部因子：MA5/10/20/60/90/250、BOLL(20,2)、
+    MACD(12,26,9)、KDJ(9,3,3) 的 J 值、RSI(6)、ATR(14)、量比。
+    对上市/缓存历史不足窗口的行保持 NaN（下游统一按 >0 / dropna 判定，等价原指标缺省 0）。
+    就地新增列，不改动原 OHLCV 行。
+    """
+    close = df['close']
+    # 均线
+    for w in (5, 10, 20, 60, 90, 250):
+        df['ma_bfq_%d' % w] = close.rolling(w).mean()
+    # BOLL(20,2)：MID=MA20，上下轨 ±2×20日标准差
+    mid = df['ma_bfq_20']
+    std20 = close.rolling(20).std(ddof=1)
+    df['boll_mid_bfq'] = mid
+    df['boll_upper_bfq'] = mid + 2 * std20
+    df['boll_lower_bfq'] = mid - 2 * std20
+    # 量比 = 当日成交量 / 前5日平均成交量(不含当日)，不足窗口取 1.0（等价旧缺省值）
+    prev5_avg = df['vol'].shift(1).rolling(5).mean()
+    vr = (df['vol'] / prev5_avg).replace([np.inf, -np.inf], np.nan)
+    df['volume_ratio'] = vr.fillna(1.0)
+    # MACD(12,26,9)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    df['macd_dif_bfq'] = ema12 - ema26
+    df['macd_dea_bfq'] = df['macd_dif_bfq'].ewm(span=9, adjust=False).mean()
+    df['macd_bfq'] = (df['macd_dif_bfq'] - df['macd_dea_bfq']) * 2  # 柱 = 2×(DIF-DEA)
+    # KDJ(9,3,3)：J = 3K - 2D（SMA(X,3,1) 递归 ≈ ewm(alpha=1/3)）
+    hhv = df['high'].rolling(9).max()
+    llv = df['low'].rolling(9).min()
+    rng = (hhv - llv).where(hhv > llv)
+    rsv = ((close - llv) / rng * 100).fillna(50.0)
+    k = rsv.ewm(alpha=1 / 3, adjust=False).mean()
+    d = k.ewm(alpha=1 / 3, adjust=False).mean()
+    df['kdj_bfq'] = 3 * k - 2 * d
+    # RSI(6)：RSI = SMA(涨,6,1) / SMA(涨+跌,6,1) ×100（SMA 递归 ≈ ewm(alpha=1/6)）
+    diff = close.diff()
+    up = diff.clip(lower=0)
+    dn = (-diff).clip(lower=0)
+    up_ma = up.ewm(alpha=1 / 6, adjust=False).mean()
+    dn_ma = dn.ewm(alpha=1 / 6, adjust=False).mean()
+    df['rsi_bfq_6'] = (up_ma / (up_ma + dn_ma) * 100).fillna(50.0)
+    # ATR(14)：TR = max(H-L, |H-PC|, |L-PC|)
+    prev_close = close.shift(1)
+    tr = pd.concat([df['high'] - df['low'],
+                    (df['high'] - prev_close).abs(),
+                    (df['low'] - prev_close).abs()], axis=1).max(axis=1)
+    df['atr_bfq'] = tr.rolling(14).mean()
+
+
+def detect_breakout(ts_code, pro, trade_date=None):
+    """
+    突破型策略检测函数 — 机构级算法 V2.0
+
+    借鉴顶尖机构模型：
+      - William O'Neil CANSLIM：量价配合 + 阻力位突破 + 收盘确认
+      - Mark Minervini VCP (Volatility Contraction Pattern)：波动率收缩后爆发
+      - Stan Weinstein Stage Analysis：均线阶段确认
+      - Stanley Druckenmiller：多周期共振 + 相对强度
+
+    总分 100 分，三态输出：
+      - 有效突破 (>=70分)：已突破且高概率延续
+      - 即将突破 (VCP收缩 + 接近阻力位 + 多头排列)：未突破但具备爆发条件
+      - 假突破过滤：识别冲高回落 / 缩量假突破
+
+    评分维度（100分）：
+      1. 量价确认     (25分): 量比 + 5/20日均量比 + 量价同向
+      2. 阻力位突破   (20分): 突破20日高点 + 突破布林上轨 + 收盘确认
+      3. 趋势均线     (15分): 多头排列 + MA60方向 + close离MA5距离
+      4. 动能共振     (15分): MACD + KDJ + RSI 分级加成
+      5. 波动率收缩VCP(10分): 布林宽度收缩 + 5/20日波动 + ATR分位
+      6. 趋势延续     (10分): 距60日高点 + 上一波强度 + MA20斜率
+      7. 多周期共振   (5分):  close>MA90/MA250 + 周/月线方向
+
+    参数:
+        ts_code: 股票代码
+        pro: Tushare pro 实例（保留兼容，内部不用）
+        trade_date: 指定日期（None表示最新）
+    返回:
+        {
+            "breakout_score": int,           # 总分（兼容旧字段）
+            "is_valid_breakout": bool,       # 是否有效突破 (>=70 且非假突破)
+            "is_imminent_breakout": bool,    # 是否即将突破
+            "is_false_breakout": bool,       # 是否假突破
+            "breakout_type": str,            # 状态分类
+            "signal": str,                   # 信号建议（兼容旧字段）
+            "sub_scores": dict,              # 7维子分（诊断用）
+            "resistance_price": float,       # 阻力位价格
+            "distance_to_resistance": float, # 距阻力位百分比
+            "volume_ratio": float,
+            "vol_5_to_20": float,            # 5日均量/20日均量
+            "boll_width_shrink": float,      # 布林宽度收缩比
+            "vol_contraction": float,        # 5日/20日波动收缩比
+            "atr_percentile": float,         # ATR在60日中分位
+            "wave_strength": float,          # 上一波振幅
+            "ma20_slope": float,             # MA20 10日斜率
+        }
+    """
+    result = {
+        "ts_code": ts_code,
+        "trade_date": trade_date or TRADE_DATE,
+        "breakout_score": 0,
+        "is_valid_breakout": False,
+        "is_imminent_breakout": False,
+        "is_false_breakout": False,
+        "signal": "非突破形态",
+        "breakout_type": "形态不具备",
+        "sub_scores": {},
+        "resistance_price": 0.0,
+        "distance_to_resistance": 0.0,
+        "volume_ratio": 0.0,
+        "vol_5_to_20": 0.0,
+        "boll_width_shrink": 0.0,
+        "vol_contraction": 0.0,
+        "atr_percentile": 0.0,
+        "wave_strength": 0.0,
+        "ma20_slope": 0.0,
+    }
+
+    try:
+        end_date = str(trade_date or TRADE_DATE)
+        # 取约1年数据用于：60日高点、MA250、ATR分位、布林宽度收缩
+        start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=400)).strftime('%Y%m%d')
+        # 数据源改用 daily_cache 日线缓存（仅 OHLCV），所需技术指标由 _add_daily_indicators
+        # 本地计算，不再依赖窄表三表链路的 *_bfq 指标字段
+        df = sc.cached_daily(ts_code, start_date, end_date)
+
+        if df is None or df.empty:
+            return result
+
+        df['trade_date'] = df['trade_date'].astype(str)
+        df = df.sort_values('trade_date').reset_index(drop=True)
+
+        # 定位当前交易日行索引（先于指标计算，用于前复权锚定）
+        target_date = str(trade_date or TRADE_DATE)
+        mask = df['trade_date'] == target_date
+        if not mask.any():
+            return result
+        idx = mask.idxmax()
+
+        # 前复权对齐：qfq = raw × adj_factor / 检测日adj_factor，使 MA/BOLL/MACD/KDJ/RSI/ATR
+        # 与行情软件前复权口径一致（检测日当日价不变；adj 取 sc.cached_adj_factor 独立缓存，
+        # 不使用窄表三表链路指标）。adj 缺失时退回不复权口径。
+        try:
+            adj_df = sc.cached_adj_factor(ts_code, start_date, end_date)
+            if adj_df is not None and not adj_df.empty:
+                adj_map = adj_df.set_index('trade_date')['adj_factor']
+                ratio = df['trade_date'].map(adj_map).ffill().bfill()
+                anchor = float(ratio.iloc[idx])
+                if anchor and anchor > 0:
+                    ratio = ratio / anchor
+                    for _col in ('open', 'high', 'low', 'close'):
+                        df[_col] = (df[_col] * ratio).round(4)
+        except Exception:
+            pass
+
+        _add_daily_indicators(df)
+
+        latest = df.iloc[idx]
+        df_hist = df.iloc[:idx + 1].copy()  # 当前日及之前
+
+        # ===== 提取当日数据 =====
+        close = float(latest.get('close', 0) or 0)
+        open_ = float(latest.get('open', 0) or 0)
+        high = float(latest.get('high', 0) or 0)
+        low = float(latest.get('low', 0) or 0)
+        vol = float(latest.get('vol', 0) or 0)
+        volume_ratio = float(latest.get('volume_ratio', 1.0) or 1.0)
+
+        boll_upper = float(latest.get('boll_upper_bfq', 0) or 0)
+        boll_mid = float(latest.get('boll_mid_bfq', 0) or 0)
+        boll_lower = float(latest.get('boll_lower_bfq', 0) or 0)
+
+        ma5 = float(latest.get('ma_bfq_5', 0) or 0)
+        ma10 = float(latest.get('ma_bfq_10', 0) or 0)
+        ma20 = float(latest.get('ma_bfq_20', 0) or 0)
+        ma60 = float(latest.get('ma_bfq_60', 0) or 0)
+        ma90 = float(latest.get('ma_bfq_90', 0) or 0)
+        ma250 = float(latest.get('ma_bfq_250', 0) or 0)
+
+        macd = float(latest.get('macd_bfq', 0) or 0)
+        dif = float(latest.get('macd_dif_bfq', 0) or 0)
+        dea = float(latest.get('macd_dea_bfq', 0) or 0)
+        kdj_j = float(latest.get('kdj_bfq', 50) or 50)
+        rsi_6 = float(latest.get('rsi_bfq_6', 50) or 50)
+        atr = float(latest.get('atr_bfq', 0) or 0)
+
+        if close <= 0:
+            return result
+
+        # ===== 历史统计量 =====
+        n = len(df_hist)
+        # 20日高点（不含当日，作为阻力位）
+        high_20_prev = df_hist['high'].iloc[:-1].tail(20).max() if n >= 21 else (df_hist['high'].iloc[:-1].max() if n > 1 else close)
+        # 60日高点（含当日）
+        high_60 = df_hist['high'].tail(60).max() if n >= 60 else df_hist['high'].max()
+
+        # 阻力位 = max(前20日高点, 布林上轨)
+        resistance_price = max(high_20_prev, boll_upper) if boll_upper > 0 else high_20_prev
+        distance_to_resistance = (close - resistance_price) / resistance_price * 100 if resistance_price > 0 else 0.0
+
+        # 均量比
+        vol_5_avg = df_hist['vol'].tail(5).mean() if n >= 5 else vol
+        vol_20_avg = df_hist['vol'].tail(20).mean() if n >= 20 else vol
+        vol_50_avg = df_hist['vol'].tail(50).mean() if n >= 50 else vol_20_avg
+        vol_5_to_20 = vol_5_avg / vol_20_avg if vol_20_avg > 0 else 1.0
+
+        # 5日/20日波动率（VCP核心：5日波动应小于20日波动）
+        if n >= 20:
+            df_20d = df_hist.tail(20)
+            daily_range_5 = df_20d.tail(5).apply(lambda r: (r['high'] - r['low']) / max(r['close'], 0.01), axis=1).mean()
+            daily_range_20 = df_20d.apply(lambda r: (r['high'] - r['low']) / max(r['close'], 0.01), axis=1).mean()
+            vol_contraction = daily_range_20 / daily_range_5 if daily_range_5 > 0 else 1.0
+        else:
+            vol_contraction = 1.0
+
+        # 布林带宽度收缩（当前 / 20天前）
+        if boll_upper > 0 and boll_lower > 0 and boll_mid > 0:
+            boll_width_now = (boll_upper - boll_lower) / boll_mid
+            if idx >= 20:
+                prev_row = df_hist.iloc[idx - 20]
+                prev_bu = float(prev_row.get('boll_upper_bfq', 0) or 0)
+                prev_bl = float(prev_row.get('boll_lower_bfq', 0) or 0)
+                prev_bm = float(prev_row.get('boll_mid_bfq', 0) or 0)
+                if prev_bu > 0 and prev_bl > 0 and prev_bm > 0:
+                    boll_width_prev = (prev_bu - prev_bl) / prev_bm
+                    boll_width_shrink = boll_width_now / boll_width_prev if boll_width_prev > 0 else 1.0
+                else:
+                    boll_width_shrink = 1.0
+            else:
+                boll_width_shrink = 1.0
+        else:
+            boll_width_shrink = 1.0
+
+        # ATR在60日的分位（低位=蓄势）
+        if n >= 60 and atr > 0:
+            atr_series = df_hist['atr_bfq'].tail(60).dropna()
+            atr_percentile = (atr_series < atr).sum() / len(atr_series) if len(atr_series) > 0 else 0.5
+        else:
+            atr_percentile = 0.5
+
+        # MA20 斜率（10日变化百分比）
+        if idx >= 10 and ma20 > 0:
+            prev_ma20 = float(df_hist.iloc[idx - 10].get('ma_bfq_20', 0) or 0)
+            ma20_slope = (ma20 - prev_ma20) / prev_ma20 * 100 if prev_ma20 > 0 else 0.0
+        else:
+            ma20_slope = 0.0
+
+        # 上一波强度（20日振幅）
+        if n >= 20:
+            wave_high = df_hist['high'].tail(20).max()
+            wave_low = df_hist['low'].tail(20).min()
+            wave_strength = (wave_high - wave_low) / wave_low * 100 if wave_low > 0 else 0.0
+        else:
+            wave_strength = 0.0
+
+        # 多头排列计数
+        alignment_count = 0
+        if ma5 > 0 and ma10 > 0 and ma5 > ma10: alignment_count += 1
+        if ma10 > 0 and ma20 > 0 and ma10 > ma20: alignment_count += 1
+        if ma20 > 0 and ma60 > 0 and ma20 > ma60: alignment_count += 1
+        if ma5 > 0 and close > ma5: alignment_count += 1
+
+        # ===== 1. 量价确认 (25分) =====
+        score_vp = 0
+        # 1a 量比 (10分) - 渐进式
+        if volume_ratio >= 2.0: score_vp += 10
+        elif volume_ratio >= 1.5: score_vp += 8
+        elif volume_ratio >= 1.2: score_vp += 5
+        elif volume_ratio >= 1.0: score_vp += 3
+        # 1b 5/20日均量比 (8分) - 趋势性放量
+        if vol_5_to_20 >= 1.5: score_vp += 8
+        elif vol_5_to_20 >= 1.2: score_vp += 5
+        elif vol_5_to_20 >= 1.0: score_vp += 3
+        elif vol_5_to_20 < 0.7: score_vp -= 2
+        # 1c 量价同向 (7分) - 涨时放量
+        if n >= 5:
+            df_5d = df_hist.tail(5)
+            up_vol = df_5d[df_5d['pct_chg'] > 0]['vol'].mean()
+            dn_vol = df_5d[df_5d['pct_chg'] < 0]['vol'].mean()
+            if up_vol > 0 and dn_vol > 0 and dn_vol > 0:
+                ratio = up_vol / dn_vol
+                if ratio >= 1.5: score_vp += 7
+                elif ratio >= 1.2: score_vp += 4
+                elif ratio >= 1.0: score_vp += 2
+                else: score_vp -= 2
+            elif up_vol > 0:
+                score_vp += 5
+        score_vp = max(0, min(25, score_vp))
+
+        # ===== 2. 阻力位突破强度 (20分) =====
+        score_rb = 0
+        # 2a 突破20日高点 (10分) - 渐进式
+        if high_20_prev > 0:
+            bk_pct = (close - high_20_prev) / high_20_prev * 100
+            if bk_pct >= 3: score_rb += 10
+            elif bk_pct >= 1: score_rb += 7
+            elif bk_pct >= 0: score_rb += 5
+            elif bk_pct >= -1: score_rb += 3
+        # 2b 突破布林上轨 (5分)
+        if boll_upper > 0:
+            bb_pct = (close - boll_upper) / boll_upper * 100
+            if bb_pct >= 1: score_rb += 5
+            elif bb_pct >= 0: score_rb += 4
+            elif bb_pct >= -1: score_rb += 2
+        # 2c 收盘价确认 (5分) - 真突破要求收盘站在阻力位上方
+        if resistance_price > 0:
+            if close > resistance_price: score_rb += 5
+            elif (close + open_) / 2 > resistance_price: score_rb += 2
+        score_rb = max(0, min(20, score_rb))
+
+        # ===== 3. 趋势均线排列 (15分) =====
+        score_ta = 0
+        # 3a 多头排列 (8分)
+        score_ta += int(alignment_count / 4 * 8)
+        # 3b MA60方向 (4分)
+        if ma60 > 0 and idx >= 10:
+            prev_ma60 = float(df_hist.iloc[idx - 10].get('ma_bfq_60', 0) or 0)
+            if prev_ma60 > 0:
+                if ma60 > prev_ma60: score_ta += 4
+                elif ma60 >= prev_ma60 * 0.99: score_ta += 2
+        # 3c close离MA5距离 (3分) - 不能太远（追涨风险）
+        if ma5 > 0:
+            d = (close - ma5) / ma5 * 100
+            if 0 <= d <= 5: score_ta += 3
+            elif 5 < d <= 10: score_ta += 1
+            elif -2 <= d < 0: score_ta += 2
+        score_ta = max(0, min(15, score_ta))
+
+        # ===== 4. 动能共振 (15分) =====
+        score_mr = 0
+        # 4a MACD (6分)
+        if macd > 0 and dif > dea: score_mr += 6
+        elif macd > 0: score_mr += 4
+        elif dif > dea: score_mr += 2
+        # 4b KDJ J值 (5分)
+        if kdj_j > 60: score_mr += 5
+        elif kdj_j > 40: score_mr += 3
+        elif kdj_j > 20: score_mr += 1
+        # 4c RSI (4分)
+        if 60 <= rsi_6 <= 80: score_mr += 4
+        elif 50 <= rsi_6 < 60: score_mr += 2
+        elif rsi_6 > 80: score_mr += 1
+        score_mr = max(0, min(15, score_mr))
+
+        # ===== 5. 波动率收缩 VCP (10分) =====
+        score_vc = 0
+        # 5a 布林宽度收缩 (4分)
+        if boll_width_shrink < 0.6: score_vc += 4
+        elif boll_width_shrink < 0.8: score_vc += 3
+        elif boll_width_shrink < 1.0: score_vc += 2
+        elif boll_width_shrink < 1.2: score_vc += 1
+        # 5b 5/20日波动收缩 (3分)
+        if vol_contraction >= 1.5: score_vc += 3
+        elif vol_contraction >= 1.2: score_vc += 2
+        elif vol_contraction >= 1.0: score_vc += 1
+        # 5c ATR分位 (3分) - ATR低位=蓄势
+        if atr_percentile < 0.3: score_vc += 3
+        elif atr_percentile < 0.5: score_vc += 2
+        elif atr_percentile < 0.7: score_vc += 1
+        score_vc = max(0, min(10, score_vc))
+
+        # ===== 6. 趋势延续 (10分) =====
+        score_tc = 0
+        # 6a 距60日高点距离 (4分) - Minervini: 25%以内
+        if high_60 > 0:
+            dist60 = (high_60 - close) / high_60 * 100
+            if dist60 <= 5: score_tc += 4
+            elif dist60 <= 15: score_tc += 3
+            elif dist60 <= 25: score_tc += 2
+            elif dist60 <= 40: score_tc += 1
+        # 6b 上一波强度 (3分)
+        if wave_strength >= 50: score_tc += 3
+        elif wave_strength >= 30: score_tc += 2
+        elif wave_strength >= 15: score_tc += 1
+        # 6c MA20斜率 (3分)
+        if ma20_slope > 2: score_tc += 3
+        elif ma20_slope > 0.5: score_tc += 2
+        elif ma20_slope > 0: score_tc += 1
+        elif ma20_slope < -1: score_tc -= 1
+        score_tc = max(0, min(10, score_tc))
+
+        # ===== 7. 多周期共振 (5分) =====
+        score_mt = 0
+        if ma60 > 0 and close > ma60: score_mt += 2
+        if ma90 > 0 and close > ma90: score_mt += 1
+        if n >= 5:
+            close_5d_ago = float(df_hist.iloc[idx - 4].get('close', 0) or 0)
+            if close_5d_ago > 0 and close > close_5d_ago: score_mt += 1
+        if n >= 20:
+            close_20d_ago = float(df_hist.iloc[idx - 19].get('close', 0) or 0)
+            if close_20d_ago > 0 and close > close_20d_ago: score_mt += 1
+        score_mt = max(0, min(5, score_mt))
+
+        # ===== 总分 =====
+        total_score = int(min(100, score_vp + score_rb + score_ta + score_mr + score_vc + score_tc + score_mt))
+
+        # ===== 假突破检测（仅在真正尝试突破时触发）=====
+        is_false_breakout = False
+        false_breakout_penalty = 0
+        # 1. 冲高回落：当日高点突破布林上轨，但收盘回落到布林上轨下方2%以内
+        #    （收盘距布林上轨超过2%说明根本没形成突破尝试，不视为假突破）
+        if high > boll_upper > 0 and 0 <= (boll_upper - close) / boll_upper * 100 <= 2:
+            is_false_breakout = True
+            false_breakout_penalty += 20
+        # 2. 缩量假突破：close 突破20日高点但量比 < 1.0
+        if close > high_20_prev > 0 and volume_ratio < 1.0:
+            is_false_breakout = True
+            false_breakout_penalty += 15
+        # 3. 长上影收阴：冲高回落幅度 > 70% 且 close 接近突破位（≥ 阻力位 97%）
+        if (high > low and (high - close) / (high - low) > 0.7
+                and close < open_ and resistance_price > 0
+                and close >= resistance_price * 0.97):
+            is_false_breakout = True
+            false_breakout_penalty += 15
+
+        # 假突破扣分：确保假突破评分远离75分阈值
+        if is_false_breakout:
+            total_score = max(0, total_score - false_breakout_penalty)
+
+        # ===== 即将突破检测 =====
+        # 条件：未真正突破 + VCP收缩明显 + 接近阻力位 + 多头排列基本成型
+        is_imminent_breakout = False
+        if not is_false_breakout:
+            if close <= resistance_price * 1.01:
+                if score_vc >= 6:
+                    if distance_to_resistance >= -3:
+                        if alignment_count >= 3:
+                            is_imminent_breakout = True
+
+        # ===== 状态判断 =====
+        is_valid_breakout = (total_score >= 70 and not is_false_breakout)
+
+        if is_false_breakout:
+            breakout_type = "假突破"
+            signal = "假突破预警，警惕回落"
+        elif is_valid_breakout:
+            breakout_type = "有效突破"
+            signal = "有效突破！列入观察/买入名单"
+        elif is_imminent_breakout:
+            breakout_type = "即将突破"
+            signal = "即将突破，关注次日量能"
+        else:
+            breakout_type = "形态不具备"
+            signal = "非突破形态"
+
+        result.update({
+            "breakout_score": total_score,
+            "is_valid_breakout": is_valid_breakout,
+            "is_imminent_breakout": is_imminent_breakout,
+            "is_false_breakout": is_false_breakout,
+            "breakout_type": breakout_type,
+            "signal": signal,
+            "sub_scores": {
+                "量价确认": score_vp,
+                "阻力突破": score_rb,
+                "趋势均线": score_ta,
+                "动能共振": score_mr,
+                "波动收缩": score_vc,
+                "趋势延续": score_tc,
+                "多周期": score_mt,
+            },
+            "resistance_price": round(resistance_price, 2),
+            "distance_to_resistance": round(distance_to_resistance, 2),
+            "volume_ratio": round(volume_ratio, 2),
+            "vol_5_to_20": round(vol_5_to_20, 2),
+            "boll_width_shrink": round(boll_width_shrink, 2),
+            "vol_contraction": round(vol_contraction, 2),
+            "atr_percentile": round(atr_percentile, 2),
+            "wave_strength": round(wave_strength, 2),
+            "ma20_slope": round(ma20_slope, 2),
+        })
+
+    except Exception:
+        pass
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# 二波形态检测（基于 wave2_pattern_scanner.py 的 WavePatternDetector）
+# ═══════════════════════════════════════════════════════════════
+_WAVE2_DETECTOR = None
+
+def _get_wave2_detector():
+    """延迟获取 WavePatternDetector 实例（避免启动时导入开销）"""
+    global _WAVE2_DETECTOR
+    if _WAVE2_DETECTOR is None:
+        from wave2_pattern_scanner import WavePatternDetector
+        _WAVE2_DETECTOR = WavePatternDetector(force_date=TRADE_DATE)
+    return _WAVE2_DETECTOR
+
+
+def detect_wave2_reversal(ts_code, pro, trade_date=None, lookback_days=20):
+    """二波反转策略检测（复用 WavePatternDetector v2.9）
+    
+    返回格式与旧版兼容，便于无缝替换：
+    {
+        "ts_code": str,
+        "trade_date": str,
+        "wave2_score": int,       # 共振总评分
+        "pattern_score": int,     # 形态基础分（保持兼容，=0）
+        "resonance_score": int,   # 共振加分（= wave2_score）
+        "is_perfect_signal": bool,
+        "signal": str,
+        "pattern": str,           # 形态类型
+        "score_details": str,     # 评分明细
+        "entry_price": float,
+        "stop_loss": float,
+        "target": float,
+    }
+    """
+    result = {
+        "ts_code": ts_code,
+        "trade_date": trade_date or TRADE_DATE,
+        "wave2_score": 0,
+        "pattern_score": 0,
+        "resonance_score": 0,
+        "is_perfect_signal": False,
+        "signal": "非二波形态",
+        "pattern": "",
+        "score_details": "",
+        "entry_price": 0,
+        "stop_loss": 0,
+        "target": 0,
+    }
+    
+    try:
+        detector = _get_wave2_detector()
+        best = None
+        
+        # 四种形态并列检测，取评分最高的
+        # today_only=False：检测当前是否处于二波形态中（不仅限今日刚出现）
+        for detect_fn in [
+            detector.detect_vshape_pattern,
+            detector.detect_deep_pullback_pattern,
+            detector.detect_volume_pullback_pattern,
+            detector.detect_sideways_pattern,
+        ]:
+            r = detect_fn(ts_code, today_only=False)
+            if r and (best is None or r['score'] > best['score']):
+                best = r
+        
+        if best is None:
+            return result
+        
+        score = int(best['score'])
+        pattern = best['pattern']
+        
+        result["wave2_score"] = score
+        result["resonance_score"] = score
+        result["pattern"] = pattern
+        result["score_details"] = best.get('score_details', '')
+        result["entry_price"] = best.get('entry_price', 0)
+        result["stop_loss"] = best.get('stop_loss', 0)
+        result["target"] = best.get('target', 0)
+
+        # 按形态给出持有天数建议（基于tdx_backtest回测优化结果）
+        #   V型急跌: 5日持有最优（胜率59.6%/均收益2.91%）
+        #   深度回调: 20日持有最优（胜率70.9%/均收益10.89%）
+        #   放量回调: 5日持有最优（胜率64.5%/均收益5.34%/盈亏比2.21）
+        #   强势横盘: 5-10日持有（低吸短线）
+        #   放量急洗: 尚无回测样本（v4.0 新增支路），按"启动日跟随"处理，
+        #             持有到启动后量能衰竭为止，不预设固定止盈
+        _pattern_hold_sell = {
+            'V型急跌':   {'hold_days': 5,  'sell_signal': '5日内收益>0可卖出，放量突破MA20可持有到10日，量比回升>0.8则出场'},
+            '深度回调':   {'hold_days': 20, 'sell_signal': '20日内收益>10%分批止盈，站上所有均线中线持有，缩量滞涨卖出'},
+            '放量回调':   {'hold_days': 5,  'sell_signal': '5日内量比再次放大可继续持有，缩量滞涨即卖出，跌破入场价-5%止损'},
+            '强势横盘':   {'hold_days': 8,  'sell_signal': '跌破MA20或放量滞涨即卖出，5日不破MA20可持有到10日'},
+            '放量急洗':   {'hold_days': 10, 'sell_signal': '启动后放量长阳续攻可持有，跌破启动日最低价或缩量滞涨即卖出'},
+        }
+        _hs = _pattern_hold_sell.get(pattern, {'hold_days': 5, 'sell_signal': '动态止损，按ATR跟踪'})
+        result["hold_days"] = _hs['hold_days']
+        result["sell_signal"] = _hs['sell_signal']
+        
+        # 信号等级（与旧版阈值对齐：>=18完美, >=12跟踪, >=7疑似）
+        if score >= 18:
+            result["is_perfect_signal"] = True
+            result["signal"] = "完美二波反转！可潜伏买入"
+        elif score >= 12:
+            result["signal"] = "二波形态初现，继续跟踪"
+        elif score >= 7:
+            result["signal"] = "疑似二波结构，等待确认"
+        else:
+            result["signal"] = "非二波形态"
+        
+    except Exception:
+        pass
+    
+    return result
+
+
+# =========================
+# 双底调整到位（右底低吸）检测 —— 口径完全复用 W7/HVT 的 right_bottom 九条硬条件
+# =========================
+# 20261003：突破股池选股主轴由「放量突破」改为「一波大涨后双底调整到位」。
+# 判定直接调用 w7_second_wave_engine.right_bottom（HVT 龙头池外右底低吸亦复用同一函数），
+# 三处口径完全一致：前波涨幅≥25% → 回落≥10% → 颈线反弹≥8% → 右底为近3根最低
+# → 不破左底[−2%,+8%] → 自颈线回撤≥10% → 缩量≤0.75×20日均量
+# → 收盘≥MA60 且 MA60 不弱 → 收盘≤MA10（低吸位置）。
+_w7_right_bottom_fn = None
+_w7_fill_ma_fn = None
+try:
+    from w7_second_wave_engine import (
+        right_bottom as _w7_right_bottom_fn,
+        _fill_ma_columns as _w7_fill_ma_fn,
+    )
+except Exception as _rb_imp_err:
+    print(f"[双底股池] W7 双底判定不可用：{_rb_imp_err}")
+
+
+def detect_right_bottom(ts_code, trade_date=None):
+    """「一波大涨后双底调整到位」检测（返回结构与 W7 right_bottom 对齐）。
+
+    返回 dict（未命中时 dbl_hit=False，其余为 0）：
+      dbl_hit / dbl_h0_high / dbl_left_low / dbl_mid_high / dbl_right_low
+      / dbl_ratio(右底÷左底) / dbl_prior_rise(前波涨幅) / dbl_retrace(自颈线回撤)
+      / dbl_volr20(右底缩量比) / dbl_h0_date / dbl_left_date / dbl_mid_date
+    """
+    result = {
+        "dbl_hit": False,
+        "dbl_h0_high": 0.0, "dbl_left_low": 0.0, "dbl_mid_high": 0.0,
+        "dbl_right_low": 0.0, "dbl_ratio": 0.0, "dbl_prior_rise": 0.0,
+        "dbl_retrace": 0.0, "dbl_volr20": 0.0,
+        "dbl_h0_date": "", "dbl_left_date": "", "dbl_mid_date": "",
+    }
+    if _w7_right_bottom_fn is None:
+        return result
+    try:
+        end_date = str(trade_date or TRADE_DATE)
+        start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=400)).strftime('%Y%m%d')
+        df = sc.cached_daily(ts_code, start_date, end_date)
+        if df is None or df.empty:
+            return result
+        df['trade_date'] = df['trade_date'].astype(str)
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        mask = df['trade_date'] == end_date
+        if not mask.any():
+            return result
+        df = df.iloc[:mask.idxmax() + 1].reset_index(drop=True)
+        # 几何需要「检测日前 45 根找左侧主高 + 其前 60 根算前波涨幅」，至少 ~130 根
+        if len(df) < 130:
+            return result
+        # 前复权对齐（与 detect_breakout 同口径）：几何比值与均线须与行情软件一致
+        try:
+            adj_df = sc.cached_adj_factor(ts_code, start_date, end_date)
+            if adj_df is not None and not adj_df.empty:
+                adj_map = adj_df.set_index('trade_date')['adj_factor']
+                ratio = df['trade_date'].map(adj_map).ffill().bfill()
+                anchor = float(ratio.iloc[-1])
+                if anchor and anchor > 0:
+                    ratio = ratio / anchor
+                    for _col in ('open', 'high', 'low', 'close'):
+                        df[_col] = (df[_col] * ratio).round(4)
+        except Exception:
+            pass
+        filled = _w7_fill_ma_fn(df)
+        ok, info = _w7_right_bottom_fn(filled, len(filled) - 1)
+        if not ok or not info:
+            return result
+        result.update({
+            "dbl_hit": True,
+            "dbl_h0_high": float(info['rb_h0_high']),
+            "dbl_left_low": float(info['rb_left_low']),
+            "dbl_mid_high": float(info['rb_mid_high']),
+            "dbl_right_low": float(info['rb_right_low']),
+            "dbl_ratio": float(info['rb_ratio']),
+            "dbl_prior_rise": float(info['rb_prior_rise']),
+            "dbl_retrace": float(info['rb_retrace']),
+            "dbl_volr20": float(info['rb_volr20']),
+            "dbl_h0_date": str(info['rb_h0_date']),
+            "dbl_left_date": str(info['rb_left_date']),
+            "dbl_mid_date": str(info['rb_mid_date']),
+        })
+    except Exception:
+        pass
+    return result
+
+
+def north_moneyflow_score(ts_code, pro):
+    """
+    北向资金共振因子（0-20分）
+    使用 hk_hold（沪深港通持股）和 moneyflow（个股资金流向）数据
+    """
+
+    score = 0
+    detail = {}
+
+    try:
+        # =========================
+        # 1. 大单资金净流入（短期，个股资金流向 proxy）
+        # =========================
+        flow = _df_moneyflow_by_code(ts_code)
+
+        if flow is not None and len(flow) > 0:
+            recent = flow.head(5)
+
+            # 大单+特大单净流入作为机构资金代理
+            net_amount = recent["net_mf_amount"].sum()
+
+            # 标准化评分
+            if net_amount > 1e6:       # >100万
+                s1 = 10
+            elif net_amount > 5e5:      # >50万
+                s1 = 7
+            elif net_amount > 0:
+                s1 = 4
+            else:
+                s1 = 0
+
+            score += s1
+            detail["moneyflow_score"] = s1
+            detail["net_mf_amount_5d"] = round(net_amount, 2)
+
+        # =========================
+        # 2. 趋势一致性（持续净流入天数）
+        # =========================
+        if flow is not None and len(flow) > 0:
+            last_5 = flow.head(5)
+            positive_days = (last_5["net_mf_amount"] > 0).sum()
+
+            s2 = positive_days / 5 * 5  # 0-5分
+            score += s2
+            detail["moneyflow_consistency"] = s2
+
+        # =========================
+        # 3. 北向持仓变化（结构性增持）
+        # =========================
+        # DataFetcher.get_hk_hold_by_code 返回 dict（仅最新值），无法计算 delta，按持股状态给分
+        hold_info = _df_hk_hold_by_code(ts_code)
+
+        if hold_info and hold_info.get('vol', 0) > 0:
+            s3 = 3  # 有北向持仓（无法判断增减趋势，给中性偏正分）
+            score += s3
+            detail["north_position_change"] = s3
+
+    except:
+        detail["north_error"] = 0
+
+    return min(score, 20), detail
+
+
+def get_hot_list_best_rank_bonus(ts_code, days=60):
+    """获取股票在热榜中的最佳排名并返回加分
+    
+    加分规则：
+    1. 排名加分（基于最佳排名）：
+       - Top10: +12分
+       - Top20: +10分
+       - Top30: +8分
+       - Top50: +6分
+       - Top100: +4分
+       - 未进Top100: +0分
+    
+    2. 出现次数加分（基于60天内上榜次数）：
+       - 1次: +0分
+       - 2-3次: +2分
+       - 4-5次: +4分
+       - 6-10次: +6分
+       - 11次以上: +8分
+    
+    总加分 = 排名加分 + 出现次数加分
+    
+    Args:
+        ts_code: 股票代码
+        days: 统计天数，默认60天
+    
+    Returns:
+        bonus: 总加分
+        best_rank: 最佳排名（未进榜返回9999）
+        appear_count: 出现次数
+    """
+    best_rank = 9999
+    appear_count = 0
+    
+    if not os.path.exists(DC_HOT_CACHE_DIR):
+        return 0, best_rank, appear_count
+    
+    from datetime import datetime, timedelta
+    
+    for i in range(days):
+        date = datetime.now() - timedelta(days=i)
+        date_str = date.strftime('%Y%m%d')
+        csv_path = os.path.join(DC_HOT_CACHE_DIR, f'dc_hot_{date_str}.csv')
+        
+        if os.path.exists(csv_path):
+            try:
+                df = pd.read_csv(csv_path)
+                match = df[df['ts_code'] == ts_code]
+                if not match.empty:
+                    appear_count += 1
+                    rank = match.iloc[0].get('hot_rank', match.iloc[0].get('rank', 9999))
+                    if pd.notna(rank) and int(rank) < best_rank:
+                        best_rank = int(rank)
+            except Exception:
+                pass
+    
+    # 1. 排名加分
+    if best_rank <= 10:
+        rank_bonus = 12
+    elif best_rank <= 20:
+        rank_bonus = 10
+    elif best_rank <= 30:
+        rank_bonus = 8
+    elif best_rank <= 50:
+        rank_bonus = 6
+    elif best_rank <= 100:
+        rank_bonus = 4
+    else:
+        rank_bonus = 0
+    
+    # 2. 出现次数加分
+    if appear_count <= 1:
+        count_bonus = 0
+    elif appear_count <= 3:
+        count_bonus = 2
+    elif appear_count <= 5:
+        count_bonus = 4
+    elif appear_count <= 10:
+        count_bonus = 6
+    else:
+        count_bonus = 8
+    
+    # 总加分
+    bonus = rank_bonus + count_bonus
+    
+    return bonus, best_rank, appear_count
+
+
+# =========================
+# Tushare
+# =========================
+TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN")
+
+# 尝试安全设置 tushare token
+pro = None
+try:
+    pro = ts.pro_api(TUSHARE_TOKEN)
+except Exception as e:
+    print(f"Token 设置失败: {e}")
+    print("请正确配置 TUSHARE_TOKEN 后重新运行。")
+    import sys
+    sys.exit(1)
+
+if pro is None:
+    print("Tushare API 未初始化，请配置 Token 后重新运行。")
+    import sys
+    sys.exit(1)
+
+
+# =========================
+# DataFetcher 统一缓存（高频接口走 DataFetcher，低频保留 pro 直调）
+# =========================
+try:
+    from data_fetcher import DataFetcher
+except Exception:
+    DataFetcher = None
+
+_df_singleton = None
+def _get_df():
+    """获取 DataFetcher 单例（不可用则返回 None，调用方降级到 pro）"""
+    global _df_singleton
+    if _df_singleton is not None:
+        return _df_singleton
+    try:
+        if DataFetcher is None:
+            return None
+        token = os.getenv("TUSHARE_TOKEN") or TUSHARE_TOKEN
+        if not token:
+            return None
+        config = {
+            'cache': {'enabled': True, 'dir': os.path.join(BASE_DIR, 'multi_factor_picker', 'cache'), 'expire_hours': 168},
+            'tushare': {'max_retry': 3, 'retry_delay': 5}
+        }
+        _df_singleton = DataFetcher(token, config)
+    except Exception:
+        return None
+    return _df_singleton
+
+def _df_daily_by_code(ts_code, start_date=None, end_date=None, fields=None):
+    """pro.daily(ts_code=...) 的 DataFetcher 优先版（按股票查日线）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_daily_by_code(ts_code, start_date=start_date, end_date=end_date, fields=fields)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    kw = {'ts_code': ts_code}
+    if start_date is not None: kw['start_date'] = start_date
+    if end_date is not None: kw['end_date'] = end_date
+    if fields is not None: kw['fields'] = fields
+    return pro.daily(**kw)
+
+def _df_daily_by_date(trade_date):
+    """pro.daily(trade_date=...) 的 DataFetcher 优先版（按日期查全市场）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_daily(trade_date)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.daily(trade_date=trade_date)
+
+
+def _df_daily_basic_by_date(trade_date, fields=None):
+    """pro.daily_basic(trade_date=...) 的 DataFetcher 优先版（按日期查全市场）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_daily_basic(trade_date)
+            if r is not None and len(r) > 0:
+                if fields:
+                    cols = [c.strip() for c in fields.split(',') if c.strip() in r.columns]
+                    if cols:
+                        r = r[cols]
+                return r
+        except Exception:
+            pass
+    kw = {'trade_date': trade_date}
+    if fields: kw['fields'] = fields
+    return pro.daily_basic(**kw)
+
+def _df_stock_list(list_status='L'):
+    """pro.stock_basic(list_status=...) 的 DataFetcher 优先版（全市场股票列表）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_stock_list(list_status=list_status)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.stock_basic(exchange='', list_status=list_status)
+
+def _df_trade_cal(start_date=None, end_date=None):
+    """pro.trade_cal(...) 的 DataFetcher 优先版（交易日历）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_trade_cal(start_date=start_date, end_date=end_date)
+            if r is not None:
+                return r
+        except Exception:
+            pass
+    kw = {'exchange': ''}
+    if start_date is not None: kw['start_date'] = start_date
+    if end_date is not None: kw['end_date'] = end_date
+    return pro.trade_cal(**kw)
+
+def _df_hk_hold_by_code(ts_code):
+    """pro.hk_hold(ts_code=...) 的 DataFetcher 优先版（返回 dict：最新持股）"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            return _df.get_hk_hold_by_code(ts_code)
+        except Exception:
+            pass
+    return None
+
+def _df_moneyflow_by_code(ts_code, start_date=None, end_date=None):
+    """pro.moneyflow(ts_code=...) 的 DataFetcher 优先版"""
+    _df = _get_df()
+    if _df is not None:
+        try:
+            r = _df.get_moneyflow_by_code(ts_code, start_date=start_date, end_date=end_date)
+            if r is not None and len(r) > 0:
+                return r
+        except Exception:
+            pass
+    return pro.moneyflow(ts_code=ts_code)
+
+
+if not os.path.exists(REPORT_DIR):
+    os.makedirs(REPORT_DIR)
+
+# =========================
+# 全局换手率缓存（当日批量加载）
+# =========================
+TURNOVER_CACHE = {}  # {ts_code: turnover_rate}
+
+def load_turnover_cache():
+    """批量加载当日换手率到缓存（从daily_basic表）"""
+    global TURNOVER_CACHE
+    if pro is None:
+        return
+    cache_file = os.path.join(CACHE_DIR, f"turnover_rate_{TRADE_DATE}.csv")
+    if os.path.exists(cache_file):
+        try:
+            df = pd.read_csv(cache_file)
+            TURNOVER_CACHE = dict(zip(df['ts_code'], df['turnover_rate']))
+            print(f"[缓存] 换手率已加载: {len(TURNOVER_CACHE)} 只")
+            return
+        except Exception:
+            pass
+    # 没有缓存则从API批量拉取
+    try:
+        df = _df_daily_basic_by_date(
+            TRADE_DATE,
+            fields='ts_code,turnover_rate'
+        )
+        if df is not None and not df.empty:
+            TURNOVER_CACHE = dict(zip(df['ts_code'], df['turnover_rate']))
+            df.to_csv(cache_file, index=False)
+            print(f"[缓存] 换手率已保存: {cache_file}")
+    except Exception as e:
+        print(f"[缓存] 换手率加载失败: {e}")
+
+def get_cached_turnover(ts_code):
+    """从缓存获取换手率（单位：%）"""
+    return TURNOVER_CACHE.get(ts_code, 0.0)
+
+# =========================
+# 通达信目录（修改成你的）
+# =========================
+TDX_DIR = r"C:\new_tdx"
+
+import pdfkit # type: ignore
+
+WK_PATH = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+
+config = pdfkit.configuration(wkhtmltopdf=WK_PATH)
+
+# =========================
+# 最近交易日
+# =========================
+# =========================
+# 获取最近交易日
+# =========================
+
+def get_last_trade_date():
+    """获取最近的交易日"""
+
+    now = datetime.now()
+
+    # =========================
+    # 9点前：视为上一自然日
+    # =========================
+    if now.hour < 15:
+
+        query_date = (now - timedelta(days=1)).strftime('%Y%m%d')
+
+    else:
+
+        query_date = now.strftime('%Y%m%d')
+
+    # =========================
+    # 如果没有 tushare，根据当前时间计算交易日
+    # =========================
+    if pro is None:
+        # 简单处理：跳过周末
+        from datetime import date
+        d = date.today()
+        if d.weekday() == 5:  # 周六
+            d = d - timedelta(days=1)
+        elif d.weekday() == 6:  # 周日
+            d = d - timedelta(days=2)
+        return d.strftime('%Y%m%d')
+
+    # =========================
+    # 获取交易日历
+    # =========================
+    cal = _df_trade_cal(
+        start_date='20200101',
+        end_date=query_date
+    )
+
+    # 只保留开市日
+    cal = cal[cal['is_open'] == 1]
+
+    # 最近交易日
+    last_trade_date = cal[
+        cal['cal_date'] <= query_date
+    ]['cal_date'].max()
+
+    return str(last_trade_date)
+
+
+def validate_trade_date(date_str):
+    """验证日期是否为有效交易日，如果不是则返回最近的有效交易日"""
+    if pro is None:
+        return date_str
+    
+    try:
+        # 获取交易日历
+        cal = _df_trade_cal(
+            start_date=date_str,
+            end_date=date_str
+        )
+        
+        # 如果当天是交易日
+        if not cal.empty and cal.iloc[0]['is_open'] == 1:
+            return date_str
+        
+        # 如果不是交易日，找之前最近的交易日
+        cal = _df_trade_cal(
+            start_date=(datetime.strptime(date_str, '%Y%m%d') - timedelta(days=30)).strftime('%Y%m%d'),
+            end_date=date_str
+        )
+        cal = cal[cal['is_open'] == 1]
+        last_valid = cal[cal['cal_date'] <= date_str]['cal_date'].max()
+        if last_valid:
+            print(f"[警告] {date_str} 不是交易日，使用最近交易日: {last_valid}")
+            return str(last_valid)
+        return date_str
+    except Exception as e:
+        print(f"[警告] 日期验证失败: {e}，使用原日期: {date_str}")
+        return date_str
+
+
+# 全局交易日变量
+TRADE_DATE = get_last_trade_date()
+#TRADE_DATE = "20260529" # for test
+
+print("当前交易日1:", TRADE_DATE)
+
+# 启动时加载换手率缓存
+load_turnover_cache()
+
+# =========================
+# BARSLAST
+# =========================
+def barslast(series):
+    """向量化版本：找到最近True的距离
+    
+    特殊规则：如果第1天是True，不更新last_true，后续False返回NaN
+    """
+    arr = series.values.astype(bool)
+    n = len(arr)
+    
+    # 找到所有True的位置
+    true_positions = np.where(arr)[0]
+    
+    if len(true_positions) == 0:
+        return pd.Series([np.nan] * n, index=series.index)
+    
+    # 特殊处理：如果第1天是True，需要跳过它（不作为有效信号）
+    start_idx = 0
+    if arr[0]:
+        # 第1天True，跳过它，从后续找有效True
+        valid_positions = true_positions[true_positions > 0]
+        if len(valid_positions) == 0:
+            # 只有第1天是True，全部返回NaN
+            return pd.Series([np.nan] * n, index=series.index)
+        true_positions = valid_positions
+        start_idx = 1  # 第1天返回NaN
+    
+    # 使用searchsorted快速定位每个位置最近的True
+    indices = np.arange(n)
+    idx = np.searchsorted(true_positions, indices, side='right') - 1
+    
+    # 计算距离
+    result = np.where(idx >= 0, indices - true_positions[idx], np.nan)
+    
+    # 第1天符合条件返回NaN
+    if start_idx == 1:
+        result[0] = np.nan
+    
+    # True的位置返回0
+    for pos in true_positions:
+        result[pos] = 0
+    
+    return pd.Series(result, index=series.index)
+
+
+def load_stock_dict():
+    """使用tushare获取股票代码和名称映射"""
+    global STOCK_DICT
+    try:
+        if pro is not None:
+            df = _df_stock_list(list_status='L')
+            stock_dict = {}
+            for _, row in df.iterrows():
+                # 同时存储带后缀和不带后缀的代码
+                stock_dict[str(row['symbol'])] = row['name']
+                stock_dict[str(row['ts_code'])] = row['name']
+            STOCK_DICT = stock_dict
+            return stock_dict
+    except Exception as e:
+        print(f"[警告] tushare股票字典获取失败: {e}")
+    
+    # 兜底：使用内置基础字典
+    STOCK_DICT = {
+        '000001': '平安银行', '600000': '浦发银行', '000002': '万科A',
+        '600519': '贵州茅台', '300750': '宁德时代', '000001.SZ': '平安银行',
+        '600000.SH': '浦发银行', '000002.SZ': '万科A', '600519.SH': '贵州茅台',
+        '300750.SZ': '宁德时代'
+    }
+    return STOCK_DICT
+
+STOCK_DICT = load_stock_dict()
+
+# =========================
+# 股票名（简单版）
+# =========================
+def get_stock_name(code):
+
+    return STOCK_DICT.get(code, code)
+
+
+# ======================================================
+# 获取全部股票
+# ======================================================
+
+
+# ======================================================
+# 全市场daily缓存更新（机构级）
+# ======================================================
+# ======================================================
+# 全市场daily缓存（机构级最终版）
+# ======================================================
+# =========================
+# 缓存历史数据
+# =========================
+def _get_daily_from_sqlite(ts_code, start_date='20250101', end_date=None):
+    """从 SQLite daily_cache 表读取单股日线数据（替代 {ts_code}.csv 读取）
+
+    供 get_news_sentiment / 价格壁垒评分 / 成长弹性评分 / 筹码分析等场景统一调用。
+    返回 DataFrame（含 trade_date/close/open/high/low/vol/amount/pct_chg 等字段）或 None。
+    """
+    if end_date is None:
+        end_date = TRADE_DATE
+    try:
+        from stock_cache import get_daily_cache
+        df = get_daily_cache(ts_code, start_date, end_date)
+        if df is not None and not df.empty:
+            df['trade_date'] = df['trade_date'].astype(str)
+            return df.sort_values('trade_date').reset_index(drop=True)
+    except Exception:
+        pass
+    return None
+
+
+def get_hist_data(ts_code):
+    """获取单股历史日线数据（V2: 统一从 SQLite daily_cache 读取，废弃 CSV）"""
+
+    # =========================
+    # 优先读取 SQLite daily_cache
+    # =========================
+    try:
+        from stock_cache import get_daily_cache, get_daily_cache_range, batch_insert_daily_cache
+        _, max_date = get_daily_cache_range(ts_code)
+        if max_date is not None and str(max_date) >= TRADE_DATE:
+            df = get_daily_cache(ts_code, '20250101', TRADE_DATE)
+            if df is not None and not df.empty:
+                df['trade_date'] = df['trade_date'].astype(str)
+                return df[df['trade_date'] <= TRADE_DATE].sort_values('trade_date').reset_index(drop=True)
+    except Exception as e:
+        print(f"{ts_code} SQLite缓存读取失败: {e}")
+
+    # =========================
+    # 缓存缺失 → 重新拉取日线并写入 SQLite daily_cache
+    # =========================
+    try:
+        df = _df_daily_by_code(ts_code, start_date='20250101', end_date=TRADE_DATE)
+        if df is None or df.empty:
+            return None
+        df['trade_date'] = df['trade_date'].astype(str)
+        df = df.sort_values('trade_date').reset_index(drop=True)
+        try:
+            batch_insert_daily_cache(df)
+        except Exception:
+            pass
+        time.sleep(0.15)
+    except Exception as e:
+        print(f"{ts_code} 下载失败:", e)
+        return None
+
+    return df
+
+
+# ======================================================
+# 强势股池优化：时点特征计算辅助函数
+# 回测验证：这些特征对强势股池胜率有显著区分度
+# ======================================================
+def _calc_vol_ratio(df):
+    """计算当日量比 = 当日成交量 / 近5日平均成交量（不含当日）"""
+    try:
+        if df is None or len(df) < 6 or 'vol' not in df.columns:
+            return 0
+        today_vol = float(df['vol'].iloc[-1])
+        avg_5d = float(df['vol'].iloc[-6:-1].mean())
+        if avg_5d > 0:
+            return round(today_vol / avg_5d, 2)
+        return 0
+    except:
+        return 0
+
+
+def _calc_dist_ma(df, window=5):
+    """计算当日收盘价距MA距离（百分比）"""
+    try:
+        if df is None or len(df) < window + 1 or 'close' not in df.columns:
+            return 0
+        today_close = float(df['close'].iloc[-1])
+        ma_value = float(df['close'].iloc[-(window+1):].mean())
+        if ma_value > 0:
+            return round((today_close / ma_value - 1) * 100, 2)
+        return 0
+    except:
+        return 0
+
+
+def _calc_pct_n(df, n=20):
+    """计算近N日涨幅（百分比）"""
+    try:
+        if df is None or len(df) < n + 1 or 'close' not in df.columns:
+            return 0
+        today_close = float(df['close'].iloc[-1])
+        n_days_ago = float(df['close'].iloc[-(n+1)])
+        if n_days_ago > 0:
+            return round((today_close / n_days_ago - 1) * 100, 2)
+        return 0
+    except:
+        return 0
+
+
+# ======================================================
+# 批量预取历史数据（解决高频API调用问题）
+# ======================================================
+def batch_prefetch_hist_data(codes, start_date='20250101'):
+    """
+    在主循环之前批量预取所有股票数据到本地缓存（V3: 逐日拉全市场）
+
+    V2 用 pro.daily(ts_code="c1,c2,...") 每批 20 只拉长区间，20 只 × 约 430 个
+    交易日 ≈ 8600 行，超过该接口单次 6000 行上限后被静默截断，于是下面又逐只重下
+    （实测 5.8s/只、4992 只约 7.7 小时）。
+
+    V3 改为按交易日拉全市场 pro.daily(trade_date=YYYYMMDD)：先按 daily_cache 现有
+    日期范围算出真正缺哪些交易日（日常运行通常只缺最近 1~2 天，首次全量才约 430 天，
+    新股按其上市日截断，不补上市前的交易日），再逐日拉取；若某日返回行数触及单次
+    上限，再按代码前缀分段重拉兜底。之后 get_hist_data() 将全部命中 SQLite 缓存，
+    不再调 API
+    """
+    if not codes:
+        return
+
+    from bisect import bisect_left, bisect_right
+    from stock_cache import (batch_insert_daily_cache, get_conn,
+                             get_daily_cache_range, DAILY_CACHE_TABLE)
+
+    code_set = set(codes)
+
+    # 上市日：把补数下界抬到 max(区间起点, 上市日)，避免把新股判成"缺整段历史"
+    def _merge_list_dates(dates, df):
+        if df is None or 'list_date' not in getattr(df, 'columns', []):
+            return
+        for _c, _ld in zip(df['ts_code'].astype(str), df['list_date']):
+            _s = str(_ld).strip().split('.')[0]
+            if len(_s) == 8 and _s.isdigit():
+                dates[_c] = _s
+
+    list_dates = {}
+    try:
+        from stock_cache import load_stock_basic
+        _merge_list_dates(list_dates, load_stock_basic())
+    except Exception:
+        pass
+
+    # 本地 stock_basic.csv 会滞后（缺最近上市的新股）→ 用一次（带缓存）的列表接口补齐缺口，
+    # 仍取不到上市日的代码按保守口径（补全区间）处理，宁可多拉不漏。
+    if code_set - set(list_dates):
+        try:
+            _df_sb = _get_df()
+            if _df_sb is not None:
+                _merge_list_dates(list_dates, _df_sb.get_stock_list('L'))
+            elif pro is not None:
+                _merge_list_dates(list_dates, pro.stock_basic(
+                    exchange='', list_status='L', fields='ts_code,list_date'))
+        except Exception as e:
+            print(f"  批量预取: 上市日补齐失败({e})，未取到上市日的代码按保守口径处理")
+
+    # 仍取不到上市日的（通常 0~2 只，多为当日新上市，上面的列表缓存还没收录）：逐只补一次。
+    # 否则单只未知代码会把整段区间判成"缺历史"，每次运行都白白重拉 400+ 个交易日。
+    _unknown = sorted(c for c in code_set if c not in list_dates)
+    if 0 < len(_unknown) <= 20:
+        _df_p = _get_df()
+        _p = _df_p.pro if (_df_p is not None and getattr(_df_p, 'pro', None) is not None) else pro
+        for _c in _unknown:
+            try:
+                if _df_p is not None:
+                    _r = _df_p._retry_call(_p.stock_basic, ts_code=_c,
+                                           fields='ts_code,list_date')
+                else:
+                    _r = _p.stock_basic(ts_code=_c, fields='ts_code,list_date')
+                _merge_list_dates(list_dates, _r)
+            except Exception:
+                pass
+    elif len(_unknown) > 20:
+        print(f"  批量预取: {len(_unknown)} 只未取到上市日，按保守口径补齐整段区间")
+
+    # 交易日历（只跑真实交易日，避免对非交易日空转请求）
+    cal = _df_trade_cal(start_date=start_date, end_date=TRADE_DATE)
+    if cal is None or cal.empty:
+        print(f"  批量预取: 交易日历为空({start_date}~{TRADE_DATE})，跳过")
+        return
+    if 'is_open' in cal.columns:
+        cal = cal[cal['is_open'].astype(str) == '1']
+    days = sorted({str(d) for d in cal['cal_date'].astype(str)})
+    if not days:
+        print(f"  批量预取: {start_date}~{TRADE_DATE} 无交易日，跳过")
+        return
+
+    # 一次读全表日期范围（强制走 idx_daily_code_date，避免 GROUP BY 全表扫描 12s+），
+    # 据此只补真正缺的交易日：日常运行通常只缺最近 1~2 天，而不是每次都重拉全区间。
+    rng = {}
+    try:
+        with get_conn() as conn:
+            for r in conn.execute(
+                    f'SELECT ts_code, MIN(trade_date), MAX(trade_date) '
+                    f'FROM {DAILY_CACHE_TABLE} INDEXED BY idx_daily_code_date '
+                    f'GROUP BY ts_code').fetchall():
+                rng[str(r[0])] = (str(r[1]) if r[1] is not None else None,
+                                  str(r[2]) if r[2] is not None else None)
+    except Exception as e:
+        # 索引名变更等异常 → 降级为逐只查询（走主键索引，同样很快），
+        # 绝不能把"查不到范围"当成"缺全区间"，否则会退化成全量重拉。
+        print(f"  批量预取: 范围查询失败({e})，降级为逐只查询")
+        for c in code_set:
+            try:
+                mn, mx = get_daily_cache_range(c)
+            except Exception:
+                mn, mx = None, None
+            rng[c] = (str(mn) if mn is not None else None,
+                      str(mx) if mx is not None else None)
+
+    need_days = set()
+    n_hist = 0
+    n_recent = 0
+    for c in code_set:
+        mn, mx = rng.get(c, (None, None))
+        # 该股上市日之前不存在行情：把补数下界抬到 max(区间起点, 上市日)。
+        # 否则新股（其缓存最早日 mn 就等于上市日）会被判成"缺整段历史"，
+        # 一次就触发整段区间的重拉（实测 238 只 → 423 个交易日 × 4s ≈ 半小时）。
+        _ld = list_dates.get(c)
+        lo = _ld if (_ld and _ld > days[0]) else days[0]
+        if mn is None:
+            need_days.update(days[bisect_left(days, lo):])
+            n_hist += 1
+            continue
+        if mn > lo:
+            need_days.update(days[bisect_left(days, lo):bisect_left(days, mn)])   # 缺历史段
+            n_hist += 1
+        if mx is None or mx < TRADE_DATE:
+            need_days.update(days if mx is None else days[bisect_right(days, mx):])   # 缺最近段
+            n_recent += 1
+
+    if not need_days:
+        print(f"  批量预取: {len(codes)} 只均已含 {start_date}~{TRADE_DATE} 数据，跳过")
+        return
+
+    todo = [d for d in days if d in need_days]
+    print(f"  批量预取: 传入 {len(codes)} 只（缺历史 {n_hist} / 缺最近 {n_recent}），"
+          f"需补 {len(todo)}/{len(days)} 个交易日，逐日拉全市场")
+
+    total_rows = 0
+    empty_days = []
+    failed_days = []
+    for i, day in enumerate(todo, 1):
+        try:
+            df = _fetch_daily_all_by_date(day, code_set)
+        except Exception as e:
+            failed_days.append(day)
+            print(f"    交易日 {day} 拉取失败: {e}")
+            continue
+
+        if df is None or df.empty:
+            empty_days.append(day)
+            continue
+
+        # 尊重入参范围：只写上游要求补齐的股票
+        df = df[df['ts_code'].isin(code_set)]
+        if df.empty:
+            continue
+
+        df = df.copy()
+        df['trade_date'] = df['trade_date'].astype(str)
+        try:
+            total_rows += batch_insert_daily_cache(df)
+        except Exception as e:
+            failed_days.append(day)
+            print(f"    交易日 {day} 入库失败: {e}")
+            continue
+
+        if i % 20 == 0 or i == len(todo):
+            print(f"    [{i}/{len(todo)}] {day}  累计写入 {total_rows} 行")
+
+    done_days = len(todo) - len(empty_days) - len(failed_days)
+    print(f"  批量预取完成: {done_days}/{len(todo)} 个交易日, 共写入 {total_rows} 行")
+    if empty_days:
+        print(f"    无数据交易日 {len(empty_days)} 个（当日无行情返回）")
+    if failed_days:
+        print(f"    失败交易日 {len(failed_days)} 个: {', '.join(failed_days[:10])}")
+
+
+# tushare daily 单次返回上限 6000 行，留安全裕度后按此判定是否被截断
+_DAILY_MAX_ROWS = 5900
+# 分段重拉用的代码前缀（沪主板/科创/深主板/创业板/北交所）
+_CODE_PREFIXES = ('60', '68', '00', '30', '8', '4', '9')
+
+
+def _fetch_daily_all_by_date(trade_date, code_set):
+    """按交易日拉全市场日线；返回行数触及接口单次上限时，按代码前缀分段重拉兜底
+
+    超上限时接口是"静默截断"（返回前 N 行、不报错），会造成部分股票历史缺口
+    且表面看起来成功，因此必须显式检测并兜底。
+    """
+    df = _call_daily_api(trade_date=trade_date)
+    if df is None or df.empty or len(df) < _DAILY_MAX_ROWS:
+        return df
+
+    parts = []
+    for pfx in _CODE_PREFIXES:
+        sub_codes = [c for c in code_set if c.startswith(pfx)]
+        if not sub_codes:
+            continue
+        sub_df = _call_daily_api(trade_date=trade_date, ts_code=",".join(sub_codes))
+        if sub_df is not None and not sub_df.empty:
+            parts.append(sub_df)
+    if not parts:
+        return df
+    return pd.concat(parts, ignore_index=True).drop_duplicates(subset=['ts_code', 'trade_date'])
+
+
+def _call_daily_api(trade_date, ts_code=None):
+    """pro.daily 调用（优先复用 DataFetcher 的限频/重试，未启用则直连）"""
+    kw = {'trade_date': trade_date}
+    if ts_code is not None:
+        kw['ts_code'] = ts_code
+    _df = _get_df()
+    if _df is not None and getattr(_df, 'pro', None) is not None:
+        return _df._retry_call(_df.pro.daily, **kw)
+    if pro is None:
+        return None
+    return pro.daily(**kw)
+    
+
+# =========================
+# AI新闻情绪（缓存版）
+# 每日只请求一次，新闻内容无变化则复用缓存
+# =========================
+def get_news_sentiment(
+        code,
+        name,
+        theme="",
+        theme_state=""
+):
+    """AI基本面+事件驱动分析（集成真实数据）
+    
+    参数：
+        code: 股票代码
+        name: 股票名称
+        theme: 所属主题（已由 filter_by_top_themes 匹配）
+        theme_state: 主题状态
+    
+    数据来源（一周内）：
+    - report_rc: 机构研报
+    - stk_surv: 券商调研
+    - 网页新闻: 抓取财经新闻（东财/新浪/财联社等来源）
+    - 本地缓存: 行情/K线数据
+    - 主题状态（直接传入）
+    - 热榜数据
+    
+    缓存逻辑：
+    - 如果采集的新闻内容跟上一次相同，直接复用 AI 分析结果
+    - 避免重复调用 AI 接口，节省费用
+    """
+    import hashlib
+    
+    # =========================
+    # 前置判断：如果当日分析文件已存在，直接返回缓存结果
+    # =========================
+    cache_file = os.path.join(NEWS_CACHE_DIR, f"ai_analysis_{code}_{TRADE_DATE}.json")
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+                cached_response = cached.get("response", "")
+            
+            # 提取综合情绪强度评分
+            found = re.search(r'综合情绪强度评分[^\d]{0,5}(\d{1,3})', cached_response)
+            if found:
+                cached_score = min(max(int(found.group(1)), 0), 100)
+            else:
+                lines = cached_response.strip().split('\n')
+                cached_score = 50
+                for line in reversed(lines):
+                    nums = re.findall(r'\b(\d{1,3})\b', line.strip())
+                    if nums:
+                        cached_score = min(max(int(nums[-1]), 0), 100)
+                        break
+            
+            print(f"  [AI情绪] 当日分析已存在，直接返回缓存分数: {cached_score}")
+            return cached_score
+        except Exception as e:
+            print(f"  [AI情绪] 读取缓存失败，继续分析: {e}")
+    
+    # =========================
+    # 采集一周内真实数据（新闻实时采集，不缓存）
+    # =========================
+    week_ago = (datetime.strptime(TRADE_DATE, '%Y%m%d') - timedelta(days=30)).strftime('%Y%m%d')
+    
+    # 1. 研报数据 (report_rc) — 量化结构化数据，直接提取关键字段
+    report_text = ""
+    try:
+        report_cache_key = f"report_rc_{code}_{week_ago}_{TRADE_DATE}.json"
+        report_cache_file = os.path.join(TUSHARE_API_CACHE_DIR, report_cache_key)
+        if os.path.exists(report_cache_file):
+            with open(report_cache_file, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            df_report = pd.DataFrame(raw) if isinstance(raw, list) else pd.read_json(report_cache_file)
+        else:
+            df_report = pro.report_rc(
+                ts_code=code,
+                start_date=week_ago,
+                end_date=TRADE_DATE,
+                fields=[
+                    "ts_code", "name", "report_date", "report_title", "report_type",
+                    "classify", "org_name", "author_name", "quarter",
+                    "op_rt", "op_pr", "tp", "np", "eps", "pe", "rd", "roe",
+                    "ev_ebitda", "rating", "max_price", "min_price"
+                ]
+            )
+            if df_report is not None and not df_report.empty:
+                df_report.to_json(report_cache_file, force_ascii=False, orient="records", indent=2)
+        
+        if df_report is not None and not df_report.empty:
+            items = []
+            for _, r in df_report.iterrows():
+                dt = r.get('report_date', '')
+                title = r.get('report_title', r.get('report_title', ''))
+                org = r.get('org_name', '')
+                rating = r.get('rating', '')
+                tp = r.get('tp', '')  # 目标价
+                eps = r.get('eps', '')  # 每股收益
+                pe = r.get('pe', '')  # 市盈率
+                roe = r.get('roe', '')  # ROE
+                np_val = r.get('np', '')  # 净利润
+                
+                # 构造输出行
+                item_line = f"  [{dt}] {title} ({org})"
+                if rating:
+                    item_line += f" | 评级: {rating}"
+                if tp:
+                    item_line += f" | 目标价: {tp}元"
+                items.append(item_line)
+                
+                # 关键指标行
+                metrics = []
+                if eps:
+                    metrics.append(f"EPS={eps}")
+                if pe:
+                    metrics.append(f"PE={pe}")
+                if roe:
+                    metrics.append(f"ROE={roe}%")
+                if np_val:
+                    metrics.append(f"净利润={np_val}亿")
+                if metrics:
+                    items.append(f"    指标: {', '.join(metrics)}")
+            
+            if items:
+                report_text = "\n".join(items[:20])
+                print(f"  [机构研报] 获取到 {len(df_report)} 条")
+    except Exception as e:
+        report_text = f"  (获取失败: {e})"
+    
+    # 2. 调研数据 (stk_surv) — 带接口缓存
+    surv_text = ""
+    try:
+        surv_cache_key = f"stk_surv_{code}_{week_ago}_{TRADE_DATE}.json"
+        surv_cache_file = os.path.join(TUSHARE_API_CACHE_DIR, surv_cache_key)
+        if os.path.exists(surv_cache_file):
+            with open(surv_cache_file, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            df_surv = pd.DataFrame(raw) if isinstance(raw, list) else pd.read_json(surv_cache_file, dtype={"surv_date": str})
+        else:
+            df_surv = pro.stk_surv(
+                ts_code=code,
+                start_date=week_ago,
+                end_date=TRADE_DATE
+            )
+            if df_surv is not None and not df_surv.empty:
+                df_surv.to_json(surv_cache_file, force_ascii=False, orient="records", indent=2)
+        if df_surv is not None and not df_surv.empty:
+            items = []
+            date_col = 'surv_date' if 'surv_date' in df_surv.columns else (
+                'survey_date' if 'survey_date' in df_surv.columns else None)
+            for _, r in df_surv.iterrows():
+                dt = r[date_col] if date_col else str(r.get(list(r.keys())[0], ''))
+                content = str(r.get('content', r.get('desc', '')))
+                inst = r.get('institution', r.get('org_name', ''))
+                items.append(f"  [{dt}] {inst} 调研")
+                if len(content) > 200:
+                    content = content[:200] + '...'
+                items.append(f"    内容: {content}")
+            if items:
+                surv_text = "\n".join(items[:12])  # 最多6条调研
+    except Exception as e:
+        surv_text = f"  (获取失败: {e})"
+    
+    # 3. 行情数据（一周涨跌幅、成交量变化）
+    price_text = ""
+    try:
+        df = _get_daily_from_sqlite(code)
+        if df is not None and len(df) >= 5:
+            df = df[df['trade_date'] <= TRADE_DATE]
+            recent = df.tail(5)
+            chg_5d = ((recent['close'].iloc[-1] / recent['close'].iloc[0]) - 1) * 100
+            avg_vol_5d = recent['vol'].mean()
+            avg_vol_20d = df.tail(20)['vol'].mean() if len(df) >= 20 else avg_vol_5d
+            vol_ratio = avg_vol_5d / avg_vol_20d if avg_vol_20d > 0 else 1.0
+            price_text = (
+                f"  近5日涨跌幅: {chg_5d:+.2f}%\n"
+                f"  最新收盘: {recent['close'].iloc[-1]:.2f}\n"
+                f"  量比(5日/20日): {vol_ratio:.2f}\n"
+                f"  5日日均成交: {avg_vol_5d/10000:.0f}万\n"
+                f"  5日高-低: {recent['high'].max():.2f} - {recent['low'].min():.2f}"
+            )
+    except Exception as e:
+        pass
+    
+    # 4. 主题归属及状态（直接使用传入参数）
+    theme_text = ""
+    if theme:
+        theme_state_str = f" | 状态:{theme_state}" if theme_state else ""
+        theme_text = f"  {theme}{theme_state_str}"
+    
+    # 5. 热榜数据
+    hot_text = ""
+    try:
+        hot_rank_bonus, best_rank, hot_count = get_hot_list_best_rank_bonus(code, days=60)
+        if best_rank <= 100:
+            hot_text = f"  近60日最佳热榜排名: Top{best_rank} | 上榜次数: {hot_count}次"
+    except Exception as e:
+        pass
+
+    # 6. 基本面信息
+    basic_text = ""
+    try:
+        df_basic = pro.stock_basic(ts_code=code, fields='ts_code,name,industry,area,list_date')
+        if df_basic is not None and not df_basic.empty:
+            row = df_basic.iloc[0]
+            basic_text = f"  行业: {row.get('industry', '')} | 地区: {row.get('area', '')} | 上市日期: {row.get('list_date', '')}"
+    except Exception as e:
+        pass
+
+    # 7. 网页财经新闻（已移除 Bing 搜索）
+
+    # —— newspaper3k 辅助抓取函数（自动识别正文+回退到 BeautifulSoup）
+    def _extract_article_body(url, http_headers, timeout=10):
+        """从新闻URL提取正文摘要。优先用 newspaper3k，失败则回退到 CSS 选择器。
+        返回: (body_summary_str, publish_date_str) 或 ('', '')
+        """
+        body_text = ""
+        publish_date = ""
+        method_used = ""
+        
+        # ====== 方法1: newspaper3k（自动识别正文+元信息）
+        try:
+            from newspaper import Article
+            article = Article(url, language='zh', headers=http_headers, request_timeout=timeout)
+            article.download()
+            article.parse()
+            body_text = article.text.strip()
+            if article.publish_date:
+                publish_date = str(article.publish_date)[:10]
+            method_used = "newspaper3k"
+        except Exception:
+            pass  # newspaper3k 失败，回退
+        
+        # ====== 方法2: 回退到 BeautifulSoup CSS 选择器
+        if not body_text or len(body_text) < 30:
+            try:
+                import requests as _req
+                from bs4 import BeautifulSoup as _soup
+                _resp = _req.get(url, headers=http_headers, timeout=timeout)
+                if _resp.status_code == 200:
+                    _b = _soup(_resp.text, 'html.parser')
+                    # 尝试多种正文容器
+                    for _sel in ['#mp-editor', '.article-content', '.article-body', '#artibody',
+                                 'div[class*="content"]', '.main-text', 'main', '.article']:
+                        _e = _b.select_one(_sel)
+                        if _e:
+                            body_text = _e.get_text(' ', strip=True)
+                            break
+                    # 回退：取 <p> 段落拼接
+                    if not body_text or len(body_text) < 30:
+                        _ps = _b.find_all('p')
+                        if _ps:
+                            body_text = ' '.join([_p.get_text(strip=True) for _p in _ps[:10] if len(_p.get_text(strip=True)) > 15])
+                    method_used = "bs4-fallback"
+            except Exception:
+                pass
+        
+        # 清理多余空白并截取前300字
+        if body_text and len(body_text) > 30:
+            body_text = re.sub(r'\s+', ' ', body_text).strip()
+            _s = body_text[:300]
+            if len(body_text) > 300:
+                _s += "..."
+            return _s, publish_date, method_used
+        return "", "", ""
+
+    # 9. 同花顺个股新闻（近一周，抓取标题+正文摘要）— newspaper3k + 回退
+    ths_news_text = ""
+    try:
+        import requests as ths_requests
+        from bs4 import BeautifulSoup as ths_soup
+
+        # 清理股票代码（去掉后缀）
+        clean_code = code.replace('.SH', '').replace('.SZ', '')
+        url = f'https://stockpage.10jqka.com.cn/{clean_code}/'
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+
+        resp = ths_requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            soup = ths_soup(resp.text, 'html.parser')
+
+            # 查找新闻链接
+            all_links = soup.find_all('a', href=True)
+            news_items = []
+
+            # 计算一周前的日期
+            week_ago = datetime.now() - timedelta(days=7)
+
+            for a in all_links:
+                href = a.get('href', '')
+                text = a.text.strip()
+
+                # 筛选新闻链接
+                if 'news.10jqka.com.cn' in href and text and len(text) > 10:
+                    date_str = href.split('/')[-2] if len(href.split('/')) > 3 else None
+                    is_related = (clean_code in text or name in text or
+                                  (date_str and len(date_str) == 8 and
+                                   datetime.strptime(date_str, '%Y%m%d') >= week_ago))
+                    if is_related or len(news_items) < 5:
+                        news_items.append((text[:80], href))
+
+            seen = set()
+            filtered_news = []
+            for text, href in news_items:
+                key = text[:30]
+                if key not in seen:
+                    seen.add(key)
+                    filtered_news.append((text, href))
+                if len(filtered_news) >= 8:
+                    break
+
+            # 用 newspaper3k+回退抓取前4条正文
+            if filtered_news:
+                lines = []
+                max_fetch_body = min(4, len(filtered_news))
+                for idx, (text, href) in enumerate(filtered_news):
+                    line = f"  - {text}"
+                    if idx < max_fetch_body:
+                        summary, pub_date, method = _extract_article_body(href, headers)
+                        if summary:
+                            line += f"\n    摘要: {summary}"
+                            if pub_date:
+                                line += f"（发布时间: {pub_date}）"
+                    lines.append(line)
+                ths_news_text = "\n".join(lines)
+                print(f"  [同花顺新闻] 获取到 {len(filtered_news)} 条，前{max_fetch_body}条已抓取正文")
+    except Exception as e:
+        print(f"  [同花顺新闻] 获取失败: {e}")
+    
+    # 10. 新浪财经个股新闻（抓取标题+正文摘要）
+    sina_news_text = ""
+    try:
+        import requests as sina_requests
+        from bs4 import BeautifulSoup as sina_soup
+        
+        # 确定交易所前缀（沪市SH，深市SZ，北交所BJ）
+        raw_code = code.split('.')[0]
+        if raw_code.startswith('688') or raw_code.startswith('8') or raw_code.startswith('4'):
+            sina_prefix = 'sh'  # 科创板、北交所用沪市前缀
+        elif raw_code.startswith('9'):
+            sina_prefix = 'bj'  # 北交所
+        elif '.SH' in code.upper():
+            sina_prefix = 'sh'
+        else:
+            sina_prefix = 'sz'
+        
+        url = f'https://vip.stock.finance.sina.com.cn/corp/go.php/vCB_AllNewsStock/symbol/{sina_prefix}{raw_code}.phtml'
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        
+        resp = sina_requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            soup = sina_soup(resp.text, 'html.parser')
+            
+            # 查找新闻链接
+            all_links = soup.find_all('a')
+            news_items = []  # (title, href)
+            
+            for a in all_links:
+                text = a.text.strip()
+                href = a.get('href', '')
+                
+                # 严格筛选：必须包含股票名称或代码，且不是导航链接
+                if text and len(text) > 10 and 'vip.stock' not in href:
+                    # 优先选择包含股票名称的新闻
+                    if name in text or raw_code in text:
+                        # 处理相对链接
+                        full_href = href if href.startswith('http') else f"https:{href}" if href.startswith('//') else f"https://vip.stock.finance.sina.com.cn{href}"
+                        news_items.append((text[:80], full_href))
+            
+            # 去重并限制数量（最多8条标题，前4条抓正文）
+            seen = set()
+            filtered_news = []
+            for text, href in news_items:
+                key = text[:30]
+                if key not in seen:
+                    seen.add(key)
+                    filtered_news.append((text, href))
+                if len(filtered_news) >= 8:
+                    break
+            
+            # 用 newspaper3k+回退抓取前4条正文
+            if filtered_news:
+                lines = []
+                max_fetch_body = min(4, len(filtered_news))
+                for idx, (text, href) in enumerate(filtered_news):
+                    line = f"  - {text}"
+                    if idx < max_fetch_body:
+                        summary, pub_date, method = _extract_article_body(href, headers)
+                        if summary:
+                            line += f"\n    摘要: {summary}"
+                            if pub_date:
+                                line += f"（发布时间: {pub_date}）"
+                    lines.append(line)
+                sina_news_text = "\n".join(lines)
+                print(f"  [新浪财经新闻] 获取到 {len(filtered_news)} 条，前{max_fetch_body}条已抓取正文")
+    except Exception as e:
+        print(f"  [新浪财经新闻] 获取失败: {e}")
+
+    # 11. Google新闻（需要代理，使用RSS的description摘要+可选正文抓取）
+    google_news_text = ""
+    try:
+        if PROXY_ENABLED:
+            from bs4 import BeautifulSoup as google_soup
+            from datetime import timezone
+            
+            # 搜索关键词：股票名称
+            keyword = urllib.parse.quote(name)
+            url = f'https://news.google.com/rss/search?q={keyword}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            
+            resp = default_session.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                soup = google_soup(resp.text, 'xml')
+                items = soup.find_all('item')
+                
+                # 计算一个月前的日期（北京时间）
+                month_ago_beijing = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=30)
+                
+                # 过滤一个月内的新闻（保存标题+链接+描述）
+                news_list = []  # [(title, link, description)]
+                for item in items[:50]:
+                    title = item.find('title')
+                    pubdate = item.find('pubDate')
+                    link = item.find('link')
+                    desc = item.find('description')
+                    if title and title.text:
+                        title_text = title.text.strip()
+                        # 检查标题是否包含股票名称或代码
+                        if name in title_text or clean_code in title_text:
+                            # 解析日期（GMT时间转为北京时间）
+                            try:
+                                from email.utils import parsedate_to_datetime
+                                pub_time_gmt = parsedate_to_datetime(pubdate.text)
+                                # 转为北京时间
+                                pub_time_beijing = pub_time_gmt.astimezone(timezone(timedelta(hours=8)))
+                                if pub_time_beijing >= month_ago_beijing:
+                                    link_text = link.text.strip() if link and link.text else ''
+                                    desc_text = ''
+                                    if desc and desc.text:
+                                        # 从 description 中提取纯文本（RSS可能有HTML片段）
+                                        desc_soup = google_soup(desc.text, 'html.parser')
+                                        desc_text = desc_soup.get_text(' ', strip=True)
+                                        desc_text = re.sub(r'\s+', ' ', desc_text).strip()
+                                    news_list.append((title_text[:80], link_text, desc_text))
+                            except Exception:
+                                # 如果日期解析失败，只要标题相关也加入
+                                link_text = link.text.strip() if link and link.text else ''
+                                desc_text = ''
+                                if desc and desc.text:
+                                    desc_soup = google_soup(desc.text, 'html.parser')
+                                    desc_text = desc_soup.get_text(' ', strip=True)
+                                    desc_text = re.sub(r'\s+', ' ', desc_text).strip()
+                                news_list.append((title_text[:80], link_text, desc_text))
+                
+                if news_list:
+                    # 去重
+                    seen = set()
+                    unique_news = []
+                    for title, link, desc in news_list:
+                        key = title[:30]
+                        if key not in seen:
+                            seen.add(key)
+                            unique_news.append((title, link, desc))
+                    
+                    # 组装输出：最多8条标题，前4条用 newspaper3k+回退抓取详情页正文
+                    lines = []
+                    max_fetch_body = min(4, len(unique_news))
+                    for idx, (title, link, desc) in enumerate(unique_news[:8]):
+                        line = f"  - {title}"
+                        if idx < max_fetch_body:
+                            # 方法1: 用 newspaper3k 抓取详情页正文（优先）
+                            body_summary = ""
+                            pub_date = ""
+                            try:
+                                from newspaper import Article
+                                # Google 新闻链接可能是跳转链接（news.google.com/...），需要走 default_session 的代理
+                                article = Article(link, language='zh', headers=headers, request_timeout=15)
+                                article.download()
+                                article.parse()
+                                body_text = article.text.strip()
+                                if article.publish_date:
+                                    pub_date = str(article.publish_date)[:10]
+                                if len(body_text) > 30:
+                                    body_text_clean = re.sub(r'\s+', ' ', body_text).strip()
+                                    body_summary = body_text_clean[:300]
+                                    if len(body_text_clean) > 300:
+                                        body_summary += "..."
+                            except Exception:
+                                pass  # newspaper3k 失败，回退
+
+                            # 方法2: 回退到 RSS description
+                            if not body_summary:
+                                if desc and len(desc) > 30:
+                                    body_summary = desc[:300]
+                                    if len(desc) > 300:
+                                        body_summary += "..."
+
+                            if body_summary:
+                                line += f"\n    摘要: {body_summary}"
+                                if pub_date:
+                                    line += f"（发布时间: {pub_date}）"
+                        lines.append(line)
+                    google_news_text = "\n".join(lines)
+                    print(f"  [Google新闻] 获取到 {len(unique_news)} 条，前{max_fetch_body}条已抓取详情页")
+    except Exception as e:
+        print(f"  [Google新闻] 获取失败: {e}")
+
+    # =========================
+    # 组装AI Prompt
+    # =========================
+    data_section = f"""【股票基本信息】
+{basic_text or '  (暂无)'}
+
+【热榜数据】
+{hot_text or '  (近60日未上热榜)'}
+
+【行情数据（近5日）】
+{price_text or '  (暂无)'}
+
+【主题归属与状态】
+{theme_text or '  (暂无主题数据)'}
+
+【同花顺个股新闻（近一周）】
+{ths_news_text or '  (暂无相关新闻)'}
+
+【新浪财经个股新闻】
+{sina_news_text or '  (暂无相关新闻)'}
+
+【Google新闻（国际视野，近一月）】
+{google_news_text or '  (暂无相关新闻)'}
+
+【机构研报（近一月）】
+{report_text or '  (无)'}
+
+【券商调研（近一月）】
+{surv_text or '  (无)'}
+"""
+
+    prompt = f"""你是一个A股短线“消息面驱动提纯分析器”，你的任务不是总结信息，而是：
+从所有新闻、公告、研报、舆情中，提炼出唯一最强上涨驱动因素
+并判断该股票当前的：
+热度强度
+驱动来源
+是否处于资金关注阶段
+一、输入内容
+
+你将收到结构化信息：
+
+新闻列表
+公告列表
+研报摘要
+舆情/热榜数据
+行业信息（如有）
+⚠️ 二、核心任务（非常重要）
+ ② 提炼“一句话驱动逻辑”（必须极简）
+
+要求：
+
+不超过30字
+必须是“因果结构”
+不能复述新闻
+
+示例：
+
+“AI服务器需求爆发带动光模块放量”
+“机构调研确认订单超预期，净利润预测增长100%，买入评级”
+“板块情绪共振带动资金抢筹”
+🔵 ③ 判断热度等级（0-100）
+
+热度 = 市场关注 + 资金参与 + 信息密度
+
+分级：
+0-20：无关注
+20-40：弱关注
+40-60：中等热度
+60-80：强热度
+80-100：极强主线热度
+🧠 三、强约束规则（非常关键）
+❌ 禁止行为：
+不要总结所有新闻
+不要罗列信息
+不要多驱动并列
+不要写技术分析
+不要写基本面分析
+✅ 必须遵守：
+1️⃣ 只输出“一个主驱动”
+所有信息必须压缩为：
+👉 一个最强解释变量
+2️⃣ 必须做“去噪”
+规则：
+公告 < 研报 < 机构调研 < 资金行为 < 龙头带动
+3️⃣ 必须做“资金优先判断”
+
+如果出现：
+
+龙虎榜
+北向流入
+主力净流入
+板块联动
+👉 优先级最高
+
+
+请分析以下股票：
+
+{name}（{code}）
+
+以下是系统采集的真实数据（近一个月）：
+
+{data_section}
+
+【信息优先级指引】（按重要程度从高到低）
+1. 【最高优先级】券商调研（近一月）：机构实地调研记录，重点关注参与机构级别（券商/基金/保险/私募/QFII等）、调研次数、调研问询内容，机构密集调研通常意味着强烈关注
+2. 【高优先级】机构研报（近一月）：券商/机构发布的评级报告、目标价、核心逻辑，重点关注评级变化（首次覆盖/上调/下调）和目标价预期差
+3. 【参考优先级】Google新闻、同花顺/新浪财经新闻：作为信息补全，验证其他渠道信息的真实性
+
+【解读要求】
+- 券商调研：重点关注有多少家机构参与、什么类型的机构（知名机构>普通机构）、调研地点（现场>电话）、调研问题涉及哪些核心业务方向
+- 机构研报：重点关注研报评级（买入/增持/中性/减持）、核心推荐逻辑是否持续有效
+- 资讯：作为信息验证来源，判断是否与调研/研报信息相互印证
+
+请标注：
+- 上述信息所涉及的产业/概念方向
+- 【共振判断】如果个股信息与某主题形成共振（如半导体行业国产替代与半导体主题共振、新能源产业链景气度提升与小金属/固态电池主题共振），请特别标注 ⭐⭐⭐ "与XX主题共振"
+- 【差异化判断】如果信息与其他同主题个股存在明显差异，请标注"主题内阿尔法差异"
+
+
+请给出三个分数（0-100）：
+- 短期影响强度（1-5天）
+- 中期影响强度（5-20天）
+- 预期差强度（核心指标）
+
+其中：
+0-20：无影响/噪音
+20-40：轻微扰动
+40-60：可交易级别催化
+60-80：强催化（可能趋势启动）
+80-100：极强催化（可能主升浪）
+
+最后，请基于以上分析，给出一个综合情绪强度评分（0-100整数），其中：
+90-100：极强利好，机构持续看多
+70-89：明显利好
+50-69：中性偏好
+30-49：偏空
+0-29：明显利空
+
+【输出格式和内容要求】
+第一行输出综合结论，包括以上所有分析结果，以及最终的综合情绪强度评分。
+中间输出：
+- 最强驱动源
+- 一句话驱动逻辑
+- 热度等级
+- 是否处于资金关注阶段
+最后一行必须是单独的数字，即综合情绪强度评分。
+【对AI输出的强制要求】输出的文字要求最精简（【重要】不要输出上面的步骤提示词），只给以上要求的关键词结果即可，对于影响非常重大的新闻进行标题显示。
+【重要约束】：
+1. 不做任何技术面分析（不要分析价格、均线、成交量、突破等）
+2. 不做独立的主题分析（不评价主题整体强弱，仅标注个股信息与主题的共振关系）
+3. 所有分析必须严格基于提供的信息内容，不得编造信息或进行无依据的推断
+"""
+
+    # =========================
+    # 检查缓存：新闻内容无变化则复用
+    # =========================
+    cache_file = os.path.join(NEWS_CACHE_DIR, f"ai_analysis_{code}_{TRADE_DATE}.json")
+    content_hash = hashlib.md5(data_section.encode('utf-8')).hexdigest()
+    
+    # 读取缓存检查内容哈希
+    cached_content_hash = None
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+                cached_content_hash = cached.get("content_hash")
+        except Exception:
+            pass
+    
+    # 如果内容哈希相同，直接返回缓存结果
+    if cached_content_hash == content_hash:
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                cached = json.load(f)
+                cached_response = cached.get("response", "")
+            
+            found = re.search(r'综合情绪强度评分[^\d]{0,5}(\d{1,3})', cached_response)
+            if found:
+                cached_score = min(max(int(found.group(1)), 0), 100)
+            else:
+                lines = cached_response.strip().split('\n')
+                cached_score = 50
+                for line in reversed(lines):
+                    nums = re.findall(r'\b(\d{1,3})\b', line.strip())
+                    if nums:
+                        cached_score = min(max(int(nums[-1]), 0), 100)
+                        break
+
+            print(f"  [AI情绪] 内容无变化，复用缓存分数: {cached_score}")
+            return cached_score
+        except Exception:
+            pass
+
+    try:
+
+        r = deepseek(prompt, use_flash=True)
+
+        # =========================
+        # 保存输入输出到缓存（便于复盘和问题排查）
+        # =========================
+        try:
+            cache_data = {
+                "code": code,
+                "name": name,
+                "trade_date": TRADE_DATE,
+                "theme": theme,
+                "content_hash": content_hash,  # 保存内容哈希
+                "prompt": prompt,
+                "response": r,
+            }
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+        # =========================
+        # 提取数字（优先搜索"综合情绪强度评分"关键词）
+        # =========================
+        found = re.search(r'综合情绪强度评分[^\d]{0,5}(\d{1,3})', r)
+        if found:
+            score = min(max(int(found.group(1)), 0), 100)
+        else:
+            lines = r.strip().split('\n')
+            score = 50
+            for line in reversed(lines):
+                nums = re.findall(r'\b(\d{1,3})\b', line.strip())
+                if nums:
+                    score = min(max(int(nums[-1]), 0), 100)
+                    break
+
+        # 防止API过快
+        time.sleep(0.5)
+
+        return score
+
+    except Exception as e:
+
+        print(
+            f"{code} AI情绪失败:",
+            e
+        )
+
+        return 50
+
+
+# =========================
+# 批量AI情绪缓存
+# =========================
+def calc_trend_strength_v2(df):
+    """
+    更细腻的趋势强度评分（避免1.0被滥用）
+    """
+    C = df['close']
+
+    ma10 = C.rolling(10).mean()
+    ma20 = C.rolling(20).mean()
+    ma30 = C.rolling(30).mean()
+    ma60 = C.rolling(60).mean()
+
+    score = 0
+
+    # 1. 均线排列（更细化，避免全满分）
+    if (ma10.iloc[-1] > ma20.iloc[-1] > ma30.iloc[-1] > ma60.iloc[-1]):
+        score += 30  # 完美多头排列得30分
+    elif (ma10.iloc[-1] > ma20.iloc[-1] and ma20.iloc[-1] > ma60.iloc[-1]):
+        score += 20  # 次好排列得20分
+    elif (ma10.iloc[-1] > ma60.iloc[-1]):
+        score += 10  # 仅短期在长期上得10分
+
+    # 2. 均线斜率（更细腻）
+    ma20_slope = (ma20.iloc[-1] - ma20.iloc[-5]) / ma20.iloc[-5]
+    if ma20_slope > 0.03:
+        score += 20
+    elif ma20_slope > 0.01:
+        score += 10
+    elif ma20_slope > 0:
+        score += 5
+
+    ma60_slope = (ma60.iloc[-1] - ma60.iloc[-10]) / ma60.iloc[-10]
+    if ma60_slope > 0.02:
+        score += 15
+    elif ma60_slope > 0.01:
+        score += 8
+    elif ma60_slope > 0:
+        score += 3
+
+    # 3. 股价位置（更细化）
+    price_ma60_ratio = C.iloc[-1] / ma60.iloc[-1]
+    if price_ma60_ratio > 1.1:
+        score += 15
+    elif price_ma60_ratio > 1.05:
+        score += 10
+    elif price_ma60_ratio > 1.0:
+        score += 5
+
+    # 最大不超过85分（避免1.0被滥用）
+    return min(score, 85) / 100
+def calc_trend_slope(close, window=20):
+
+    if len(close) < window:
+        return 0
+
+    y = close.tail(window).values
+    x = np.arange(window)
+
+    slope = np.polyfit(x, y, 1)[0]
+
+    # 标准化（按价格尺度）
+    mean_price = np.mean(y)
+    if mean_price == 0:
+        return 0
+
+    return slope / mean_price * 100
+
+from scipy.stats import linregress
+def calc_trend_stability2(close, window=20):
+
+    y = close.tail(window).values
+
+    x = np.arange(window)
+
+    slope, intercept, r, p, stderr = linregress(x, y)
+
+    return r * r
+
+
+def calc_volume_structure(df):
+    if len(df) < 30:
+        return 0
+
+    C = df['close']
+    V = df['vol']
+
+    vol_ratio = V.iloc[-1] / (V.iloc[:-1].tail(20).mean() + 1e-6) if len(V) > 20 else V.iloc[-1] / (V.mean() + 1e-6)
+
+    price_trend = C.iloc[-1] / C.iloc[-20] - 1
+
+    obv = (np.sign(C.diff()) * V).fillna(0).cumsum()
+    obv_strength = obv.iloc[-1] / (abs(obv.tail(20).mean()) + 1e-6)
+
+    # 归一化到 0-1
+    vol_component = np.tanh(np.log1p(vol_ratio) * 0.3)
+    obv_component = np.tanh(np.log1p(abs(obv_strength)) * 0.3)
+    price_component = np.tanh(max(price_trend, 0) * 2)
+    return vol_component * 0.4 + obv_component * 0.4 + price_component * 0.2
+
+
+def calc_accumulation_factor(df):
+    if len(df) < 40:
+        return 0
+
+    C = df['close']
+    V = df['vol']
+
+    # 抗跌结构
+    price_hold = C.iloc[-10:].min() / C.iloc[-20:-10].max()
+
+    # 缩量
+    vol_shrink = V.tail(5).mean() / (V.tail(20).mean() + 1e-6)
+
+    # 稳定抬升
+    slope = calc_trend_slope(C, 20)
+
+    score = 0
+
+    if price_hold > 0.92:
+        score += 50
+
+    if vol_shrink < 0.8:
+        score += 30
+
+    if slope > 0:
+        score += 20
+
+    # 归一化到 0-1
+    return score / 100.0
+def calc_big_money_factor(df):
+    if len(df) < 30:
+        return 0
+
+    C = df['close']
+    V = df['vol']
+
+    vol_ratio = V.iloc[-1] / (V.iloc[:-1].tail(20).mean() + 1e-6) if len(V) > 20 else V.iloc[-1] / (V.mean() + 1e-6)
+
+    price_change = C.iloc[-1] / C.iloc[-2] - 1
+
+    money_flow = (C.pct_change() * V).tail(5).sum()
+
+    # 资金持续性（关键升级）
+    flow_consistency = np.sum((C.pct_change().tail(5) > 0)) / 5
+
+    # 归一化到 0-1
+    vol_component = np.tanh(np.log1p(vol_ratio) * 0.3)
+    price_component = np.tanh(max(price_change, 0) * 5)
+    flow_component = np.tanh(np.log1p(abs(money_flow)) * 0.1)
+    consistency_component = flow_consistency
+    return vol_component * 0.3 + price_component * 0.3 + flow_component * 0.2 + consistency_component * 0.2    
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
+def calc_dual_layer_score_v6(df, ts_code='', theme=''):
+    """
+    三路径概率系统（游资行为建模 v6）- 修复版
+    1. 避免趋势强度1.0被滥用 ✅
+    2. 失败概率分层惩罚机制 ✅ 
+    3. 支持主题强度纳入（通过外部传入） ✅
+
+    输出：
+        P_up        上涨延续概率
+        P_fail      突破失败概率
+        P_squeeze   洗盘再启动概率
+        edge_score  交易边际优势
+    """
+
+    C = df['close']
+    H = df['high']
+    L = df['low']
+    VOL = df['vol']
+
+
+    is_chuangchuang = ts_code.startswith('300') or ts_code.startswith('688')
+
+    beta_multiplier = 1.0
+
+    if ts_code.startswith('300'):   # 创业板（高弹性）
+        beta_multiplier = 1.25
+
+    elif ts_code.startswith('688'): # 科创板（更极端弹性）
+        beta_multiplier = 1.30
+    
+    # =========================
+    # 弹性结构（游资核心）
+    # =========================
+    HHV20 = H.iloc[:-1].tail(20).max() if len(H) > 1 else H.tail(20).max()
+    LLV20 = L.tail(20).min()
+
+    amp20 = (HHV20 - LLV20) / (LLV20 + 1e-6)
+
+    if np.isnan(amp20) or np.isinf(amp20):
+        compression_score = 0.5
+    else:
+        compression_score = (
+            1.0 if amp20 <= 0.15 else
+            0.8 if amp20 <= 0.25 else
+            0.5 if amp20 <= 0.35 else
+            0.2
+        )
+    volatility = (H.tail(20).max() - L.tail(20).min()) / C.iloc[-1]
+
+    turnover_proxy = VOL.tail(5).mean() / (VOL.tail(20).mean() + 1e-6)
+
+    elastic_score = sigmoid(
+        volatility * 1.0 +
+        turnover_proxy * 0.8 +
+        (1 - compression_score) * 0.6
+    )
+
+    # =========================
+    # 1. 基础趋势 & 资金结构
+    # =========================
+    trend_strength = calc_trend_strength_v2(df)
+    trend_stability = calc_trend_stability2(C, 20)
+
+    volume_structure = calc_volume_structure(df)
+    accumulation = calc_accumulation_factor(df)
+    big_money = calc_big_money_factor(df)
+
+    money_momentum = (
+        volume_structure * 0.5 +
+        accumulation * 0.3 +
+        big_money * 0.2
+    )
+
+    # =========================
+    # 2. 突破结构（关键升级）
+    # =========================
+    HHV60 = H.iloc[:-1].rolling(60).max().iloc[-1] if len(H) > 1 else H.rolling(60).max().iloc[-1]
+    breakout_position = np.clip(
+        (C.iloc[-1] / HHV60 - 0.90) / 0.15,
+        0, 1
+    )
+
+    MA20 = C.rolling(20).mean().iloc[-1]
+    MA60 = C.rolling(60).mean().iloc[-1]
+
+    # 价格效率（放量是否有效）
+    price_efficiency = abs(C.iloc[-1] - C.iloc[-2]) / (VOL.iloc[-1] + 1e-6)
+    price_efficiency = np.tanh(price_efficiency * 3)
+
+    # =========================
+    # 3. 压缩与爆发结构
+    # =========================
+    HHV20 = H.iloc[:-1].tail(20).max() if len(H) > 1 else H.tail(20).max()
+    LLV20 = L.tail(20).min()
+    amp20 = (HHV20 - LLV20) / LLV20
+
+    compression_score = (
+        1.0 if amp20 <= 0.15 else
+        0.8 if amp20 <= 0.25 else
+        0.5 if amp20 <= 0.35 else
+        0.2
+    )
+
+    vol5 = VOL.tail(5).mean()
+    vol20 = VOL.tail(20).mean()
+    burst_score = np.clip(vol5 / (vol20 + 1e-6), 0, 3) / 3
+
+    # =========================
+    # 4. 趋势概率（核心）
+    # =========================
+    trend_prob = sigmoid(
+        (trend_strength - 0.5) * 1.5 +
+        (trend_stability - 0.5) * 1.0
+    )
+
+    # =========================
+    # 5. 上涨推进概率（核心）
+    # =========================
+    break_strength = sigmoid(
+        (breakout_position - 0.5) * 1.5 +
+        (money_momentum - 0.5) * 1.0 +
+        (price_efficiency - 0.5) * 0.8
+    )
+
+    P_up = (
+        0.45 * trend_prob +
+        0.35 * break_strength +
+        0.20 * money_momentum
+    )
+
+    # =========================
+    # 6. 失败概率（最关键风控）
+    # =========================
+    # 1. 高价风险因子 - 连续值而非二值
+    price_ma60_ratio = C.iloc[-1] / MA60
+    high_risk_zone = np.clip((price_ma60_ratio - 1.1) / 0.4, 0.0, 1.0)  # 1.1以下0，1.5以上1
+    
+    # 2. 阻力压力因子 - 连续值
+    # 用amp20直接计算，而不是离散的compression_score
+    resistance_pressure = np.clip((amp20 - 0.15) / 0.25, 0.0, 1.0)  # 0.15以下0，0.4以上1
+    
+    # 3. 派发风险因子 - 连续值
+    vol_ratio = VOL.iloc[-1] / (VOL.tail(10).mean() + 1e-6)
+    price_change = (C.iloc[-1] - C.iloc[-2]) / C.iloc[-2]
+    # 放量下跌风险：量比越大且跌幅越大，风险越高
+    distribution_risk = 0.0
+    if price_change < 0:  # 下跌
+        distribution_risk = np.clip((vol_ratio - 1.0) * abs(price_change) * 10, 0.0, 1.0)
+    
+    # 4. 额外维度：趋势稳定性下降风险
+    ma20 = C.rolling(20).mean().iloc[-1]
+    ma5 = C.rolling(5).mean().iloc[-1]
+    trend_decline_risk = 0.0
+    if ma5 < ma20:  # 5日均线跌破20日均线
+        trend_decline_risk = np.clip((ma20 - ma5) / ma20 * 20, 0.0, 1.0)
+    
+    fail_prob = sigmoid(
+        (resistance_pressure - 0.5) * 1.5 +
+        (high_risk_zone - 0.5) * 1.2 +
+        (distribution_risk - 0.5) * 1.5 +
+        (trend_decline_risk - 0.5) * 0.8
+    )
+
+    # =========================
+    # 7. 洗盘再启动概率（游资核心）
+    # =========================
+    squeeze_prob = sigmoid(
+        (compression_score - 0.5) * 1.5 +
+        (0.5 - burst_score) * 0.8 +
+        (trend_stability - 0.5) * 0.6
+    )
+
+    # =========================
+    # 8. 交易边际优势
+    # =========================
+    edge_score = P_up - fail_prob
+
+    # =========================
+    # 9. 风险等级（辅助）
+    # =========================
+    risk_ratio = C.iloc[-1] / MA60
+
+    risk_level = (
+        "极高" if risk_ratio > 1.6 else
+        "高" if risk_ratio > 1.4 else
+        "中" if risk_ratio > 1.2 else
+        "低"
+    )
+    # =========================
+    # 10. 总排序评分（用于选股优先级）
+    # =========================
+
+    trend_component = trend_prob
+    momentum_component = break_strength
+    money_component = money_momentum
+
+    # =========================
+    # 基础层（核心 alpha）
+    # =========================
+    base_score = (
+        trend_component * 0.4 +
+        momentum_component * 0.35 +
+        money_component * 0.25
+    )
+
+    # =========================
+    # 弹性层（游资核心）
+    # =========================
+    elastic_layer = beta_multiplier * (0.7 + 0.3 * elastic_score)
+
+    # =========================
+    # 风险层 - 分层惩罚机制 ✅
+    # =========================
+    if fail_prob < 0.2:
+        # 低失败概率：几乎不惩罚
+        risk_layer = 1.0
+    elif fail_prob < 0.4:
+        # 中低失败概率：轻微惩罚
+        risk_layer = 0.9
+    elif fail_prob < 0.5:
+        # 中等失败概率：中等惩罚
+        risk_layer = 0.75
+    elif fail_prob < 0.6:
+        # 中高失败概率：较重惩罚
+        risk_layer = 0.55
+    else:
+        # 高失败概率：严厉惩罚
+        risk_layer = 0.35
+
+    # =========================
+    # 主题强度加分（可选）✅
+    # =========================
+    theme_bonus = 1.0
+    if theme:
+        try:
+            theme_data = das.read_theme_analysis(TRADE_DATE)
+            if theme_data:
+                for t in theme_data.get('themes', []):
+                    if t.get('theme_name') == theme:
+                        theme_score = t.get('trend_score', 0)
+                        if theme_score >= 80:
+                            theme_bonus = 1.3  # 热主题大加分
+                        elif theme_score >= 60:
+                            theme_bonus = 1.15  # 次热主题加分
+                        elif theme_score >= 40:
+                            theme_bonus = 1.0  # 不加分
+                        else:
+                            theme_bonus = 0.9  # 冷主题减分
+                        break
+        except Exception as e:
+            pass
+
+    # =========================
+    # 最终评分
+    # =========================
+    final_rank_score = base_score
+
+    final_rank_score *= elastic_layer
+    final_rank_score *= risk_layer
+    final_rank_score *= theme_bonus
+
+    # 调整放大倍数，让评分更合理
+    final_rank_score = np.clip(final_rank_score * 200, 0, None)
+    
+    # =========================
+    # 输出
+    # =========================
+    return {
+        "趋势概率": round(P_up, 4),
+        "失败概率": round(fail_prob, 4),
+        "洗盘概率": round(squeeze_prob, 4),
+        "交易优势": round(edge_score, 4),
+
+        "趋势强度": round(trend_strength, 3),
+        "趋势稳定": round(trend_stability, 3),
+
+        "资金动量": round(money_momentum, 3),
+        "突破强度": round(break_strength, 3),
+
+        "压缩度": round(compression_score, 3),
+        "量能爆发": round(burst_score, 3),
+
+        "风险等级": risk_level,
+        "总排序评分": round(final_rank_score, 2)
+    }
+
+
+# =========================================================
+# V7 评分系统 v6：主题纯度优化 + 主线共振加分
+# =========================================================
+def calc_dual_layer_score_v7(df, ts_code='', stock_info=None, theme=''):
+    """
+    V7评分系统 v6：主题纯度优化 + 主线共振加分
+    """
+
+    # =========================
+    # 获取V6技术指标
+    # =========================
+    v6_result = calc_dual_layer_score_v6(df, ts_code, theme)
+
+    # V6各指标
+    trend_probability = v6_result.get('趋势概率', 0)  # 0-1
+    fail_prob = v6_result.get('失败概率', 0)  # 0-1
+    breakout_strength = v6_result.get('突破强度', 0)  # 0-1
+    money_momentum = v6_result.get('资金动量', 0)  # 0-1
+    trend_stability = v6_result.get('趋势稳定', 0)  # 0-1
+    volume_explosion = v6_result.get('量能爆发', 0)  # 0-1
+    compression_score = v6_result.get('压缩度', 0)  # 0-1
+    squeeze_prob = v6_result.get('洗盘概率', 0)  # 0-1
+
+    # =========================
+    # 自动选择纯度最高的主题
+    # =========================
+    all_themes = ''
+    if not theme and stock_info:
+        theme = _find_best_theme(stock_info)
+        all_themes = find_all_themes(stock_info)
+    
+    # 如果没有找到多主题，使用最佳主题
+    if not all_themes:
+        all_themes = theme or ''
+
+    # =========================
+    # 1. 主题真实性（防止蹭概念）
+    # =========================
+    theme_confidence = calc_theme_confidence(stock_info, theme) if theme else 30
+
+    # =========================
+    # 2. 主题强度 + 主线共振
+    # =========================
+    theme_strength_bonus = 1.0
+    theme_rank_bonus = 0
+    mainline_resonance = 0  # 新增：主线共振加分
+    if theme:
+        try:
+            theme_data = das.read_theme_analysis(TRADE_DATE)
+            if theme_data:
+                for t in theme_data.get('themes', []):
+                    if t.get('theme_name') == theme:
+                        theme_score = t.get('trend_score', 0)
+                        # 主题基础强度
+                        if theme_score >= 80:
+                            theme_strength_bonus = 1.2  # 降低从1.3降到1.2
+                        elif theme_score >= 60:
+                            theme_strength_bonus = 1.1
+                        elif theme_score >= 40:
+                            theme_strength_bonus = 1.0
+                        else:
+                            theme_strength_bonus = 0.95
+                        
+                        # 主线共振：如果趋势/情绪/成交量共振
+                        trend = t.get('trend', 0)
+                        sentiment = t.get('sentiment', 0)
+                        vol_increase = t.get('volume_increase', 0)
+                        if trend > 70 and sentiment > 70 and vol_increase > 0:
+                            mainline_resonance = 5  # 三个共振加5分
+                        elif trend > 60 or sentiment > 60:
+                            mainline_resonance = 3  # 两个强共振加3分
+                        
+                        break
+        except Exception as e:
+            pass
+
+    # =========================
+    # 3. 动量维度捕捉启动股
+    # =========================
+    momentum_score = _calc_momentum_score(df)
+
+    # =========================
+    # 4. 压缩+洗盘统一建模
+    # =========================
+    squeeze_compression_score = _calc_squeeze_compression(df, compression_score, squeeze_prob)
+
+    # =========================
+    # 5. V6基础分（重新设计权重）
+    # =========================
+    # V6技术指标转为基础分（0-100）
+    v6_base_score = (
+        trend_probability * 30 +      # 趋势概率占30%
+        breakout_strength * 25 +      # 突破强度占25%
+        money_momentum * 20 +         # 资金动量占20%
+        volume_explosion * 15 +       # 量能爆发占15%
+        trend_stability * 10          # 趋势稳定占10%
+    )
+
+    # =========================
+    # 6. 风险调整
+    # =========================
+    risk_adjustment = 0
+    if fail_prob < 0.2:  # 极低失败率：加分
+        risk_adjustment = 15
+    elif fail_prob < 0.35:
+        risk_adjustment = 10
+    elif fail_prob < 0.45:
+        risk_adjustment = 5
+    elif fail_prob < 0.55:
+        risk_adjustment = -3  # 从0改为稍微降3分
+    elif fail_prob < 0.65:
+        risk_adjustment = -10  # 从-8提高到-10
+    else:
+        risk_adjustment = -18  # 从-15提高到-18
+
+    # =========================
+    # 7. V7综合评分
+    # =========================
+    base_with_theme = v6_base_score * theme_strength_bonus
+    momentum_bonus = momentum_score * 15
+    squeeze_bonus = squeeze_compression_score * 10
+    theme_purity_bonus = theme_confidence * 0.15  # 从10提高到15，注意这里是0.15（百分比系数）
+    v7_total = (
+        base_with_theme +
+        momentum_bonus +
+        squeeze_bonus +
+        theme_purity_bonus +
+        mainline_resonance +
+        risk_adjustment
+    )
+
+    # 确保在0-100范围内
+    v7_total = np.clip(v7_total, 0, 100)
+
+    # =========================
+    # 输出结果
+    # =========================
+    return {
+        # V6技术指标
+        "趋势概率": round(trend_probability, 4),
+        "失败概率": round(fail_prob, 4),
+        "洗盘概率": round(squeeze_prob, 4),
+        "交易优势": round(v6_result.get('交易优势', 0), 4),
+        "趋势强度": round(v6_result.get('趋势强度', 0), 3),
+        "趋势稳定": round(trend_stability, 3),
+        "资金动量": round(money_momentum, 3),
+        "突破强度": round(breakout_strength, 3),
+        "压缩度": round(compression_score, 3),
+        "量能爆发": round(volume_explosion, 3),
+        "风险等级": v6_result.get('风险等级', '低'),
+
+        # V7新指标
+        "所属主题": all_themes,
+        "主题纯度": round(theme_confidence, 2),
+        "主题强化系数": round(theme_strength_bonus, 2),
+        "主线共振加分": round(mainline_resonance, 2),
+        "动量得分": round(momentum_score, 2),
+        "压缩洗盘得分": round(squeeze_compression_score, 2),
+        "风险调整": round(risk_adjustment, 2),
+
+        # V7总分
+        "V7总评分": round(v7_total, 2)
+    }
+
+
+# =========================================================
+# V7.5 综合评分系统
+# =========================================================
+def calc_dual_layer_score_v75(df, ts_code='', stock_info=None, theme=''):
+    """
+    V7.5综合评分系统 - 从V7函数引入所有指标再计算V7.5总分
+    
+    V7.5在V7基础上叠加：
+    - 位置因子（position_factor）：120日高低位位置
+    - 龙头因子（leader_factor）：趋势+资金+概率综合
+    - 主题排名加成（theme_rank_bonus）：核心公司额外加分
+    
+    从V7引入的指标：
+    - 基础技术指标：趋势概率、突破强度、资金动量等
+    - V7复合指标：动量得分、压缩洗盘得分、主线共振加分、主题强化系数
+    """
+
+    # =========================
+    # 从V7获取所有指标
+    # =========================
+    v7_result = calc_dual_layer_score_v7(df, ts_code=ts_code, stock_info=stock_info, theme=theme)
+    
+    # 计算涨跌幅（用于返回给AI报告，使用接口返回的 pct_chg 避免除权导致计算错误）
+    if 'pct_chg' in df.columns and len(df) >= 1:
+        today_pct = float(df['pct_chg'].iloc[-1])
+    elif len(df) >= 2:
+        today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100
+    else:
+        today_pct = 0.0
+
+    # V7基础技术指标（0-1范围）
+    trend_probability = float(v7_result.get('趋势概率', 0.5))
+    fail_prob = float(v7_result.get('失败概率', 0.5))
+    breakout_strength = float(v7_result.get('突破强度', 0.5))
+    money_momentum = float(v7_result.get('资金动量', 0.5))
+    trend_stability = float(v7_result.get('趋势稳定', 0.5))
+    volume_explosion = float(v7_result.get('量能爆发', 0.5))
+    compression_score = float(v7_result.get('压缩度', 0.5))
+    trend_strength = float(v7_result.get('趋势强度', 0.5))
+
+    # V7复合指标
+    theme_confidence = float(v7_result.get('主题纯度', 30))
+    theme_strength_bonus = float(v7_result.get('主题强化系数', 1.0))
+    mainline_resonance = float(v7_result.get('主线共振加分', 0))
+    momentum_score = float(v7_result.get('动量得分', 0))
+    squeeze_compression_score = float(v7_result.get('压缩洗盘得分', 0))
+    theme = v7_result.get('所属主题', theme)
+
+    # =========================
+    # V7.5独有：位置因子
+    # =========================
+    position_factor = calc_position_factor(df)
+
+    # =========================
+    # V7.5独有：龙头因子
+    # =========================
+    leader_factor = (
+        trend_strength * 0.40 +
+        money_momentum * 0.35 +
+        trend_probability * 0.25
+    )
+
+    # =========================
+    # V7.5独有：主题排名加成
+    # =========================
+    theme_rank_bonus = 0
+    if stock_info and theme:
+        try:
+            cfg_path = os.path.join(BASE_DIR, 'theme.json')
+            if os.path.exists(cfg_path):
+                with open(cfg_path, 'r', encoding='utf-8') as f:
+                    theme_cfg = json.load(f).get('HOT_THEMES', {})
+                if theme in theme_cfg:
+                    core_companies = theme_cfg[theme].get('core_companies', [])
+                    if ts_code in core_companies:
+                        theme_rank_bonus = 15  # 核心公司额外15分
+        except:
+            pass
+
+    # ====================
+    # V8.0 综合评分（优化版V3 — 聚焦二波启动模式）
+    # ====================
+
+    # 第一部分：基础线性评分（权重降低，让二波加分成为区分关键）
+    base_score = (
+        trend_strength * 18 +           # 趋势强度 — 核心因子
+        trend_probability * 9 +
+        money_momentum * 16 +           # 资金动量 — 重要
+        breakout_strength * 6 +
+        volume_explosion * 9 +
+        trend_stability * 4 +
+        compression_score * 7 +         # 压缩度（震荡调整的标志）
+        momentum_score * 13 +           # 动量 — 体现二波启动
+        squeeze_compression_score * 9 +  # 压缩洗盘 — 调整后启动前提
+        mainline_resonance * 1 +
+        position_factor * 6 +           
+        leader_factor * 16              # 龙头因子
+    )
+
+    # 第二部分：因子交互共振项
+    synergy_bonus = (
+        compression_score * leader_factor * 7 +
+        squeeze_compression_score * volume_explosion * 9 +
+        leader_factor * max(theme_strength_bonus - 1, 0) * 15
+    )
+
+    # 第三部分：二波启动模式识别（用户偏好：拉升过→震荡调整→第二波刚启动）
+    close_series = df['close']
+    high_series = df['high']
+    hhv60_s = float(high_series.iloc[:-1].tail(60).max()) if len(high_series) > 1 else float(high_series.tail(60).max())
+    llv60_s = float(close_series.tail(60).min())
+    hhv20_s = float(high_series.iloc[:-1].tail(20).max()) if len(high_series) > 1 else float(high_series.tail(20).max())
+    llv20_s = float(close_series.tail(20).min())
+    
+    close_price = float(close_series.iloc[-1])
+    first_wave_height = (hhv60_s - llv60_s) / max(llv60_s, 0.01)  # 60日第一波高度
+    pullback_pct = 1 - close_price / max(hhv20_s, 0.01)           # 距20日高回撤
+    pos60 = (close_price - llv60_s) / max(hhv60_s - llv60_s, 0.01)  # 60日位置
+    
+    # 判断是否为"第二波刚启动"（最多加25分）
+    second_wave_bonus = 0
+    # 条件1：有过明显的拉升（第一波15%+）
+    if first_wave_height >= 0.15:
+        second_wave_bonus += 6
+        # 条件2：从高点回撤5-15%（震荡调整后蓄力）
+        if pullback_pct >= 0.05 and pullback_pct <= 0.15:
+            second_wave_bonus += 7
+        # 条件3：60日位置在40-85%（非底非顶）
+        if pos60 >= 0.40 and pos60 <= 0.85:
+            second_wave_bonus += 6
+        # 条件4：放量上涨3%+（启动迹象）
+        if volume_explosion > 0.3 and today_pct > 3:
+            second_wave_bonus += 6
+    
+    # 第四部分：非线性风险惩罚（适度，不压制高分）
+    if fail_prob < 0.3:
+        risk_penalty = fail_prob * 2
+    elif fail_prob < 0.5:
+        risk_penalty = 0.6 + (fail_prob - 0.3) * 6
+    else:
+        risk_penalty = 1.8 + (fail_prob - 0.5) * 10
+
+    # 第五部分：主题置信度门控
+    if theme_confidence < 30:
+        confidence_gate = 0.85
+    elif theme_confidence >= 70:
+        confidence_gate = 1.05
+    else:
+        confidence_gate = 1.0
+
+    # 汇总：直接加法
+    v80_raw = (
+        base_score 
+        + synergy_bonus 
+        + second_wave_bonus
+        - risk_penalty
+    )
+
+    # 主题强化 + 置信度门控
+    v75_total = v80_raw * confidence_gate
+
+    # 确保范围
+    v75_total = np.clip(v75_total, 0, 100)
+    
+    # =========================
+    # 输出结果
+    # =========================
+    return {
+        # V7技术指标
+        "趋势概率": round(trend_probability, 4),
+        "失败概率": round(fail_prob, 4),
+        "洗盘概率": round(v7_result.get('洗盘概率', 0), 4),
+        "交易优势": round(v7_result.get('交易优势', 0), 4),
+        "趋势强度": round(trend_strength, 3),
+        "趋势稳定": round(trend_stability, 3),
+        "资金动量": round(money_momentum, 3),
+        "突破强度": round(breakout_strength, 3),
+        "压缩度": round(compression_score, 3),
+        "量能爆发": round(volume_explosion, 3),
+        "风险等级": v7_result.get('风险等级', '低'),
+
+        # V7复合指标
+        "所属主题": theme,
+        "主题纯度": round(theme_confidence, 2),
+        "主题强化系数": round(theme_strength_bonus, 2),
+        "主线共振加分": round(mainline_resonance, 2),
+        "动量得分": round(momentum_score, 2),
+        "压缩洗盘得分": round(squeeze_compression_score, 2),
+        
+        # V7.5独有指标
+        "龙头因子": round(leader_factor, 3),
+        "主题排名加成": round(theme_rank_bonus, 2),
+        "位置因子": round(position_factor, 3),
+        "涨跌幅": round(today_pct, 2),  # 添加涨跌幅给AI报告
+
+        # V7.5总分
+        "V7总评分": round(v75_total, 2)
+    }
+
+
+def calc_tli_score(theme, top_n=10, days=60):
+    """
+    TLI (Theme Life Index) 主题生命力评分
+
+    核心逻辑：衡量主题在最近N天内的持续活跃程度
+    高生命力 = 主题持续出现在市场前排，资金关注度高
+
+    数据源：主题热度 V2.4（theme_heat_v24_{date}.json，Heat 即主题强度，
+    取 TODAY 与 WEEK 的均值）；V2.4 结果缺失时回退 Theme Score V2 引擎
+    （综合分/生命周期/交易动作/迁移分/置信度），V2 也不可用时回退 V8，
+    不回退到无日期后缀的旧 V6 文件。
+
+    参数：
+        theme: 主题名称
+        top_n: 前排定义（默认前10名，仅 V2/V8 回退分支使用）
+        days: 统计天数（默认60天，仅 V2/V8 回退分支使用）
+
+    返回：0-100 的主题生命力评分
+    """
+    try:
+        if not theme:
+            return 50, {"错误": "主题为空"}
+
+        # ===== 优先：主题热度 V2.3（Heat 即主题强度，TODAY+WEEK 综合）=====
+        rec = _load_theme_heat(TRADE_DATE).get(theme)
+        if rec and rec.get('strength') is not None:
+            return round(float(rec['strength']), 1), {
+                "主题热度": round(float(rec['strength']), 1),
+                "TODAY": rec['today_heat'], "TODAY排名": rec['today_rank'],
+                "WEEK": rec['week_heat'], "WEEK排名": rec['week_rank'],
+                "MONTH": rec['month_heat'], "MONTH排名": rec['month_rank'],
+                "标记": rec['flags'], "样本数": rec['n'],
+            }
+
+        # ===== 回退：Theme Score V2 引擎 =====
+        v2_records = _load_v2_theme_scores(TRADE_DATE)
+        if v2_records:
+            theme_rec = None
+            rank = 0
+            for i, r in enumerate(v2_records):
+                if r.get('theme') == theme:
+                    theme_rec = r
+                    rank = i + 1  # 按综合分降序
+                    break
+            if not theme_rec:
+                return 50, {"说明": "V2中无该主题"}
+
+            composite = float(theme_rec.get('composite_score', 0) or 0)
+            lifecycle = str(theme_rec.get('lifecycle', ''))
+            trade_action = str(theme_rec.get('trade_action', ''))
+            confidence = float(theme_rec.get('confidence', 0) or 0)
+            migration = float(theme_rec.get('migration_score', 0) or 0)
+            climax_warning = int(theme_rec.get('climax_warning', 0) or 0)
+
+            # 基础分：综合分映射（V2综合68→60.6, 55→54.75）
+            base_score = 30 + composite * 0.45
+
+            # 生命周期修正（V2生命周期：启动/升温/主升 加分；高潮/退潮 扣分）
+            if lifecycle in ('主升', '升温', '启动'):
+                base_score += 8
+            elif lifecycle in ('高潮', '退潮'):
+                base_score -= 18
+
+            # 交易动作修正（V2 trade_action 语义更明确）
+            if '回避' in trade_action or '观望' in trade_action:
+                base_score -= 12
+            elif '通道持股' in trade_action or '加仓' in trade_action or '追买' in trade_action:
+                base_score += 10
+
+            # 迁移分（资金/情绪向该主题迁移 = 前瞻动量）
+            base_score += min(10, migration * 0.6)  # 迁移12 → +7.2
+
+            # 置信度加权（V2 confidence 0-100）
+            base_score += (confidence - 50) * 0.15
+
+            # 排名加分（前排生命力更高）
+            rank_bonus = 0
+            if rank <= 3:
+                rank_bonus = 10
+            elif rank <= 5:
+                rank_bonus = 7
+            elif rank <= 10:
+                rank_bonus = 4
+
+            # 历史持续性：扫描最近若干交易日 V2 CSV，取综合分均值
+            history_avg = None
+            try:
+                import glob as _glob
+                report_dir = os.path.join(BASE_DIR, 'report_daily')
+                v2_files = sorted(
+                    _glob.glob(os.path.join(report_dir, 'theme_scores_v2_*.csv')),
+                    reverse=True)
+                # 取最近 max(1, days//5) 个交易日文件（默认12个）作为持续性窗口
+                recent = [f for f in v2_files
+                          if f != os.path.join(report_dir, f'theme_scores_v2_{TRADE_DATE}.csv')][:max(1, days // 5)]
+                hist_comps = []
+                for fp in recent[:12]:
+                    try:
+                        _df = pd.read_csv(fp, encoding='utf-8-sig')
+                        _row = _df[_df['theme'] == theme]
+                        if not _row.empty:
+                            hist_comps.append(float(_row.iloc[0].get('composite_score', 0) or 0))
+                    except Exception:
+                        continue
+                if hist_comps:
+                    history_avg = float(np.mean(hist_comps))
+            except Exception:
+                history_avg = None
+
+            if history_avg is not None:
+                # 持续性强(历史均值≥55) +2；近期走弱(历史均值-当日≥8) -6
+                if history_avg >= 55:
+                    base_score += 2
+                if history_avg - composite >= 8:
+                    base_score -= 6
+
+            # 过热预警：高潮+情绪过热 → 扣分（避免接盘）
+            if climax_warning:
+                base_score -= 10
+
+            tli_score = base_score + rank_bonus
+            tli_score = min(100, max(0, tli_score))
+
+            details = {
+                "V6排名": rank,
+                "综合分": round(composite, 1),
+                "生命周期": lifecycle,
+                "交易动作": trade_action,
+                "迁移分": round(migration, 1),
+                "置信度": round(confidence, 1),
+                "历史均值": round(history_avg, 1) if history_avg is not None else None,
+            }
+            return round(tli_score, 1), details
+
+        # ===== 回退：V8 结果（不回退旧 V6 文件）=====
+        v6_data = _load_v6_result(TRADE_DATE)
+        if not v6_data:
+            return 50, {"错误": "V2/V8结果均不存在或日期不匹配"}
+        
+        # 找到该主题
+        theme_data = None
+        rank = 0
+        for i, r in enumerate(v6_data):
+            if r.get('theme') == theme:
+                theme_data = r
+                rank = i + 1  # 按排序顺序作为排名
+                break
+        
+        if not theme_data:
+            return 50, {"说明": "V6中无该主题"}
+        
+        composite = theme_data.get('composite_score', 0)
+        signal = theme_data.get('trade_signal', '')
+        continuation = theme_data.get('continuation_score', 0)
+        fa_score = theme_data.get('forward_alpha', 0)
+        
+        # 基于 V6.2 信号和综合分计算生命力
+        # 强买=FA+热度共振，看多=FA预测强，关注=偏强，持有=稳定，看空/强烈看空=弱
+        if signal == '强买':
+            base_score = 70 + min(20, (composite - 60) * 0.5)
+        elif signal == '看多':
+            base_score = 60 + min(15, (fa_score - 50) * 0.4)
+        elif signal == '关注':
+            base_score = 55 + min(15, (composite - 50) * 0.5)
+        elif signal == '持有':
+            base_score = 50 + min(15, (composite - 45) * 0.5)
+        elif signal in ('看空', '强烈看空', '回避'):
+            base_score = max(15, composite * 0.3)
+        else:
+            base_score = max(20, composite * 0.4)
+        
+        # 延续分加分
+        base_score += min(10, continuation * 0.1)
+        
+        # 排名加分
+        rank_bonus = 0
+        if rank <= 3:
+            rank_bonus = 10
+        elif rank <= 5:
+            rank_bonus = 7
+        elif rank <= 10:
+            rank_bonus = 4
+        
+        tli_score = base_score + rank_bonus
+        tli_score = min(100, max(0, tli_score))
+        
+        details = {
+            "V6排名": rank,
+            "综合分": round(composite, 1),
+            "信号": signal,
+            "延续分": round(continuation, 1),
+        }
+        
+        return round(tli_score, 1), details
+    
+    except Exception as e:
+        print(f"[TLI生命力] 计算失败: {e}")
+        return 50, {"错误": str(e)}
+
+
+def _get_stock_moneyflow_features(ts_code):
+    """
+    获取个股资金流向的60日行为特征 (缓存加速版)
+    优先 moneyflow（标准接口），fallback moneyflow_ths（同花顺）
+    返回: {'mf_slope': float, 'mf_persistence': float, 'mf_diffusion': float, 'mf_available': bool}
+    """
+    result = {'mf_slope': 0, 'mf_persistence': 0, 'mf_diffusion': 0.5, 'mf_available': False}
+    if not ts_code:
+        return result
+    safe_name = ts_code.replace('.', '_')
+    cache_path = os.path.join(MONEYFLOW_STOCK_DIR, f"{safe_name}.csv")
+    try:
+        mf_df = None
+        if os.path.exists(cache_path):
+            mf_age = time.time() - os.path.getmtime(cache_path)
+            if mf_age < 86400 * 3:  # 3天内有效
+                mf_df = pd.read_csv(cache_path)
+        if mf_df is None:
+            # 优先用 moneyflow（标准接口，大单/中单/小单）
+            mf_df = pro.moneyflow(ts_code=ts_code,
+                                  start_date=(datetime.now() - timedelta(days=60)).strftime("%Y%m%d"),
+                                  end_date=TRADE_DATE)
+            if mf_df is None or len(mf_df) == 0:
+                # fallback: moneyflow_ths（同花顺，特大单/大单/小单）
+                mf_df = pro.moneyflow_ths(ts_code=ts_code,
+                                          start_date=(datetime.now() - timedelta(days=60)).strftime("%Y%m%d"),
+                                          end_date=TRADE_DATE)
+            if mf_df is not None and len(mf_df) > 0:
+                mf_df.to_csv(cache_path, index=False, encoding='utf-8-sig')
+        if mf_df is not None and len(mf_df) >= 10:
+            mf_df = mf_df.sort_values("trade_date").reset_index(drop=True)
+            # 判断数据源类型：moneyflow 有 buy_lg_amount（大单金额）；moneyflow_ths 有 buy_elg_amount（特大单金额）
+            is_standard = 'buy_lg_amount' in mf_df.columns and 'sell_lg_amount' in mf_df.columns
+            if is_standard:
+                net_lg = (mf_df['buy_lg_amount'] - mf_df['sell_lg_amount']).values
+                # 中单+小单作为非机构资金
+                sm_cols = []
+                if 'buy_md_amount' in mf_df.columns:
+                    sm_cols.extend(['buy_md_amount', 'sell_md_amount'])
+                if 'buy_sm_amount' in mf_df.columns:
+                    sm_cols.extend(['buy_sm_amount', 'sell_sm_amount'])
+                if sm_cols:
+                    net_sm = mf_df[sm_cols[0::2]].sum(axis=1).values - mf_df[sm_cols[1::2]].sum(axis=1).values
+                else:
+                    net_sm = np.zeros(len(mf_df))
+            else:
+                # moneyflow_ths: 返回 buy_lg_amount(大单净额), buy_md_amount(中单净额),
+                # buy_sm_amount(小单净额), net_amount(总净额), 均为净值(负=流出)
+                if 'net_amount' in mf_df.columns:
+                    net_lg = mf_df['buy_lg_amount'].values if 'buy_lg_amount' in mf_df.columns else np.zeros(len(mf_df))
+                    # 中单归入机构端
+                    if 'buy_md_amount' in mf_df.columns:
+                        net_lg = net_lg + mf_df['buy_md_amount'].values
+                    net_sm = mf_df['buy_sm_amount'].values if 'buy_sm_amount' in mf_df.columns else np.zeros(len(mf_df))
+                else:
+                    return result
+            net_total = net_lg + net_sm
+            n = min(20, len(net_total))
+            net_20 = net_total[-n:]
+            # Slope: 线性回归标准化
+            if n >= 5 and np.std(net_20) > 0:
+                slope, _ = np.polyfit(np.arange(n), net_20, 1)
+                result['mf_slope'] = slope / (np.std(net_20) + 1e-12) * 10
+            # Persistence: 最长连续净流入
+            streak, max_s = 0, 0
+            for v in net_20:
+                if v > 0: streak += 1; max_s = max(max_s, streak)
+                else: streak = 0
+            result['mf_persistence'] = max_s / n
+            # Diffusion: 机构主导度
+            lg_abs = np.abs(net_lg[-n:]).sum() + 1e-12
+            sm_abs = np.abs(net_sm[-n:]).sum() + 1e-12
+            result['mf_diffusion'] = lg_abs / (lg_abs + sm_abs)
+            result['mf_available'] = True
+    except Exception:
+        pass
+    return result
+
+
+# ==========================================================================
+# T+5 突破有效性风险模型（全市场校准）
+# --------------------------------------------------------------------------
+# 核心口径（连续2日守位 = 突破有效）：
+#   关键位 ref = 决策日「前20日最高价」（不含当日）
+#   防守位 lvl = ref × (1 − 1.5%)
+#   决策日 D0 收盘后打分 → 次日开盘买入 → 检验窗口 D0+1 ~ D0+5（T+5）
+#   突破有效 = 窗口内出现「连续 2 个交易日收盘 ≥ 防守位」且此后维持至窗口末
+#
+# 模型 = 位置状态机（7 态互斥）+ 量能 / 波动 / MA20偏离 校准修正（逻辑回归）
+#   校准样本：1,440 只 × 2022-01 起全市场，179,258 条（含除权异常日过滤）
+#   加权 AUC = 0.663；十分位验证（预测概率 D1→D10 对应的 T+5 收益 / T+5 最大不利）
+#     D1 29% → +6.89% / −1.61%     D10 72% → −0.72% / −8.79%（单调）
+#   输出 = 「突破被证伪 或 T+5 内最大不利回撤 ≥8%」的校准概率（10~90，越低越好）
+# --------------------------------------------------------------------------
+T5_DEFENSE_BUFFER = 0.015    # 防守位缓冲：关键位下方 1.5%
+T5_LOOKBACK = 11             # 位置状态回看窗口（含决策日）
+_T5_INTERCEPT = -0.0485      # 参考组 = C1_有效突破初段（48.8%）
+_T5_CELL_COEF = {
+    'C1_有效突破初段': 0.000,
+    'C2_有效突破已延伸': 0.044,
+    'C3_突破未确认': 0.221,
+    'C4_贴位未突破': -1.209,
+    'C5_中距未突破': -1.094,
+    'C6_远距未突破': -0.929,
+    'C7_突破后失守': -0.974,
+}
+# (下限, 上限, 系数)，区间为 (lo, hi]；首档为参考组（系数 0）
+_T5_VR_BINS = [(0.0, 0.7, 0.0), (0.7, 0.9, 0.0), (0.9, 1.2, -0.016),
+               (1.2, 1.8, -0.128), (1.8, 3.0, -0.256), (3.0, 99.0, -0.153)]
+_T5_ATR_BINS = [(0.0, 1.5, 0.0), (1.5, 2.5, 0.184), (2.5, 4.0, 0.478),
+                (4.0, 6.0, 0.793), (6.0, 99.0, 1.027)]
+_T5_MA20_BINS = [(-99.0, -5.0, 0.0), (-5.0, 0.0, -0.096), (0.0, 5.0, -0.008),
+                 (5.0, 10.0, -0.074), (10.0, 20.0, -0.150), (20.0, 999.0, 0.103)]
+
+
+def _t5_bin_coef(value, bins):
+    """按 (lo, hi] 分档取校准系数；落入参考档或区间外返回 0"""
+    for lo, hi, coef in bins:
+        if lo < value <= hi:
+            return coef
+    return 0.0
+
+
+def calc_t5_breakout_failure_risk(df, details=None):
+    """T+5 突破有效性风险（10~90，越低越好）。
+
+    以「突破后连续 2 个交易日守住关键位 = 突破有效」为核心分档，叠加量能、
+    波动率与 MA20 偏离的校准修正，输出「突破被证伪 或 T+5 内最大不利回撤
+    ≥8%」的校准概率（%）。
+    """
+    details = details if isinstance(details, dict) else {}
+    if df is None or len(df) < 60 or not {'high', 'low', 'close', 'vol'}.issubset(df.columns):
+        details['T5风险模型'] = '数据不足，取中性值'
+        return 50.0
+
+    high = df['high'].astype(float)
+    low = df['low'].astype(float)
+    close = df['close'].astype(float)
+    vol = df['vol'].astype(float)
+
+    piv = high.rolling(20).max().shift(1)          # 每日「前20日最高价」
+    ref = float(piv.iloc[-1])
+    if not np.isfinite(ref) or ref <= 0 or float(close.iloc[-1]) <= 0:
+        details['T5风险模型'] = '关键位缺失，取中性值'
+        return 50.0
+    lvl = ref * (1 - T5_DEFENSE_BUFFER)
+    dist_now = (float(close.iloc[-1]) / ref - 1) * 100
+
+    # 位置状态机：state = 连续守住防守位天数；rbrk = 回看窗口内是否曾站上关键位
+    tail_close = close.iloc[-T5_LOOKBACK:].tolist()
+    tail_piv = piv.iloc[-T5_LOOKBACK:].tolist()
+    state = 0
+    for c_ in reversed(tail_close):
+        if c_ < lvl:
+            break
+        state += 1
+    rbrk = 0
+    for c_, p_ in zip(reversed(tail_close), reversed(tail_piv)):
+        if np.isfinite(p_) and p_ > 0 and c_ >= p_:
+            rbrk = 1
+            break
+    hold_txt = f'≥{state}日' if state >= T5_LOOKBACK else f'{state}日'
+
+    if state >= 2:
+        if dist_now > 6:
+            cell, cell_txt = 'C2_有效突破已延伸', '有效突破·已延伸'
+        else:
+            cell, cell_txt = 'C1_有效突破初段', '有效突破·初段'
+        cell_txt += f'（已连续守位{hold_txt}）'
+    elif state == 1:
+        cell, cell_txt = 'C3_突破未确认', '突破未确认（仅守位1日，未达连续2日）'
+    elif rbrk == 1:
+        cell, cell_txt = 'C7_突破后失守', '突破后失守（关键位得而复失）'
+    elif dist_now > -4:
+        cell, cell_txt = 'C4_贴位未突破', '贴关键位未突破（突破前夜）'
+    elif dist_now > -8:
+        cell, cell_txt = 'C5_中距未突破', '距关键位-4~-8%未突破'
+    else:
+        cell, cell_txt = 'C6_远距未突破', '远距关键位未突破（形态未成）'
+
+    # 量比（当日量 / 前20日均量）
+    vma20 = vol.iloc[-21:-1].mean()
+    vr = float(vol.iloc[-1] / vma20) if vma20 > 0 else 1.0
+    # ATR14 占股价比
+    pc = close.shift(1)
+    tr = np.maximum(high - low, np.maximum((high - pc).abs(), (low - pc).abs()))
+    atr14 = tr.iloc[-14:].mean()
+    atr_pct = float(atr14 / close.iloc[-1] * 100) if np.isfinite(atr14) else 2.0
+    # 距 MA20
+    ma20 = close.rolling(20).mean().iloc[-1]
+    dist_ma20 = float((close.iloc[-1] / ma20 - 1) * 100) if np.isfinite(ma20) and ma20 > 0 else 0.0
+
+    z = (_T5_INTERCEPT + _T5_CELL_COEF[cell]
+         + _t5_bin_coef(vr, _T5_VR_BINS)
+         + _t5_bin_coef(atr_pct, _T5_ATR_BINS)
+         + _t5_bin_coef(dist_ma20, _T5_MA20_BINS))
+    risk = min(90.0, max(10.0, 1 / (1 + np.exp(-z)) * 100))
+
+    reasons = [cell_txt]
+    if vr >= 1.2:
+        reasons.append(f'量比{vr:.2f}')
+    elif vr < 0.9:
+        reasons.append(f'缩量(量比{vr:.2f})')
+    if atr_pct >= 4.0:
+        reasons.append(f'高波动(ATR{atr_pct:.1f}%)')
+    if dist_ma20 > 20:
+        reasons.append(f'远离MA20(+{dist_ma20:.1f}%)')
+    elif dist_ma20 < -5:
+        reasons.append(f'跌破MA20({dist_ma20:.1f}%)')
+
+    details['T5风险模型'] = 'T+5突破有效性风险模型（位置状态机+量能/波动/MA20校准）'
+    details['T5风险状态'] = f'{cell}（距关键位{dist_now:+.2f}%，守位{hold_txt}）'
+    details['T5风险修正理由'] = '、'.join(reasons[:5])
+    return round(float(risk), 1)
+
+
+# ==========================================================================
+# V11.1 因子配置（依据 2023-01~2026-09 全市场 RankIC 回溯，样本 30,929 条 / 578 截面日）
+# --------------------------------------------------------------------------
+# 实测 IC / t 值（20日前瞻收益，次日开盘买入，复权价）：
+#   换手率     IC=-0.0950  t=-9.23   ← 最强单因子，此前仅作展示未进打分
+#   位置安全   IC=+0.0505  t=+5.28
+#   基本面     IC=+0.0430  t=+4.66
+#   资金行为   IC=-0.0394  t=-4.31   ← 显著反向：突破股里量能越"充沛"后续跌得越多
+#   突破质量   IC=+0.0006  t=+0.07   ← 与随机数无异，却原占 25% 权重
+#   动量爆发   IC=-0.0033  t=-0.37   ← 无效
+#   热度持续   未回溯（依赖外部接口）
+# ==========================================================================
+
+# 资金行为反向开关
+#   说明：IC 实测只对「量能部分」(2a 量能趋势 + 2b 量价关系) 成立，
+#        2c 同花顺资金流 / 2d 机构资金流依赖外部接口，无法历史回溯，故单独开关、默认保持原符号。
+CAPITAL_REVERSE_VOL = True     # 2a/2b 量能部分反向（实测 t=-4.31，证据充分）
+CAPITAL_REVERSE_MF = False     # 2c/2d 资金流部分未验证，默认不动
+
+# 换手率负向因子开关
+TURNOVER_FACTOR_ENABLED = True  # 是否启用换手率维度
+TURNOVER_NEGATIVE = True        # True=换手率越低越好（实测 IC 为负）
+
+# V11.1 权重（合计 1.00）—— 按实测 |t| 分配，无效维度大幅降权
+V11_WEIGHTS = {
+    'turnover': 0.24,      # 换手率(负向)  |t|=9.23
+    'position': 0.20,      # 位置安全      |t|=5.28
+    'fundamental': 0.18,   # 基本面        |t|=4.66
+    'capital': 0.16,       # 资金行为(反向)|t|=4.31
+    'breakout': 0.10,      # 突破质量      |t|=0.07  → 从 0.25 降权
+    'hot': 0.07,           # 热度持续      未验证，保留小权重
+    'momentum': 0.05,      # 动量爆发      |t|=0.37  → 从 0.10 降权
+}
+
+# 候选池换手率截面分位表 {ts_code: 0~100}，由 build_pool_turnover_pct() 在打分前构建
+POOL_TURNOVER_PCT = {}
+
+
+def build_pool_turnover_pct(codes):
+    """在候选池内构建换手率截面分位（0~100）。
+
+    口径与 IC 回溯一致：分位在「当日候选池内」计算，而非全市场。
+    池内不足 5 只有效数据时放弃（返回 0），打分端回退中性分 50。
+    """
+    global POOL_TURNOVER_PCT
+    vals = {}
+    for c in codes:
+        try:
+            t = get_cached_turnover(c)
+        except Exception:
+            t = 0.0
+        if t and float(t) > 0:
+            vals[c] = float(t)
+    if len(vals) < 5:
+        POOL_TURNOVER_PCT = {}
+        return 0
+    POOL_TURNOVER_PCT = (pd.Series(vals).rank(pct=True) * 100).to_dict()
+    return len(POOL_TURNOVER_PCT)
+
+
+# 突破股池 IGE 行业弹性硬过滤门槛（三级行业级 ige_adj，同三级行业成分股同值）
+# 口径沿用 hvt_bull/daily.py 的 ige_filter.min_ige_adj=75：全市场约 11% 股票、
+# 约 9.7% 三级行业通过，等价于「只在景气行业里选股」。
+IGE_ADJ_MIN = 75.0
+
+
+def build_ige_adj_map(trade_date):
+    """加载 ige_adj 行业弹性因子映射 {ts_code: ige_adj}。
+
+    数据源：ige/output/ige_full_{date}.csv（IGE 模块每日盘后产出，晚于本模块定时任务）。
+    无当日产出 / 加载失败时返回 {} 并由调用端跳过过滤（fail-soft，与 hvt_bull 一致）。
+    """
+    path = os.path.join(BASE_DIR, 'ige', 'output', f'ige_full_{trade_date}.csv')
+    if not os.path.exists(path):
+        print(f"[突破股池] 警告: 无当日 IGE 产出 ige_full_{trade_date}.csv，跳过 ige_adj 过滤")
+        return {}
+    try:
+        _df = pd.read_csv(path, encoding='utf-8-sig', usecols=['code', 'ige_adj'])
+    except Exception as e:
+        print(f"[突破股池] 警告: ige_adj 加载失败 {e}，跳过 ige_adj 过滤")
+        return {}
+    _vals = pd.to_numeric(_df['ige_adj'], errors='coerce')
+    _map = {}
+    for _c, _v in zip(_df['code'].astype(str).str.strip(), _vals):
+        if pd.notna(_v):
+            _map[_c] = float(_v)
+    return _map
+
+
+def build_industry_map():
+    """加载全市场「所属行业」映射 {ts_code: industry}（主题字段兜底用）。
+
+    背景（20261003）：主题字段来自 theme_stock_map_latest.json（约 3000 只、且只认
+    当日热点主题 Top10 并集）；双底池改为全市场独立扫描后，大量标的既不在该映射内、
+    或所属主题未进当日热点，主题会整列为空，报告无从展示。此处用 stock_cache 的
+    全市场 stock_basic 行业做兜底，保证「主题」字段至少有板块归属。
+    数据缺失时返回 {}（fail-soft，不影响主流程）。
+    """
+    try:
+        from stock_cache import load_stock_basic
+        _sb = load_stock_basic()
+        if _sb is None or len(_sb) == 0 or 'industry' not in _sb.columns:
+            print("[双底股池] 警告: 无本地 stock_basic 行业数据，主题兜底不可用")
+            return {}
+        _map = {}
+        for _c, _i in zip(_sb['ts_code'], _sb['industry']):
+            _cs, _is = str(_c).strip(), str(_i).strip()
+            if _cs and _i is not None and _is and _is.lower() != 'nan':
+                _map[_cs] = _is
+        return _map
+    except Exception as e:
+        print(f"[双底股池] 警告: 所属行业映射加载失败 {e}，主题兜底不可用")
+        return {}
+
+
+def build_stock_theme_index():
+    """{ts_code: [主题名, ...]} —— 直接取 V2.4 已建立的「个股 ↔ 主题」对照关系。
+
+    V2.4 生产映射（cache_daily/theme_stock_map_v2_{date}.json）的 stocks[code] 里本就带
+    themes 字段，这就是现成对照，无需再扫描 themes 反推。此处只是把它取出来，供全市场
+    独立扫描的双底池在「所属主题未进当日热点」时兜底展示（仍注明未入热点）。
+    V2.4 未覆盖的票（不在其 35 个主题宇宙内）不会出现在索引里。
+    """
+    try:
+        _stocks = _load_v24_map_raw().get("stocks", {}) or {}
+        _idx = {}
+        for _c, _info in _stocks.items():
+            if not isinstance(_info, dict):
+                continue
+            _tls = [str(_t).strip() for _t in (_info.get("themes") or []) if str(_t).strip()]
+            if _tls:
+                _idx[_c] = _tls
+        return _idx
+    except Exception as e:
+        print(f"[双底股池] 警告: V2.4 主题对照索引构建失败 {e}")
+        return {}
+
+
+def calc_unified_stock_score(df, ts_code='', theme='', theme_trend_score=0, theme_sentiment_score=0,
+                             mainline_type='', mainline_quality=0, extra_mult=1.0):
+    """
+    V11: 主线分级系数 + 拆天花板 + 统一软顶
+    =====================================
+    在 V10 幻方风格基础上升级三点：
+      1. 主题层级系数：主线核心 > 次主线 > 轮动 > 非主线（避免轮动周期股拿满分）
+      2. 软天花板：S型压缩到 0~97，100分不再扎堆，排名有差异化
+      3. extra_mult：外部乘数（如共振系数）统一纳入软顶计算，避免硬顶扎堆
+
+    FinalScore = (base_raw + failure_bonus) × theme_mult × extra_mult → 软天花板
+    """
+    try:
+        if df is None or not isinstance(df, pd.DataFrame) or len(df) < 20:
+            return 0, "数据不足", {}, 50
+
+        df = df.reset_index(drop=True)
+        C = df['close'].values
+        ts_code = ts_code or ''
+
+        close_series = df['close']
+        high_series = df['high']
+        MA5 = float(close_series.rolling(5).mean().iloc[-1])
+        MA10 = float(close_series.rolling(10).mean().iloc[-1])
+        MA20 = float(close_series.rolling(20).mean().iloc[-1])
+        MA60 = float(close_series.rolling(60).mean().iloc[-1])
+        HHV20 = float(high_series.iloc[:-1].tail(20).max()) if len(high_series) > 1 else float(close_series.tail(20).max())
+        HHV60 = float(high_series.iloc[:-1].tail(60).max()) if len(high_series) > 1 else float(close_series.tail(60).max())
+        LLV20 = float(close_series.tail(20).min())
+        current_price = float(C[-1])
+        today_pct = float((C[-1] / C[-2] - 1) * 100) if len(C) >= 2 else 0
+
+        # ──────────────────────────────────────────────
+        # 1. 动量爆发力 Momentum Power (35%)
+        # ──────────────────────────────────────────────
+        momentum_score = 50
+
+        # 1a. MA20 斜率加速度 (8.75%) — 从"斜率水平"改为"斜率变化"
+        if len(C) >= 30:
+            ma20_now = float(close_series.rolling(20).mean().iloc[-1])
+            ma20_5ago = float(close_series.rolling(20).mean().iloc[-6])
+            ma20_10ago = float(close_series.rolling(20).mean().iloc[-11])
+            slope_now = (ma20_now - ma20_5ago) / ma20_now if ma20_now > 0 else 0
+            slope_prev = (ma20_5ago - ma20_10ago) / ma20_5ago if ma20_5ago > 0 else 0
+            ma20_accel = slope_now - slope_prev  # 正值=刚翘头=最强爆发信号
+            if ma20_accel > 0.02:
+                momentum_score += 30  # MA20 明显翘头
+            elif ma20_accel > 0.008:
+                momentum_score += 20  # MA20 开始翘头
+            elif ma20_accel > 0:
+                momentum_score += 10  # 微幅加速
+            elif ma20_accel > -0.008:
+                momentum_score += 0   # 基本持平
+            else:
+                momentum_score -= 12  # 趋势走平/走弱
+
+        # 1b. MA10 斜率加速度 (7%) — 短线加速
+        if len(C) >= 20:
+            ma10_now = float(close_series.rolling(10).mean().iloc[-1])
+            ma10_5ago = float(close_series.rolling(10).mean().iloc[-6])
+            ma10_10ago = float(close_series.rolling(10).mean().iloc[-11])
+            s_now = (ma10_now - ma10_5ago) / ma10_now if ma10_now > 0 else 0
+            s_prev = (ma10_5ago - ma10_10ago) / ma10_5ago if ma10_5ago > 0 else 0
+            ma10_accel = s_now - s_prev
+            if ma10_accel > 0.03:
+                momentum_score += 25
+            elif ma10_accel > 0.012:
+                momentum_score += 16
+            elif ma10_accel > 0:
+                momentum_score += 8
+            elif ma10_accel > -0.012:
+                momentum_score -= 3
+            else:
+                momentum_score -= 10
+
+        # 1c. ret_5 动量正向打分 (7%) — 从均值回归改为动量导向
+        if len(C) >= 6:
+            ret_5 = (C[-1] / C[-6] - 1) * 100
+            if ret_5 > 15:
+                momentum_score += 25  # 强者恒强
+            elif ret_5 > 8:
+                momentum_score += 18  # 强势
+            elif ret_5 > 3:
+                momentum_score += 10  # 温和上涨
+            elif ret_5 > -3:
+                momentum_score += 3   # 横盘
+            elif ret_5 > -10:
+                momentum_score -= 5   # 回调=弱势
+            else:
+                momentum_score -= 15  # 大跌=无爆发力
+
+        # 1d. 二阶加速度 ret_accel (7%) — 近端涨幅加速度
+        if len(C) >= 11:
+            ret_3 = (C[-1] / C[-4] - 1) * 100  # 近3日
+            ret_7ago = (C[-4] / C[-11] - 1) * 100  # 前7日(不含近3日)
+            ret_accel = ret_3 - ret_7ago  # 正值=短线正在加速
+            if ret_accel > 8:
+                momentum_score += 25
+            elif ret_accel > 4:
+                momentum_score += 18
+            elif ret_accel > 1:
+                momentum_score += 10
+            elif ret_accel > -2:
+                momentum_score += 3
+            else:
+                momentum_score -= 8
+
+        # 1e. 突破强度 (5.25%) — 突破前高质量+量能
+        dist_to_h20 = (HHV20 - current_price) / HHV20 if HHV20 > 0 else 0
+        if current_price >= HHV20:
+            breakout_power = 1.0
+        elif dist_to_h20 <= 0.03:
+            breakout_power = 0.85
+        elif dist_to_h20 <= 0.08:
+            breakout_power = 0.6
+        elif dist_to_h20 <= 0.15:
+            breakout_power = 0.3
+        else:
+            breakout_power = 0
+        if breakout_power > 0 and len(C) >= 5:
+            vol_recent = float(df['vol'].iloc[-5:].mean()) if 'vol' in df.columns else 0
+            vol_prev = float(df['vol'].iloc[-15:-5].mean()) if 'vol' in df.columns and len(df) >= 15 else vol_recent
+            vol_ratio_5_15 = vol_recent / (vol_prev + 1e-6) if vol_prev > 0 else 1.0
+            if breakout_power >= 0.85 and vol_ratio_5_15 > 1.3:
+                momentum_score += 20  # 放量突破=最强爆发信号
+            elif breakout_power >= 0.85:
+                momentum_score += 10  # 突破但量能一般
+            elif breakout_power >= 0.6:
+                momentum_score += 5   # 临近突破
+        momentum_score = min(100, max(0, momentum_score))
+
+        # ──────────────────────────────────────────────
+        # 2. 资金行为 Capital Flow (25%)
+        # ──────────────────────────────────────────────
+        capital_delta_vol = 0.0   # 2a/2b 量能部分（可回溯，IC 实测显著反向）
+        capital_delta_mf = 0.0    # 2c/2d 资金流部分（依赖外部接口，未回溯）
+
+        # 2a. 量能趋势 (5%) — 连续放量天数 + 近期均量趋势
+        if 'vol' in df.columns:
+            vol_arr = df['vol'].values
+            vol_hist = df['vol'].iloc[:-1]
+            vol_ma5 = float(vol_hist.tail(5).mean()) if len(vol_hist) >= 5 else float(vol_arr[-1])
+            vol_ma20 = float(vol_hist.tail(20).mean()) if len(vol_hist) >= 20 else vol_ma5
+            vol_ma60 = float(vol_hist.tail(60).mean()) if len(vol_hist) >= 60 else vol_ma20
+            vol_ratio = float(vol_arr[-1]) / vol_ma5 if vol_ma5 > 0 else 1.0
+            vol_ratio_5_20 = vol_ma5 / vol_ma20 if vol_ma20 > 0 else 1.0
+            vol_ratio_20_60 = vol_ma20 / vol_ma60 if vol_ma60 > 0 else 1.0
+
+            # 连续放量天数（近5日 vs 前5日不重叠）
+            consec_vol_up = 0
+            for i in range(1, 6):
+                if len(vol_arr) > i * 2 + 5:
+                    cur_5 = vol_arr[-(i*2+5):-(i*2)]
+                    prev_5 = vol_arr[-(i*2+10):-(i*2+5)]
+                    if cur_5.mean() > prev_5.mean() * 1.1:
+                        consec_vol_up += 1
+            # 量能趋势评分
+            if consec_vol_up >= 3 and vol_ratio_20_60 > 1.5:
+                capital_delta_vol += 25  # 持续堆量 = 大资金进场
+            elif consec_vol_up >= 2 and vol_ratio_20_60 > 1.3:
+                capital_delta_vol += 18
+            elif vol_ratio_20_60 > 1.5:
+                capital_delta_vol += 12  # 长期量能放大
+            elif vol_ratio_20_60 > 1.2:
+                capital_delta_vol += 6
+            elif vol_ratio_20_60 > 1.0:
+                capital_delta_vol += 2
+            elif vol_ratio_20_60 > 0.7:
+                capital_delta_vol -= 5   # 量能萎缩
+            else:
+                capital_delta_vol -= 15  # 严重缩量
+
+            # 当日量比强化
+            if vol_ratio > 3.0:
+                capital_delta_vol += 10
+            elif vol_ratio > 2.0:
+                capital_delta_vol += 6
+            elif vol_ratio > 1.3:
+                capital_delta_vol += 3
+
+        # 2b. 量价关系 (5%) — 上涨日量能 vs 下跌日量能
+        if len(C) >= 20:
+            up_vols, down_vols = [], []
+            for i in range(1, min(20, len(C))):
+                v = float(df['vol'].iloc[-i]) if 'vol' in df.columns else 0
+                if C[-i] > C[-i-1]:
+                    up_vols.append(v)
+                elif C[-i] < C[-i-1]:
+                    down_vols.append(v)
+            up_avg_vol = np.mean(up_vols) if up_vols else 0
+            down_avg_vol = np.mean(down_vols) if down_vols else 0
+            vol_price_ratio = up_avg_vol / (down_avg_vol + 1e-6) if down_avg_vol > 0 else 1.0
+            if vol_price_ratio > 1.5:
+                capital_delta_vol += 10
+            elif vol_price_ratio > 1.2:
+                capital_delta_vol += 5
+
+        # 2c. 同花顺资金流向特征 (10%) — 斜率/持续性/扩散率
+        mf = _get_stock_moneyflow_features(ts_code)
+        mf_avail = mf.get('mf_available', False)
+        if mf_avail:
+            ms = mf.get('mf_slope', 0)
+            mp = mf.get('mf_persistence', 0)
+            md = mf.get('mf_diffusion', 0.5)
+            # 斜率: 正值机构持续流入
+            if ms > 2.0:
+                capital_delta_mf += 20
+            elif ms > 1.0:
+                capital_delta_mf += 14
+            elif ms > 0.3:
+                capital_delta_mf += 7
+            elif ms > -0.3:
+                capital_delta_mf += 0
+            elif ms > -1.0:
+                capital_delta_mf -= 5
+            else:
+                capital_delta_mf -= 12
+            # 持续性: 连续净流入越长越好
+            if mp >= 0.4:
+                capital_delta_mf += 12
+            elif mp >= 0.25:
+                capital_delta_mf += 7
+            elif mp >= 0.15:
+                capital_delta_mf += 3
+            # 扩散率: 机构主导度 (0-1, >0.6=机构主导)
+            if md > 0.7:
+                capital_delta_mf += 8
+            elif md > 0.6:
+                capital_delta_mf += 4
+            elif md < 0.35:
+                capital_delta_mf -= 5  # 散户主导=弱
+
+        # 2d. 机构资金流 (5%) — 保留原 calc_institutional_flow_score
+        inst_flow_score = calc_institutional_flow_score(ts_code)
+        capital_delta_mf += inst_flow_score * 3
+
+        # V11.1：量能部分实测 IC=-0.0394 (t=-4.31)，显著反向 → 放量是情绪透支而非资金进场
+        _vol_sign = -1.0 if CAPITAL_REVERSE_VOL else 1.0
+        _mf_sign = -1.0 if CAPITAL_REVERSE_MF else 1.0
+        capital_score = min(100, max(0, 50 + capital_delta_vol * _vol_sign + capital_delta_mf * _mf_sign))
+
+        # ──────────────────────────────────────────────
+        # 3. 位置安全性 Position Safety (15%)
+        # ──────────────────────────────────────────────
+        position_score = 50
+
+        # 3a. 距20日高点距离
+        if current_price >= HHV20:
+            # 创新高：检查是否连续新高+量能配合
+            is_consec_high = False
+            if len(C) >= 5:
+                _high_hist = high_series.iloc[:-1]
+                _high_20_ma = _high_hist.rolling(20, min_periods=1).max()
+                _is_high_list = _high_hist >= _high_20_ma
+                _cd = 0
+                for ii in range(min(5, len(_is_high_list))):
+                    if _is_high_list.iloc[-(ii+1)]:
+                        _cd += 1
+                    else:
+                        break
+                is_consec_high = _cd >= 2
+            # 量能确认
+            vol_strong = False
+            if 'vol' in df.columns and len(df) >= 10:
+                _v5 = float(df['vol'].iloc[-6:-1].mean())
+                _v15 = float(df['vol'].iloc[-16:-6].mean()) if len(df) >= 16 else _v5
+                vol_strong = _v5 > _v15 * 1.2
+
+            if is_consec_high:
+                if vol_strong:
+                    position_score += 20  # 连续新高+放量=最强龙头信号
+                else:
+                    position_score += 5   # 连续新高但缩量=谨慎
+            else:
+                position_score += 15  # 第一天新高=突破形态
+        elif dist_to_h20 <= 0.03:
+            position_score += 12  # 极接近前高
+        elif dist_to_h20 <= 0.08:
+            position_score += 8
+        elif dist_to_h20 <= 0.15:
+            position_score += 4
+        elif dist_to_h20 <= 0.25:
+            position_score += 2
+
+        # 3b. 从低点涨幅 (安全垫)
+        run_up = (current_price - LLV20) / LLV20 if LLV20 > 0 else 0
+        if run_up <= 0.15:
+            position_score += 12
+        elif run_up <= 0.25:
+            position_score += 6
+
+        # 3c. 90日振幅压缩度 (蓄势充分)
+        if len(df) >= 90:
+            range90 = (df['high'].values[-90:].max() - df['low'].values[-90:].min()) / df['low'].values[-90:].min()
+            if range90 < 0.25:
+                position_score += 8
+
+        # 3d. 120日新高惩罚：仅缩量连续新高才惩罚
+        if len(C) >= 120:
+            HHV120 = float(high_series.iloc[:-1].tail(120).max())
+            if current_price >= HHV120:
+                is_consec_high_120 = False
+                _h120 = high_series.iloc[:-1]
+                _h120_ma = _h120.rolling(20, min_periods=1).max()
+                _cd120 = 0
+                for ii in range(min(3, len(_h120))):
+                    if _h120.iloc[-(ii+1)] >= _h120_ma.iloc[-(ii+1)]:
+                        _cd120 += 1
+                    else:
+                        break
+                if _cd120 >= 2:
+                    # 连续120日新高+缩量=风险
+                    if 'vol' in df.columns and len(df) >= 10:
+                        _v5 = float(df['vol'].iloc[-6:-1].mean())
+                        _v15 = float(df['vol'].iloc[-16:-6].mean()) if len(df) >= 16 else _v5
+                        if _v5 <= _v15 * 1.1:
+                            position_score -= 8
+        position_score = min(100, max(0, position_score))
+
+        # ──────────────────────────────────────────────
+        # 4. 热度持续性 Hotness (10%) — 从20%降至10%
+        # ──────────────────────────────────────────────
+        hot_score = 50
+        tli_score, _ = calc_tli_score(theme, top_n=10, days=60)
+        hot_score += (tli_score - 50) * 0.2
+
+        hot_rank_bonus, best_rank, hot_appear_count = get_hot_list_best_rank_bonus(ts_code, days=60)
+        hot_score += hot_rank_bonus * 0.3
+
+        if theme:
+            try:
+                # 主题评分改用 Theme Score V2：生命周期"高潮/退潮"或交易动作含"回避" → 热度扣分
+                v2_data = _load_v2_theme_scores(TRADE_DATE)
+                if v2_data:
+                    for r in v2_data:
+                        if r.get('theme') == theme:
+                            lifecycle = str(r.get('lifecycle', ''))
+                            trade_action = str(r.get('trade_action', ''))
+                            if lifecycle in ('高潮', '退潮') or '回避' in trade_action:
+                                hot_score -= 15
+                            break
+                else:
+                    # V2 不可用时回退 V8
+                    v6_data = _load_v6_result(TRADE_DATE)
+                    if v6_data:
+                        for r in v6_data:
+                            if r.get('theme') == theme:
+                                signal = r.get('trade_signal', '')
+                                stage = r.get('stage', '')
+                                if signal in ('回避', '看空', '强烈看空') or stage in ('高潮', '衰退'):
+                                    hot_score -= 15
+                                break
+            except Exception:
+                pass
+
+        if theme_sentiment_score > 80:
+            hot_score -= 15
+        elif theme_sentiment_score > 70:
+            hot_score -= 8
+        elif theme_sentiment_score < 30:
+            hot_score -= 8
+
+        # 阈值按 主题热度 V2.3 强度分布重标定（分位对齐，见 theme_heat_v22.V2_TO_HEAT_ANCHORS）
+        if theme_trend_score < 40:
+            hot_score -= 12
+        elif theme_trend_score < 54:
+            hot_score -= 5
+        elif theme_trend_score > 85:
+            hot_score += 5
+        hot_score = min(100, max(0, hot_score))
+
+        # ──────────────────────────────────────────────
+        # 5. 基本面 Fundamentals (15%)
+        # ──────────────────────────────────────────────
+        try:
+            fund_result = calc_fundamental_score_v3(
+                ts_code=ts_code, theme_name=theme,
+                theme_trend_score=theme_trend_score,
+                theme_sentiment_score=theme_sentiment_score,
+                hot_rank=best_rank if best_rank <= 100 else 9999,
+                hot_count=hot_appear_count
+            )
+            fundamental_score = fund_result['base_score']
+            synergy_coeff = fund_result['synergy_coeff']
+            fund_logic = fund_result['logic']
+        except Exception:
+            fundamental_score = 50
+            synergy_coeff = 1.0
+            fund_logic = []
+
+        fundamental_score = min(100, max(0, fundamental_score))
+
+        # ──────────────────────────────────────────────
+        # 5.5 换手率（V11.1 新增，负向因子）
+        # ------------------------------------------------
+        # 实证：候选池内换手率 IC=-0.0950 / t=-9.23，是本模型已测因子中最强的一个，
+        #       强于 V11 全部六个维度，此前只在报告里展示、从未进入打分。
+        # 口径：在「当日候选池内」取截面分位（与 IC 回溯一致），非全市场分位。
+        #       分位越低 → 换手越冷 → 得分越高。
+        # ──────────────────────────────────────────────
+        turnover_pct = POOL_TURNOVER_PCT.get(ts_code, None)
+        if not TURNOVER_FACTOR_ENABLED or turnover_pct is None:
+            turnover_score = 50.0          # 未启用/无数据 → 中性，不产生偏向
+            turnover_note = '未启用' if not TURNOVER_FACTOR_ENABLED else '无数据'
+        else:
+            turnover_score = min(100.0, max(0.0,
+                                 100.0 - turnover_pct if TURNOVER_NEGATIVE else turnover_pct))
+            turnover_note = f'池内分位{turnover_pct:.0f}%'
+
+        # ──────────────────────────────────────────────
+        # 6. 追高惩罚（精简版）
+        # ──────────────────────────────────────────────
+        penalty = 0
+        if len(C) >= 6:
+            ret_5 = (C[-1] / C[-6] - 1) * 100
+            ret_10 = (C[-1] / C[-11] - 1) * 100 if len(C) >= 11 else 0
+            # 仅对同时满足"涨幅过大+量能萎缩/乖离过大"才惩罚
+            if ret_5 > 15:
+                bias_to_ma20 = (C[-1] - MA20) / MA20 * 100 if MA20 > 0 else 0
+                if bias_to_ma20 > 25:
+                    penalty += 20  # 严重乖离+大涨
+                elif ret_5 > 25:
+                    penalty += 15  # 纯大涨
+                elif ret_10 > 35:
+                    penalty += 10  # 10日过热
+                elif bias_to_ma20 > 15:
+                    penalty += 5
+
+        # 长上影惩罚（保留）
+        upper_shadow_penalty = 0
+        if 'high' in df.columns and len(df) >= 2:
+            today_high = float(df['high'].iloc[-1])
+            upper_shadow_pct = (today_high - current_price) / current_price * 100
+            if today_pct > 10 and upper_shadow_pct > 10:
+                upper_shadow_penalty = 20
+            elif today_pct > 5 and upper_shadow_pct > 7:
+                upper_shadow_penalty = 12
+            elif upper_shadow_pct > 4:
+                upper_shadow_penalty = 8
+        penalty += upper_shadow_penalty
+
+        # ──────────────────────────────────────────────
+        # 7. 龙头/辨识度加分
+        # ──────────────────────────────────────────────
+        leader_bonus = 0
+        if current_price >= HHV20 * 0.97:
+            if 'vol' in df.columns:
+                _v5 = float(df['vol'].iloc[-6:-1].mean()) if len(df) > 6 else 0
+                _v15 = float(df['vol'].iloc[-16:-6].mean()) if len(df) > 16 else _v5
+                if _v5 > _v15 * 1.2:
+                    leader_bonus = 12  # 放量近高点=龙头
+                else:
+                    leader_bonus = 6
+            else:
+                leader_bonus = 6
+
+        # YRI-H 历史辨识度
+        recognition_bonus = 0
+        yri_h_score = 0
+        yri_h_tags = []
+        if ts_code:
+            try:
+                yri_result = calc_yri_history(ts_code, debug=False)
+                if isinstance(yri_result, dict) and "错误" not in yri_result:
+                    yri_h_score = float(yri_result.get("YRI历史总分", 0))
+                    yri_h_tags = yri_result.get("核心历史标签", [])
+                    recognition_bonus = (yri_h_score / 100) * 8
+            except Exception:
+                pass
+
+        # ──────────────────────────────────────────────
+        # 8. 综合得分：加入中线突破质量，降低短线动量放大
+        # ──────────────────────────────────────────────
+        breakout_quality = 50.0
+        prior_high = HHV20
+        breakout_gap = (current_price / prior_high - 1) * 100 if prior_high > 0 else 0
+        if current_price >= prior_high * 1.01:
+            breakout_quality += 25
+        elif current_price >= prior_high:
+            breakout_quality += 15
+        elif current_price >= prior_high * 0.97:
+            breakout_quality += 5
+        else:
+            breakout_quality -= 15
+
+        if 'vol' in df.columns and len(df) >= 20:
+            day_vol_ratio = float(df['vol'].iloc[-1]) / (float(df['vol'].iloc[:-1].tail(5).mean()) + 1e-6)
+            if 1.3 <= day_vol_ratio <= 3.0:
+                breakout_quality += 12
+            elif day_vol_ratio > 4.0:
+                breakout_quality -= 8
+            elif day_vol_ratio < 0.8:
+                breakout_quality -= 8
+        else:
+            day_vol_ratio = 1.0
+
+        day_range = float(high_series.iloc[-1] - df['low'].iloc[-1])
+        close_location = (current_price - float(df['low'].iloc[-1])) / day_range if day_range > 0 else 0.5
+        if close_location >= 0.75:
+            breakout_quality += 8
+        elif close_location < 0.45:
+            breakout_quality -= 12
+
+        ma20_slope_10 = (MA20 / float(close_series.rolling(20).mean().iloc[-11]) - 1) * 100 if len(C) >= 30 else 0
+        if ma20_slope_10 > 3:
+            breakout_quality += 8
+        elif ma20_slope_10 < -1:
+            breakout_quality -= 12
+
+        ret20 = (current_price / float(C[-21]) - 1) * 100 if len(C) >= 21 else 0
+        if ret20 > 35:
+            breakout_quality -= 15
+        elif ret20 > 25:
+            breakout_quality -= 8
+
+        # ── P1 增强：突破有效性（平台紧凑度 + 上方阻力，阻力加分仅门控给平台合格者）──
+        plat_score_ = 0
+        _plat_ok = False
+        if len(df) >= 25:
+            _plat_max = float(df['high'].iloc[-21:-1].max())
+            _plat_min = float(df['low'].iloc[-21:-1].min())
+            _plat_range = (_plat_max - _plat_min) / _plat_min * 100 if _plat_min > 0 else 0  # 前20日振幅
+            _plat_pull = (current_price / _plat_min - 1) * 100 if _plat_min > 0 else 0        # 自平台低点已涨幅度
+            if _plat_range < 12 and _plat_pull < 15:
+                plat_score_ = 6       # 极紧凑平台（真蓄势）
+            elif _plat_range < 18 and _plat_pull < 15:
+                plat_score_ = 4       # 平台合格
+            elif _plat_pull >= 18:
+                plat_score_ = -6      # U型深回调后反抽前高：非蓄势，易盘整
+            elif _plat_range >= 25:
+                plat_score_ = -4      # 20日振幅过大=未充分整理
+            _plat_ok = plat_score_ >= 4
+            breakout_quality += plat_score_
+
+        # 识别近120日内局部高点带(left-peak)，取高于当前价的最近阻力距离
+        res_dist = None
+        _look = min(120, len(df) - 2)
+        if _look >= 40:
+            _hh = df['high'].values
+            _n0 = len(_hh)
+            _peaks = []
+            for _i in range(-_look, -2):           # 不含当日(_i=-1)、不含最前
+                _pos = _n0 + _i                    # 负偏移 → 绝对索引
+                if _pos < 3:
+                    continue
+                _s = max(0, _pos - 3)
+                _e = min(_n0, _pos + 4)            # 绝对右边界，避免空切片/负索引错位
+                if _hh[_pos] >= _hh[_s:_e].max() and _hh[_pos] > _hh[_pos - 1] * 1.005:
+                    _peaks.append(_hh[_pos])
+            _above = [p for p in _peaks if p > current_price]   # 当前上方显著局部顶
+            if _above:
+                res_dist = (min(_above) / current_price - 1) * 100  # 距上方最近阻力 %
+        # 阻力评分（回测口径：平台质量为主因子；贴顶仅在平台不合格时叠加压分，
+        # 平台合格的贴顶=突破刚形成前高(套牢薄)，不重罚以免误杀强势贴顶突破）
+        if res_dist is None:
+            breakout_quality += 8 if _plat_ok else 2     # 创120日新高/上方无近端阻力
+        elif res_dist < 3:
+            breakout_quality += -4 if _plat_ok else -8   # 贴顶突破
+        elif res_dist < 8:
+            breakout_quality += 0 if _plat_ok else -4    # 空间不足
+        elif _plat_ok and res_dist < 15:
+            breakout_quality += 3
+        elif _plat_ok:
+            breakout_quality += 6
+        breakout_quality = min(100, max(0, breakout_quality))
+
+        # 中线高胜率权重：结构和突破质量优先，短线动量只作辅助。
+        # 权重合计100%，避免动量乘数把高风险股票重新抬高。
+        # V11.1 权重：按 2023-01~2026-09 实测 |t| 分配（见上方 V11_WEIGHTS 注释）
+        #   换手率 .24 / 位置 .20 / 基本面 .18 / 资金(反向) .16 / 突破 .10 / 热度 .07 / 动量 .05
+        W = V11_WEIGHTS
+        base_score = (
+            capital_score * W['capital'] +
+            position_score * W['position'] +
+            hot_score * W['hot'] +
+            fundamental_score * W['fundamental'] +
+            breakout_quality * W['breakout'] +
+            momentum_score * W['momentum'] +
+            turnover_score * W['turnover']
+        )
+        # 2026-09 调整：共振加分倍数 12 → 24。
+        # 主题强度只有这一条通路直接进入基础裸分（=突破池排名分的主导项），
+        # 原倍数下最大仅 +8.4，相对换手率单项(权重 .24 → 最大 24 分)明显偏弱。
+        synergy_bonus = (synergy_coeff - 0.8) * 24
+        base_raw = base_score + synergy_bonus - penalty + leader_bonus + recognition_bonus
+
+        # 动量只保留小幅排序作用，不能覆盖突破质量和追高风险。
+        if momentum_score >= 80:
+            base_raw += 3
+        elif momentum_score >= 65:
+            base_raw += 1.5
+        elif momentum_score < 40:
+            base_raw -= 3
+        base_raw = min(120, max(5, base_raw))  # 暂存，后面还要乘主题系数
+
+        # ──────────────────────────────────────────────
+        # 9. 失败概率（幻方风格：动量越强失败越低）
+        # ──────────────────────────────────────────────
+        failure_prob = 50
+        failure_prob -= (momentum_score - 50) * 0.30   # 动量爆发力 权重最大
+        failure_prob -= (capital_score - 50) * 0.35    # 资金行为
+        failure_prob -= (position_score - 50) * 0.18   # 位置
+        failure_prob -= (hot_score - 50) * 0.10        # 热度（降低权重）
+        failure_prob -= (fundamental_score - 50) * 0.12
+
+        # 量能强化
+        if 'vol' in df.columns and len(df) >= 10:
+            vol_hist = df['vol'].iloc[:-1]
+            vm5 = float(vol_hist.tail(5).mean())
+            vm20 = float(vol_hist.tail(20).mean()) if len(vol_hist) >= 20 else vm5
+            vrr = vm5 / vm20 if vm20 > 0 else 1.0
+            # V11.1：与资金行为同信号。原逻辑"放量→失败概率降低"已被实测证伪
+            # (资金行为 IC=-0.0394 / t=-4.31)，此处必须同步翻转，否则与 capital_score 自相矛盾。
+            if vrr > 1.5:
+                failure_prob -= 10 * _vol_sign
+            elif vrr > 1.2:
+                failure_prob -= 5 * _vol_sign
+            elif vrr < 0.6:
+                failure_prob += 12 * _vol_sign
+            elif vrr < 0.8:
+                failure_prob += 5 * _vol_sign
+
+        # 资金流向强化
+        if mf_avail:
+            ms = mf.get('mf_slope', 0)
+            mp = mf.get('mf_persistence', 0)
+            if ms > 1.5 and mp > 0.3:
+                failure_prob -= 10 * _mf_sign  # 机构持续流入=低失败
+            elif ms < -1.5:
+                failure_prob += 10 * _mf_sign
+
+        # 追高 penalty 已在 base_raw 直接扣除，这里不再计入失败概率，避免经
+        # risk_penalty 二次惩罚同一风险（此前会让追高/透支被重复扣两次）。
+        # failure_prob += penalty * 1.2
+        if hot_score >= 85:
+            failure_prob += 8
+        failure_prob = min(90, max(10, failure_prob))
+
+        # 风险直接进入总分：高失败风险必须降低排名，避免“高分高风险”。
+        # 20日持有期优先保留风险<=35%的候选，风险超过50%后加速扣分。
+        risk_penalty = max(0.0, failure_prob - 35.0) * 0.55
+        if failure_prob > 50:
+            risk_penalty += (failure_prob - 50.0) * 0.45
+        after_bonus = base_raw - risk_penalty
+
+        # ── V11: 主题层级系数（主线分级 V1.0 集成）──
+        # 主线核心(≥85): ×1.10   强主线(80~84): ×1.05
+        # 次主线(70~79): ×1.00   轮动主题(60~69): ×0.90
+        # 非主线(<60):   ×0.80   无主题数据: ×1.00（中性，不惩罚）
+        if mainline_quality > 0:
+            if mainline_quality >= 85:
+                theme_mult = 1.10
+            elif mainline_quality >= 80:
+                theme_mult = 1.05
+            elif mainline_quality >= 70:
+                theme_mult = 1.00
+            elif mainline_quality >= 60:
+                theme_mult = 0.90
+            else:
+                theme_mult = 0.80
+        else:
+            theme_mult = 1.00
+
+        after_theme = after_bonus * theme_mult * extra_mult
+
+        # ── V11: 主题层级天花板（轮动股信号再强也不能超过主线高度）──
+        # 核心主线(≥90): 上限 97   强主线(80-89): 上限 95
+        # 次主线(70-79): 上限 90   轮动主题(60-69): 上限 85
+        # 非主线(<60):   上限 78   无主题数据: 不设限（兼容旧数据）
+        if mainline_quality > 0:
+            if mainline_quality >= 90:
+                tier_cap = 97.0
+            elif mainline_quality >= 80:
+                tier_cap = 95.0
+            elif mainline_quality >= 70:
+                tier_cap = 90.0
+            elif mainline_quality >= 60:
+                tier_cap = 85.0
+            else:
+                tier_cap = 78.0
+        else:
+            tier_cap = 97.0  # 无数据不限制
+
+        # ── V11: 软天花板（S型压缩到 5~tier_cap，高分段拉开差异）──
+        # soft_cap(x) = tier_cap - (tier_cap * 0.31) / (1 + exp(0.14 * (x - x0)))
+        #
+        # 2026-09 修复：阈值处不连续。原实现把曲线中心固定在 x=80，而分段阈值是
+        # 70，两者不对齐 —— x 刚越过 70 时曲线值并不等于 70：
+        #   非主线 tier_cap=78：70.0 → 70.0 分，70.1 → 58.7 分（反向掉 11.3 分）
+        #   主线   tier_cap=97：70.0 → 70.0 分，70.1 → 72.9 分（跳升 2.9 分）
+        # 导致 70 附近的整合评分不可比。现按 tier_cap 反解曲线中心 x0，
+        # 使 soft_cap(70) 恒等于 70，越过阈值后单调上升：
+        #   x0 = 70 - ln( compress_range / (tier_cap - 70) - 1 ) / 0.14
+        # 曲线族、压缩幅度(31%)、上限 tier_cap 均不变，仅整体水平平移。
+        final_score = after_theme
+        if final_score > 70:
+            import math
+            # S型压缩，上限为 tier_cap；压缩量 = tier_cap × 0.31（约30%的压缩空间）
+            compress_range = tier_cap * 0.31
+            _so_k = 0.14
+            _so_x0 = 70.0 - math.log(compress_range / (tier_cap - 70.0) - 1.0) / _so_k
+            final_score = tier_cap - compress_range / (1.0 + math.exp(_so_k * (final_score - _so_x0)))
+        final_score = max(5.0, min(tier_cap, final_score))
+
+        # ──────────────────────────────────────────────
+        # 10. 推荐理由
+        # ──────────────────────────────────────────────
+        reason_parts = []
+        if momentum_score >= 80:
+            reason_parts.append("🚀爆发力强")
+        elif momentum_score >= 60:
+            reason_parts.append("动量良好")
+
+        if capital_score >= 80:
+            reason_parts.append("资金充沛")
+        elif capital_score >= 60:
+            reason_parts.append("资金健康")
+
+        if position_score >= 75:
+            reason_parts.append("位置安全")
+        elif position_score >= 55:
+            reason_parts.append("位置合理")
+
+        if leader_bonus >= 10:
+            reason_parts.append("👑龙头")
+        elif leader_bonus >= 5:
+            reason_parts.append("⭐核心")
+
+        if penalty > 8:
+            reason_parts.append(f"⚠️追高-{penalty:.0f}")
+        if yri_h_tags:
+            reason_parts.append("/".join(yri_h_tags[:2]))
+        recommendation = " | ".join(reason_parts) if reason_parts else "观察中"
+
+        # ──────────────────────────────────────────────
+        # 11. 详细信息
+        # ──────────────────────────────────────────────
+        details = {
+            '动量爆发力': round(momentum_score, 1),
+            '资金行为': round(capital_score, 1),
+            '位置安全性': round(position_score, 1),
+            '热度': round(hot_score, 1),
+            '基本面': round(fundamental_score, 1),
+            '突破质量': round(breakout_quality, 1),
+            '换手率得分': round(turnover_score, 1),
+            '换手率池内分位': round(turnover_pct, 1) if turnover_pct is not None else None,
+            '换手率状态': turnover_note,
+            '上方阻力%': round(res_dist, 2) if res_dist is not None else 999,
+            '平台质量分': plat_score_,
+            '突破幅度': round(breakout_gap, 2),
+            '当日量比': round(day_vol_ratio, 2),
+            '收盘位置': round(close_location, 2),
+            '20日涨幅': round(ret20, 2),
+            '追高惩罚': round(penalty, 1),
+            '龙头加分': leader_bonus,
+            '辨识度加分': round(recognition_bonus, 1),
+            'YRI总分': round(yri_h_score, 1),
+            'YRI标签': ", ".join(yri_h_tags[:3]) if yri_h_tags else "",
+            '量比': round(vol_ratio, 2) if 'vol' in df.columns else 0,
+            # 量能爆发：5日均量/20日均量（0-100）
+            '量能爆发': round(np.clip(vol_ratio_5_20 / 3.0, 0, 1) * 100, 1) if 'vol' in df.columns else 0,
+            '热榜最佳排名': best_rank if best_rank <= 100 else 0,
+            '热榜上榜次数': hot_appear_count,
+            '共振系数': round(synergy_coeff, 2),
+            '主题层级系数': round(theme_mult, 3),
+            '主线类型': mainline_type,
+            '主线质量分': mainline_quality,
+            '层级上限': tier_cap,
+            '基础裸分': round(base_raw, 1),
+            '基本面逻辑': fund_logic[:3] if fund_logic else [],
+            '资金斜率': round(mf.get('mf_slope', 0), 2),
+            '资金持续性': round(mf.get('mf_persistence', 0), 2),
+            '资金扩散率': round(mf.get('mf_diffusion', 0), 3),
+            'Alpha信号': '',
+        }
+
+        return round(final_score, 1), recommendation, details, round(failure_prob, 1)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return 0, "计算异常", {}, 50
+
+
+def calc_position_factor(df):
+
+    low120 = df["low"].tail(120).min()
+    high120 = df["high"].tail(120).max()
+
+    close = df["close"].iloc[-1]
+
+    pos = (close - low120) / (high120 - low120)
+
+    if pos < 0.30:
+        score = 0.2
+
+    elif pos < 0.50:
+        score = 0.4
+
+    elif pos < 0.70:
+        score = 0.7
+
+    elif pos < 0.90:
+        score = 1.0
+
+    else:
+        score = 0.8
+
+    return score
+
+
+def _calc_momentum_score(df):
+    """
+    新增：动量评分，捕捉启动股
+    """
+    C = df['close']
+    VOL = df['vol']
+
+    score = 0
+
+    # 1. 5日价格动量
+    if len(C) >= 5:
+        pct5 = (C.iloc[-1] / C.iloc[-5]) - 1
+        if pct5 > 0.05:
+            score += 0.3
+        elif pct5 > 0.02:
+            score += 0.2
+        elif pct5 > 0:
+            score += 0.1
+
+    # 2. 20日趋势
+    if len(C) >= 20:
+        pct20 = (C.iloc[-1] / C.iloc[-20]) - 1
+        if pct20 > 0.15:
+            score += 0.25
+        elif pct20 > 0.08:
+            score += 0.15
+        elif pct20 > 0:
+            score += 0.05
+
+    # 3. 量能配合
+    if len(VOL) >= 5:
+        vol_ratio = VOL.tail(5).mean() / (VOL.tail(20).mean() + 1e-6)
+        if vol_ratio > 1.5:
+            score += 0.2
+        elif vol_ratio > 1.2:
+            score += 0.1
+        elif vol_ratio > 1.0:
+            score += 0.05
+
+    # 4. 突破近期高点
+    if len(C) >= 10:
+        recent_high = C.tail(10).max()
+        if C.iloc[-1] >= recent_high * 0.98:
+            score += 0.25
+
+    # 归一化到0-1
+    return np.clip(score, 0, 1)
+
+def _calc_squeeze_compression(df, compression_score, squeeze_prob):
+    """
+    新增：压缩+洗盘统一建模
+    组合压缩度和洗盘概率
+    """
+    # 压缩度和洗盘概率的乘积，重点是高压缩度 + 高洗盘概率 = 好启动机会
+    score = 0
+
+    # 组合得分
+    if compression_score >= 0.8 and squeeze_prob >= 0.5:
+        score += 0.4
+    elif compression_score >= 0.6 and squeeze_prob >= 0.4:
+        score += 0.3
+    elif compression_score >= 0.5:
+        score += 0.2
+
+    # 加上两个指标平均
+    avg = (compression_score + squeeze_prob) / 2
+    score += avg * 0.5
+
+    return np.clip(score, 0, 1)
+
+
+def _find_best_theme(stock_info):
+    """
+    自动选择纯度最高的主题
+    遍历所有主题配置，计算个股与每个主题的纯度，返回最高的主题名
+    """
+    if not stock_info:
+        return ''
+
+    try:
+        # 加载主题配置
+        cfg_path = os.path.join(BASE_DIR, 'theme.json')
+        if not os.path.exists(cfg_path):
+            return ''
+
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            theme_cfg = json.load(f).get('HOT_THEMES', {})
+
+        best_theme = ''
+        best_confidence = 0
+
+        # 遍历所有主题，找纯度最高的
+        for theme_name in theme_cfg.keys():
+            confidence = calc_theme_confidence(stock_info, theme_name)
+            if confidence > best_confidence:
+                best_confidence = confidence
+                best_theme = theme_name
+
+        return best_theme
+
+    except Exception as e:
+        print(f"[V7自动主题] 选择失败: {e}")
+        return ''
+
+
+def find_all_themes(stock_info, min_confidence=0.3):
+    """
+    查找股票所属的所有主题（支持多主题）
+    
+    Args:
+        stock_info: 股票信息字典
+        min_confidence: 最小置信度阈值，默认0.3
+    
+    Returns:
+        所有匹配主题的字符串，用逗号分隔
+    """
+    if not stock_info:
+        return ''
+
+    try:
+        # 加载主题配置
+        cfg_path = os.path.join(BASE_DIR, 'theme.json')
+        if not os.path.exists(cfg_path):
+            return ''
+
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            theme_cfg = json.load(f).get('HOT_THEMES', {})
+
+        # 收集所有置信度超过阈值的主题
+        matched_themes = []
+        for theme_name in theme_cfg.keys():
+            confidence = calc_theme_confidence(stock_info, theme_name)
+            if confidence >= min_confidence:
+                # 带上置信度信息
+                matched_themes.append(f"{theme_name}({confidence:.2f})")
+
+        # 按置信度降序排序
+        matched_themes.sort(key=lambda x: float(x.split('(')[1].rstrip(')')), reverse=True)
+        
+        return ','.join(matched_themes) if matched_themes else ''
+
+    except Exception as e:
+        print(f"[V7多主题] 选择失败: {e}")
+        return ''
+
+
+def calc_tech_barrier_score(ts_code, pro=None):
+    """
+    技术壁垒评分（基本面+价格）— 同步 bull_scorer v2 优化逻辑
+
+    从 fina_indicator 读取 ROE/毛利率/研发费用率，
+    加入绝对值下限约束（毛利率<25%上限、ROE<12%上限等），
+    防止"矮子里拔将军"。
+
+    Returns:
+        float: 0~10 分
+    """
+    try:
+        # ── 一、基本面壁垒评分（0~7分） ──
+        fund_score = 0.0
+        details = {}
+
+        if pro is None:
+            try:
+                pro = ts.pro_api(TUSHARE_TOKEN)
+            except Exception:
+                return 0
+
+        fin_df = pro.fina_indicator(ts_code=ts_code)
+        if fin_df is not None and len(fin_df) >= 4:
+            fin_df = fin_df.sort_values('end_date', ascending=False).head(8)
+
+            # ROE
+            roe_val = fin_df.head(4)['roe'].mean() if 'roe' in fin_df.columns else 0
+            roe_val = roe_val / 100 if roe_val > 1 else roe_val  # 统一为小数
+            # 毛利率
+            gm_val = fin_df.head(4)['grossprofit_margin'].mean() if 'grossprofit_margin' in fin_df.columns else 0
+            gm_val = gm_val / 100 if gm_val > 1 else gm_val
+            # 研发费用率
+            rd_val = fin_df.head(4)['rd_expenses'].mean() if 'rd_expenses' in fin_df.columns else 0
+            rd_val = rd_val / 100 if rd_val > 1 else rd_val
+            # 经营利润率
+            op_val = fin_df.head(4)['profit_margin'].mean() if 'profit_margin' in fin_df.columns else 0
+
+            # ROE评分（0~2分）
+            if roe_val > 0.20:      roe_s = 2.0
+            elif roe_val > 0.15:    roe_s = 1.6
+            elif roe_val > 0.12:    roe_s = 1.3
+            elif roe_val > 0.10:    roe_s = 1.0
+            elif roe_val > 0.08:    roe_s = 0.7
+            elif roe_val > 0.05:    roe_s = 0.4
+            else:                   roe_s = 0.0
+            fund_score += roe_s
+            details['roe'] = round(roe_val * 100, 1)
+
+            # 毛利率评分（0~2分）— 同步 bull_scorer 绝对值下限约束
+            if gm_val > 0.40:       gm_s = 2.0
+            elif gm_val > 0.30:     gm_s = 1.7
+            elif gm_val > 0.25:     gm_s = 1.3
+            elif gm_val > 0.20:     gm_s = 1.0
+            elif gm_val > 0.15:     gm_s = 0.6
+            elif gm_val > 0.10:     gm_s = 0.3
+            else:                   gm_s = 0.0
+            fund_score += gm_s
+            details['gross_margin'] = round(gm_val * 100, 1)
+
+            # 研发费用率评分（0~1.5分）
+            if rd_val > 0.15:       rd_s = 1.5
+            elif rd_val > 0.10:     rd_s = 1.2
+            elif rd_val > 0.06:     rd_s = 1.0
+            elif rd_val > 0.03:     rd_s = 0.7
+            elif rd_val > 0.01:     rd_s = 0.4
+            else:                   rd_s = 0.0
+            fund_score += rd_s
+            details['rd_ratio'] = round(rd_val * 100, 1)
+
+            # 经营利润率评分（0~1.5分）
+            if op_val > 0.25:       op_s = 1.5
+            elif op_val > 0.15:     op_s = 1.2
+            elif op_val > 0.10:     op_s = 0.9
+            elif op_val > 0.05:     op_s = 0.5
+            else:                   op_s = 0.0
+            fund_score += op_s
+            details['profit_margin'] = round(op_val * 100, 1)
+
+        # ── 绝对值下限约束（同步 bull_scorer） ──
+        # 即使有行业排名，绝对值过低也不给高分
+        cap = 7.0
+        if 0 < gm_val < 0.15:
+            cap = min(cap, 5.0)
+        elif 0 < gm_val < 0.20:
+            cap = min(cap, 6.0)
+        if 0 < roe_val < 0.05:
+            cap = min(cap, 5.0)
+        elif 0 < roe_val < 0.08:
+            cap = min(cap, 6.0)
+        if 0 < rd_val < 0.01:
+            cap = min(cap, 4.0)
+        elif 0 < rd_val < 0.02:
+            cap = min(cap, 5.5)
+
+        fund_score = min(fund_score, cap)
+
+        # ── 二、价格壁垒信号评分（0~3分） ──
+        df = _get_daily_from_sqlite(ts_code)
+        price_score = 0.0
+        if df is not None and not df.empty and 'close' in df.columns:
+            df = df.sort_values('trade_date', ascending=False)
+
+            # 低波动加分（壁垒稳固）
+            if 'pct_chg' in df.columns and len(df) >= 20:
+                pct_vals = df['pct_chg'].head(60).dropna().astype(float)
+                if len(pct_vals) >= 20:
+                    vol = pct_vals.std()
+                    vol_score = max(0, min(3, 3 * (4 - vol) / 2))
+                else:
+                    vol_score = 0
+            else:
+                vol_score = 0
+
+            # 60日趋势加分（基本面向好）
+            if len(df) >= 60:
+                close_60d = float(df.iloc[min(59, len(df)-1)]['close'])
+                close_now = float(df.iloc[0]['close'])
+                ret_60d = (close_now - close_60d) / close_60d if close_60d > 0 else 0
+                trend_boost = min(1.0, max(0, ret_60d * 3))
+            else:
+                trend_boost = 0
+
+            price_score = min(3.0, vol_score + trend_boost)
+            details['volatility'] = round(vol_score, 1)
+            details['trend_boost'] = round(trend_boost, 1)
+
+        total = round(min(10, fund_score + price_score), 1)
+        details['fund_score'] = round(fund_score, 1)
+        details['price_score'] = round(price_score, 1)
+        details['cap'] = round(cap, 1)
+        return total
+
+    except Exception:
+        return 0
+
+
+def calc_institutional_flow_score(ts_code):
+    """
+    机构资金流评分
+    从 moneyflow 缓存（优先）或实时调用获取大单数据
+
+    Returns:
+        float: 0~5 分
+    """
+    try:
+        from datetime import datetime, timedelta
+        # 优先从 per-stock 缓存读取（_get_stock_moneyflow_features 已缓存）
+        safe_name = ts_code.replace('.', '_')
+        stock_cache = os.path.join(MONEYFLOW_STOCK_DIR, f"{safe_name}.csv")
+        if os.path.exists(stock_cache):
+            mf_df = pd.read_csv(stock_cache)
+            if len(mf_df) > 0:
+                mf_df = mf_df.sort_values("trade_date").reset_index(drop=True)
+                latest = mf_df.iloc[-1]
+                if 'buy_lg_amount' in mf_df.columns:
+                    buy_lg = float(latest.get('buy_lg_amount', 0))
+                    sell_lg = float(latest.get('sell_lg_amount', 0))
+                else:
+                    buy_lg = float(latest.get('buy_lg_vol', 0))
+                    sell_lg = float(latest.get('sell_lg_vol', 0))
+                net_lg = buy_lg - sell_lg
+                if net_lg > 1e6:
+                    return 5
+                elif net_lg > 0:
+                    return 3
+                else:
+                    return 0
+        # fallback: 从 moneyflow_{date}.csv 批量缓存获取
+        for offset in range(5):
+            check_date = (datetime.now() - timedelta(days=offset)).strftime('%Y%m%d')
+            mf_path = os.path.join(CACHE_DIR, f"moneyflow_{check_date}.csv")
+            if os.path.exists(mf_path):
+                mf_df = pd.read_csv(mf_path)
+                if ts_code in mf_df['ts_code'].values:
+                    row = mf_df[mf_df['ts_code'] == ts_code].iloc[0]
+                    buy_lg = float(row.get('buy_lg_vol', 0)) if pd.notna(row.get('buy_lg_vol')) else 0
+                    sell_lg = float(row.get('sell_lg_vol', 0)) if pd.notna(row.get('sell_lg_vol')) else 0
+                    net_lg = buy_lg - sell_lg
+                    if net_lg > 1e6:
+                        return 5
+                    elif net_lg > 0:
+                        return 3
+                    else:
+                        return 0
+        return 0
+    except Exception:
+        return 0
+
+
+def calc_fundamental_score_v3(ts_code, theme_name='', theme_trend_score=0, theme_sentiment_score=0,
+                                stock_info=None, hot_rank=9999, hot_count=0):
+    """
+    V3: 真实基本面因子版 — 接入利润增速/ROE/半年度预告/大宗交易
+    返回: 与 V2 格式一致
+    """
+    try:
+        logic = []
+
+        # ── PART A: 热榜+主题信号 (30%) ──
+        trend_str = 50
+        # 阈值按 主题热度 V2.3 强度分布重标定（分位对齐，见 theme_heat_v22.V2_TO_HEAT_ANCHORS）
+        if theme_trend_score >= 94: trend_str = 95
+        elif theme_trend_score >= 81: trend_str = 80
+        elif theme_trend_score >= 62: trend_str = 65
+        elif theme_trend_score >= 40: trend_str = 45
+        else: trend_str = 25
+
+        concent = 50
+        if hot_count >= 5:
+            concent = 95 if hot_rank <= 10 else (80 if hot_rank <= 30 else 65)
+        elif hot_count >= 2:
+            concent = 55
+        else:
+            concent = 40
+
+        stage_score = 50; stage = "未知"
+        if theme_sentiment_score >= 80: stage, stage_score = "高潮期", 55
+        elif theme_sentiment_score >= 60: stage, stage_score = "发酵期", 75
+        elif theme_sentiment_score >= 40: stage, stage_score = "启动期", 90
+        else: stage, stage_score = "退潮期", 30
+
+        emotion_heat = min(90, 30 + hot_count * 6)
+        heat_base = trend_str * 0.25 + concent * 0.25 + stage_score * 0.25 + emotion_heat * 0.25
+
+        # ── PART B: 真实基本面因子 (70%) ──
+        cache_key = f"{ts_code}_fund_v3.json"
+        cache_path = os.path.join(FUND_CACHE_DIR, cache_key)
+        fund_data = {}
+        if os.path.exists(cache_path):
+            age = time.time() - os.path.getmtime(cache_path)
+            if age < 86400 * 7:
+                try:
+                    with open(cache_path, 'r', encoding='utf-8') as f:
+                        fund_data = json.load(f)
+                except: pass
+        # 旧缓存净化：sjlrtz 全 0 但 roe 正常 = 权限NaN污染(ystz/sjlrtz高积分字段拿不到)，强制重取
+        if fund_data:
+            _f0 = fund_data.get('fin', {})
+            if _f0.get('sjlrtz') == 0 and abs(float(_f0.get('roe', 0) or 0)) > 1e-9:
+                fund_data = {}
+
+        if not fund_data:
+            # 利润/营收同比优先取本地 fina_indicator_cache(netprofit_yoy/or_yoy 完整可用)，
+            # 直连 tushare 的 ystz/sjlrtz 为高积分字段，低权限 token 返回 NaN → 被存成 0 → 误报"利润下滑0%"
+            fund_data = {'fin': {}, 'fc': {}, 'bt': {}}
+            _fin_db = None
+            try:
+                _dbp = os.path.join(STOCK_DATA_DIR, "cache_daily", "stock_data.db")
+                _db_conn = sqlite3.connect(f"file:{_dbp}?mode=ro", uri=True)
+                try:
+                    _fin_db = _db_conn.execute(
+                        "SELECT end_date, netprofit_yoy, or_yoy, roe FROM fina_indicator_cache "
+                        "WHERE ts_code=? AND netprofit_yoy IS NOT NULL ORDER BY end_date DESC LIMIT 1",
+                        (ts_code,)).fetchone()
+                finally:
+                    _db_conn.close()
+            except Exception:
+                _fin_db = None
+            if _fin_db is not None:
+                fund_data['fin']['roe'] = float(_fin_db[3]) if _fin_db[3] is not None else 0.0
+                fund_data['fin']['ystz'] = float(_fin_db[2] or 0) or 0.0    # or_yoy(营收同比)替代 ystz
+                fund_data['fin']['sjlrtz'] = float(_fin_db[1] or 0) or 0.0  # netprofit_yoy 替代 sjlrtz
+            else:
+                try: fin_df = pro.fina_indicator(ts_code=ts_code, fields="ts_code,end_date,roe,ystz,sjlrtz")
+                except: fin_df = None
+                if fin_df is not None and len(fin_df) > 0:
+                    fin_df = fin_df.sort_values("end_date", ascending=False)
+                    lr = fin_df.iloc[0]
+                    fund_data['fin']['roe'] = float(lr.get('roe', 0)) if pd.notna(lr.get('roe', 0)) else 0
+                    fund_data['fin']['ystz'] = float(lr.get('ystz', 0)) if pd.notna(lr.get('ystz', 0)) else 0
+                    fund_data['fin']['sjlrtz'] = float(lr.get('sjlrtz', 0)) if pd.notna(lr.get('sjlrtz', 0)) else 0
+            try: fc_df = pro.forecast(ts_code=ts_code, fields="ts_code,end_date,type,p_change_min,p_change_max")
+            except: fc_df = None
+            try: bt_df = pro.block_trade(ts_code=ts_code, fields="ts_code,trade_date,price,vol,amount,discount")
+            except: bt_df = None
+            if fc_df is not None and len(fc_df) > 0:
+                fc_df = fc_df.sort_values("end_date", ascending=False)
+                # forecast.type 可能是字符串(如"预增")，映射为整数
+                _forecast_type_map = {
+                    '预增': 1, '预减': 2, '略增': 3, '略减': 4,
+                    '扭亏': 5, '首亏': 6, '续亏': 7, '续盈': 8, '减亏': 9
+                }
+                def _to_fc_type(v):
+                    if pd.isna(v):
+                        return 0
+                    if isinstance(v, str):
+                        return _forecast_type_map.get(v, 0)
+                    try:
+                        return int(v)
+                    except (ValueError, TypeError):
+                        return 0
+                for _, rr in fc_df.iterrows():
+                    ed = str(rr.get('end_date', ''))
+                    if '0630' in ed or '06-30' in ed:
+                        fund_data['fc']['half_p_min'] = float(rr.get('p_change_min', 0)) if pd.notna(rr.get('p_change_min', 0)) else 0
+                        fund_data['fc']['half_p_max'] = float(rr.get('p_change_max', 0)) if pd.notna(rr.get('p_change_max', 0)) else 0
+                        fund_data['fc']['half_type'] = _to_fc_type(rr.get('type'))
+                        break
+                lst = fc_df.iloc[0]
+                fund_data['fc']['p_min'] = float(lst.get('p_change_min', 0)) if pd.notna(lst.get('p_change_min', 0)) else 0
+                fund_data['fc']['p_max'] = float(lst.get('p_change_max', 0)) if pd.notna(lst.get('p_change_max', 0)) else 0
+                fund_data['fc']['type'] = _to_fc_type(lst.get('type'))
+            if bt_df is not None and len(bt_df) > 0:
+                bt_df = bt_df.sort_values("trade_date", ascending=False)
+                if 'discount' in bt_df.columns:
+                    dsc = bt_df.head(10)['discount'].dropna().values
+                    fund_data['bt']['avg_discount'] = float(np.mean(dsc)) if len(dsc) > 0 else 0
+                fund_data['bt']['count'] = len(bt_df.head(10))
+            time.sleep(0.15)
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                json.dump(fund_data, f, ensure_ascii=False)
+
+        # 因子①: 利润同比增速 (30%)
+        sjlrtz = fund_data.get('fin', {}).get('sjlrtz', 0)
+        ps = 50
+        if sjlrtz > 100: ps = 95; logic.append(f"利润爆发: 同比+{sjlrtz:.0f}%")
+        elif sjlrtz > 50: ps = 85; logic.append(f"利润高增: 同比+{sjlrtz:.0f}%")
+        elif sjlrtz > 20: ps = 70; logic.append(f"利润良好: 同比+{sjlrtz:.0f}%")
+        elif sjlrtz > 0: ps = 55; logic.append(f"利润微增: 同比+{sjlrtz:.0f}%")
+        elif abs(sjlrtz) < 1e-6: ps = 50; logic.append("利润同比: 持平 0%")
+        elif sjlrtz > -20: ps = 35; logic.append(f"利润下滑: {sjlrtz:.0f}%")
+        else: ps = 20; logic.append(f"利润大降: {sjlrtz:.0f}%")
+
+        # 因子②: 半年度预告加分 (25%)
+        # 预告类型码(_forecast_type_map): 1预增 2预减 3略增 4略减 5扭亏 6首亏 7续亏 8续盈 9减亏
+        fc = fund_data.get('fc', {})
+        fs = 50
+        hp_min = fc.get('half_p_min', 0); hp_max = fc.get('half_p_max', 0)
+        ht = fc.get('half_type', 0)
+        if ht == 5:
+            fs = 90; logic.append(f"半年度: 扭亏为盈({hp_min:.0f}%~{hp_max:.0f}%)")
+        elif ht in (1, 3, 8):
+            ap = (hp_min + hp_max) / 2
+            if ht == 1:
+                if ap > 100: fs = 95; logic.append(f"半年度: 预增+{ap:.0f}%(超预期)")
+                elif ap > 50: fs = 85; logic.append(f"半年度: 预增+{ap:.0f}%")
+                elif ap > 20: fs = 75; logic.append(f"半年度: 预增+{ap:.0f}%")
+                else: fs = 65; logic.append(f"半年度: 预增+{ap:.0f}%")
+            elif ht == 3:
+                fs = 65; logic.append(f"半年度: 略增+{ap:.0f}%")
+            else:
+                fs = 70; logic.append(f"半年度: 续盈+{ap:.0f}%")
+        elif ht in (6, 7):
+            fs = 15; logic.append(f"半年度: 亏损预警")
+        elif ht == 9:
+            fs = 30; logic.append(f"半年度: 减亏(亏损收窄)")
+        elif ht == 2:
+            fs = 35; logic.append(f"半年度: 预减({hp_min:.0f}%~{hp_max:.0f}%)")
+        elif ht == 4:
+            fs = 45; logic.append(f"半年度: 略减({hp_min:.0f}%~{hp_max:.0f}%)")
+        else:
+            pm = fc.get('p_min', 0); px = fc.get('p_max', 0)
+            if pm > 0 or px > 0:
+                ap = (pm + px) / 2
+                fs = 75 if ap > 50 else 60
+                logic.append(f"最新预告: {'预增' if ap>0 else '预减'}+{ap:.0f}%")
+
+        # 因子③: ROE_TTM (25%)
+        roe = fund_data.get('fin', {}).get('roe', 0)
+        rs = 50
+        if roe > 25: rs = 95; logic.append(f"ROE: {roe:.1f}%(卓越)")
+        elif roe > 18: rs = 85; logic.append(f"ROE: {roe:.1f}%(优秀)")
+        elif roe > 12: rs = 70; logic.append(f"ROE: {roe:.1f}%(良好)")
+        elif roe > 6: rs = 55; logic.append(f"ROE: {roe:.1f}%(一般)")
+        elif roe > 0: rs = 40; logic.append(f"ROE: {roe:.1f}%(偏低)")
+        else: rs = 25; logic.append(f"ROE: {roe:.1f}%(亏损)")
+
+        # 因子④: 大宗交易折溢价 (20%)
+        bt = fund_data.get('bt', {})
+        bs = 50; bt_cnt = bt.get('count', 0)
+        if bt_cnt >= 3:
+            ad = bt.get('avg_discount', 0)
+            if ad > 3: bs = 90; logic.append(f"大宗: 溢价{ad:.1f}%(抢筹)")
+            elif ad > 0: bs = 75; logic.append(f"大宗: 小幅溢价{ad:.1f}%")
+            elif ad > -5: bs = 60; logic.append(f"大宗: 折价{abs(ad):.1f}%(正常)")
+            elif ad > -10: bs = 45; logic.append(f"大宗: 折价{abs(ad):.1f}%(偏大)")
+            else: bs = 30; logic.append(f"大宗: 大幅折价{abs(ad):.1f}%(异常)")
+        elif bt_cnt > 0: bs = 55
+        else: bs = 50
+
+        real_score = min(100, max(0, ps * 0.30 + fs * 0.25 + rs * 0.25 + bs * 0.20))
+        combined = heat_base * 0.30 + real_score * 0.70
+
+        has_data = sjlrtz != 0 or roe != 0 or bt_cnt > 0 or hp_min != 0 or fc.get('p_min', 0) != 0
+        if has_data and real_score >= 70: sc = 1.20 + min(0.3, (real_score - 70) / 100)
+        elif has_data and real_score >= 50: sc = 1.0 + (real_score - 50) / 100
+        elif has_data: sc = 0.85
+        else: sc = 0.75
+
+        if theme_sentiment_score >= 85 and hot_count >= 5: sc *= 0.9
+        sc = round(max(0.5, min(1.5, sc)), 2)
+
+        return {
+            "industry_score": round(heat_base, 1), "fundamental_score": round(real_score, 1),
+            "base_score": round(combined, 1), "synergy_coeff": sc,
+            "is_mainline": not (heat_base < 40 and real_score < 45),
+            "stage": stage, "logic": logic
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"industry_score": 50, "fundamental_score": 50, "base_score": 50,
+                "synergy_coeff": 1.0, "is_mainline": False, "stage": "未知", "logic": ["评分异常"]}
+
+
+def calc_theme_confidence(stock_info, theme):
+    """
+    计算个股与主题的纯度/置信度评分（0-100）
+
+    参数：
+        stock_info: 股票信息字典，包含：
+            - industries: 行业列表
+            - concepts: 概念列表
+            - business_text: 业务描述文本
+            - name: 股票名称
+        theme: 主题名称（如"AI算力链"、"半导体"等）
+
+    返回：
+        主题纯度评分（0-100）
+    """
+    if not stock_info or not theme:
+        return 0
+
+    score = 0
+
+    # 行业匹配得分
+    score += calc_industry_score(
+        stock_info.get("industries", []),
+        theme
+    )
+
+    # 概念匹配得分
+    score += calc_concept_score(
+        stock_info.get("concepts", []),
+        theme
+    )
+
+    # 关键词命中得分
+    score += calc_keyword_score(
+        stock_info.get("business_text", ""),
+        theme
+    )
+
+    # 业务相关性得分
+    score += calc_business_score(
+        stock_info.get("business_text", ""),
+        theme
+    )
+
+    # 核心公司加分
+    score += calc_core_company_score(
+        stock_info.get("name", ""),
+        theme
+    )
+
+    # 核心龙头股额外加分（对行业内具有核心地位的龙头公司给予加成）
+    score += calc_leader_bonus(
+        stock_info.get("name", ""),
+        theme
+    )
+
+    # 排除惩罚
+    score -= calc_penalty(
+        stock_info.get("business_text", ""),
+        theme
+    )
+
+    return max(min(score, 100), 0)
+
+
+def calc_industry_score(industries, theme):
+    """行业匹配得分（满分25）"""
+    if not industries or not theme:
+        return 0
+
+    score = 0
+    cfg = _get_theme_config(theme)
+    if not cfg:
+        return 0
+
+    target_industries = set(cfg.get("industry", []))
+
+    for ind in industries:
+        if ind in target_industries:
+            score += 25
+            break
+        # 部分匹配
+        for target in target_industries:
+            if target in ind or ind in target:
+                score += 15
+                break
+
+    return min(score, 25)
+
+
+def calc_concept_score(concepts, theme):
+    """概念匹配得分（满分25）"""
+    if not concepts or not theme:
+        return 0
+
+    score = 0
+    cfg = _get_theme_config(theme)
+    if not cfg:
+        return 0
+
+    target_concepts = set(cfg.get("concept", []))
+
+    matched_count = 0
+    for c in concepts:
+        if c in target_concepts:
+            matched_count += 1
+
+    # 匹配数量越多，得分越高
+    if matched_count >= 5:
+        score = 25
+    elif matched_count >= 3:
+        score = 20
+    elif matched_count >= 2:
+        score = 15
+    elif matched_count >= 1:
+        score = 10
+
+    return min(score, 25)
+
+
+def calc_keyword_score(business_text, theme):
+    """关键词命中得分（满分20）"""
+    if not business_text or not theme:
+        return 0
+
+    score = 0
+    cfg = _get_theme_config(theme)
+    if not cfg:
+        return 0
+
+    keywords = cfg.get("keywords", [])
+    exclude_keywords = set(cfg.get("exclude_keywords", []))
+
+    text_lower = business_text.lower()
+
+    hit_count = 0
+    for kw in keywords:
+        if kw.lower() in text_lower:
+            hit_count += 1
+
+    # 根据命中数量计算得分
+    if len(keywords) > 0:
+        hit_rate = hit_count / len(keywords)
+        score = hit_rate * 20
+
+    return min(score, 20)
+
+
+def calc_business_score(business_text, theme):
+    """业务相关性得分（满分15）"""
+    if not business_text or not theme:
+        return 0
+
+    score = 0
+    cfg = _get_theme_config(theme)
+    if not cfg:
+        return 0
+
+    # 核心关键词
+    core_keywords = cfg.get("keywords", [])[:5]  # 取前5个核心词
+
+    text_lower = business_text.lower()
+    core_hits = 0
+    for kw in core_keywords:
+        if kw.lower() in text_lower:
+            core_hits += 1
+
+    # 核心关键词命中给高分
+    if core_hits >= 3:
+        score = 15
+    elif core_hits >= 2:
+        score = 10
+    elif core_hits >= 1:
+        score = 5
+
+    return min(score, 15)
+
+
+def calc_core_company_score(stock_name, theme):
+    """核心公司加分（满分10）- 从theme.json读取"""
+    if not stock_name or not theme:
+        return 0
+
+    cfg = _get_theme_config(theme)
+    if not cfg:
+        return 0
+
+    # 从theme.json获取核心公司列表
+    companies = cfg.get("core_companies", [])
+    for c in companies:
+        if c in stock_name:
+            return 10
+
+    return 0
+
+
+def calc_leader_bonus(stock_name, theme):
+    """核心龙头股额外加分（满分15）- 从theme.json读取"""
+    if not stock_name or not theme:
+        return 0
+
+    cfg = _get_theme_config(theme)
+    if not cfg:
+        return 0
+
+    # 从theme.json获取核心龙头股列表（优先使用leader_companies，没有则用core_companies前3个）
+    leader_companies = cfg.get("leader_companies", [])
+    if not leader_companies:
+        # 如果没有定义leader_companies，使用core_companies的前3个作为龙头
+        core_list = cfg.get("core_companies", [])
+        leader_companies = core_list[:3]
+
+    for c in leader_companies:
+        if c in stock_name:
+            return 15
+
+    return 0
+
+
+def calc_penalty(business_text, theme):
+    """排除惩罚（扣分项）"""
+    if not business_text or not theme:
+        return 0
+
+    penalty = 0
+    cfg = _get_theme_config(theme)
+    if not cfg:
+        return 0
+
+    exclude_keywords = cfg.get("exclude_keywords", [])
+    text_lower = business_text.lower()
+
+    for kw in exclude_keywords:
+        if kw.lower() in text_lower:
+            penalty += 15
+
+    return min(penalty, 30)  # 最多扣30分
+
+
+def _get_theme_config(theme):
+    """获取主题配置"""
+    try:
+        cfg_path = os.path.join(BASE_DIR, 'theme.json')
+        if not os.path.exists(cfg_path):
+            return None
+
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            theme_cfg = json.load(f).get('HOT_THEMES', {})
+
+        return theme_cfg.get(theme, {})
+    except Exception as e:
+        print(f"[主题纯度] 配置读取失败: {e}")
+        return None
+
+
+def _apply_qfq(df, code):
+    """前复权对齐（以 df 最后一行为锚点），与 detect_breakout 口径保持一致。
+
+    背景：daily_cache 存的是不复权价，120/250 日窗口一旦跨越除权日，
+    MA120 / 120日高点会被除权前的价格抬高。例：301251 于 20260529 除权
+    （复权因子 1.0079→1.4119），不复权 120日高 77.77 属虚高价，前复权后
+    仅 55.53，导致 strategy() 的 cond5 与大周期 P0 门槛误判。
+    复权因子缺失或异常时原样返回，退回不复权旧行为。
+    """
+    try:
+        if df is None or df.empty or 'trade_date' not in df.columns:
+            return df
+        trade_dates = df['trade_date'].astype(str)
+        start_date, end_date = trade_dates.iloc[0], trade_dates.iloc[-1]
+        adj_df = sc.cached_adj_factor(code, start_date, end_date)
+        if adj_df is None or adj_df.empty:
+            return df
+        adj_df = adj_df.copy()
+        adj_df['trade_date'] = adj_df['trade_date'].astype(str)
+        ratio = trade_dates.map(adj_df.set_index('trade_date')['adj_factor'])
+        ratio = ratio.ffill().bfill()
+        if ratio.isna().any():
+            return df
+        anchor = float(ratio.iloc[-1])
+        if anchor <= 0:
+            return df
+        ratio = (ratio / anchor).values
+        # 窗口内无除权 → 无需缩放，直接返回原表（多数标的走这条快路径）
+        if float(ratio.max()) == 1.0 and float(ratio.min()) == 1.0:
+            return df
+        df = df.copy()
+        for col in ('open', 'high', 'low', 'close'):
+            if col in df.columns:
+                df[col] = (df[col].values * ratio).round(4)
+        return df
+    except Exception:
+        return df
+
+
+def strategy(df, code, emotion_stage, total_mv=0, p0_enabled=True):
+    """优化版本：向量化计算 + 提前过滤 + 缓存复用
+    p0_enabled: 大周期趋势硬门槛(MA120下行/120日深回撤>45%)开关，
+                弱市超跌反弹是少数有效策略，由 run() 按大盘趋势分决定是否启用"""
+    
+    # ===== 快速前置过滤（低成本判断优先）=====
+    if len(df) < 80:
+        return False
+    
+    # 总市值≥80亿
+    if total_mv / 10000 < 80:
+        return False
+    
+    # ST股票过滤（代码前缀判断，无需查询字典）
+    if code.startswith('1') or code.startswith('2'):
+        return False
+
+    # ===== 前复权对齐（消除除权缺口对 120/250 日窗口的污染）=====
+    df = _apply_qfq(df, code)
+
+    # 两个月涨幅过滤
+    if len(df) >= 40:
+        close_values = df['close'].values
+        ret_2m = close_values[-1] / close_values[-40] - 1
+        if ret_2m > 1.0:
+            return False
+    
+    # ===== 数据提取（一次提取，多次使用）=====
+    C = df['close'].values
+    O = df['open'].values
+    H = df['high'].values
+    L = df['low'].values
+    VOL = df['vol'].values
+    
+    # ===== 创业板/科创板判断（仅用于今日涨停过滤）=====
+    # 主板：10% 涨停；双创板：20% 涨停
+    IS_CYB_KCB = (code.startswith('3') or code.startswith('688') or code.startswith('689'))
+    ZT_SINGLE_UP = 1.198 if IS_CYB_KCB else 1.098
+
+    # ===== 快速过滤：今天已涨停 → 直接排除 =====
+    if len(df) >= 3:
+        today_ratio = C[-1] / C[-2]
+        if today_ratio >= ZT_SINGLE_UP:
+            return False
+
+    # ST名称过滤（延后到这里，只在必要时调用）
+    StockName = get_stock_name(code)
+    ST1 = (StockName.upper().startswith('ST') or 
+            StockName.upper().startswith('*ST'))
+    if ST1:
+        return False
+    
+    # ===== 启动过滤：60日振幅 =====
+    if len(df) >= 20:
+        hh = H[-20:].max()
+        ll = L[-20:].min()
+        if (hh / ll - 1) > 1.8:
+            return False
+    
+    # ===== 均线计算（一次计算，多次使用）=====
+    close_arr = df['close'].values if hasattr(df['close'], 'values') else np.asarray(df['close'])
+    C_series = pd.Series(close_arr)
+    ma5 = C_series.rolling(5).mean().values
+    ma10 = C_series.rolling(10).mean().values
+    ma20 = C_series.rolling(20).mean().values
+    ma22 = C_series.rolling(30).mean().values
+    ma60 = C_series.rolling(60).mean().values
+    
+    # 均线条件
+    if C[-1] >= ma20[-1] * 1.3 or C[-1] / ma60[-1] > 2:
+        return False
+    
+    # 股价必须站上5日、10日、20日均线
+    if  C[-1] < ma20[-1] or ma10[-1] < ma60[-1]*0.97 or ma5[-1] < ma60[-1]*0.97:
+        return False
+
+    # ===== P0 大周期趋势硬门槛（剔除下行通道反抽/深度熊市反弹的假突破）=====
+    # 历史>=150日才启用 MA120 判断；数据不足(次新)放行，避免误伤
+    # p0_enabled=False(弱市)时跳过：弱市突破池整体负期望，超跌反弹反是主要有效策略
+    if p0_enabled and len(df) >= 150:
+        ma120_arr = C_series.rolling(120).mean().values
+        _ma120_now = ma120_arr[-1]
+        if not np.isnan(_ma120_now):
+            _ma120_slope = (_ma120_now - ma120_arr[-11]) / _ma120_now if _ma120_now > 0 else 0.0
+            # 1) 收盘位于下行MA120之下 → 中期趋势仍向下，突破大概率只是反抽
+            if C[-1] <= _ma120_now and _ma120_slope < 0:
+                return False
+        # 2) 自120日高点回撤>45% → 深度熊市反弹位，无持续突破土壤
+        _hh120 = H[-120:].max()
+        if _hh120 > 0 and C[-1] / _hh120 - 1 < -0.45:
+            return False
+    
+    # ===== 涨停判断（向量化）=====
+    ZT_1day = (C_series.shift(1) / C_series.shift(2) < 1.08) & (C_series / C_series.shift(1) > 1.098)
+    ZT_2day = (C_series.shift(1) / C_series.shift(2) >= 1.051) & (C_series / C_series.shift(1) >= 1.051) & (C_series / C_series.shift(2) >= 1.11)
+    ZT = ZT_1day | ZT_2day
+    
+    # 使用向量化的barslast
+    ZTTS = barslast(ZT)
+    
+    # 原版逻辑：如果今天信号(ztts=0)，取前一个信号
+    ztts = ZTTS.iloc[-1]
+    if ztts == 0:
+        ztts = ZTTS.iloc[-2]
+    
+    if np.isnan(ztts):
+        return False
+    
+    ztts = int(ztts)
+    
+    # ===== 过滤：近5天累计涨幅超过20% = 乖离过大，跳过 =====
+    if len(C) >= 6 and (C[-1] / C[-6] - 1) > 0.3:
+        return False
+    
+    # ===== 条件1：ztts范围（距上一波高点的天数）=====
+    if ztts < 3 or ztts > 90:
+        return False
+    
+    # ===== 缓存ztts区间数据（避免重复切片）=====
+    ztts_close = C[-ztts:]
+    ztts_df = df.iloc[-ztts:]
+    ztts_vol = ztts_df['vol'].values
+    vol_ma5 = ztts_df['vol'].rolling(5).mean().values  # 只计算一次
+    
+    # ===== TJ条件判断 =====
+    ref_close = C[-ztts-1]
+    cond2 = (ztts_close < ref_close).sum() == 0
+    # cond3 衡量「突破前整理的紧凑度」，刻意排除突破当日：
+    # 否则突破日自身的大阳线会撑大区间振幅而自我否决（例 301251 20260831 差 0.4% 被误杀）
+    ztts_close_prev = C[-ztts:-1]
+    cond3 = (ztts_close_prev.max() / ztts_close_prev.min()) < 1.3
+    cond4 = (C[-1] / H[-ztts-1]) < 1.2  # 修复：H.shift(ztts).iloc[-1] = H[-ztts-1]
+    cond5 = H[-ztts:].max() >= H[-120:].max() * 0.8
+    cond6 = ma22[-1] >= ma22[-2]
+    
+    # 量能条件（复用vol_ma5）
+    cond_low_vol = (ztts_vol < vol_ma5 * 0.9).any()
+    
+    # 回撤计算（向量化）
+    cum_max = np.maximum.accumulate(ztts_close)
+    drawdown = (ztts_close - cum_max) / cum_max
+    cond_dd = drawdown.min() >= -0.15
+    
+    # 放量大跌判断（复用vol_ma5）
+    down_k = ztts_df['close'].values < ztts_df['open'].values
+    big_vol = ztts_vol > vol_ma5 * 1.5
+    big_drop = ztts_df['pct_chg'].values < -5 if 'pct_chg' in ztts_df.columns else False
+    cond_no_bad_k = ~(down_k & big_vol & big_drop).any()
+    
+    cond7 = cond_low_vol and cond_no_bad_k
+    
+    TJ = cond3 and cond4 and cond5 and cond6 
+    if not TJ:
+        return False
+    
+    # ===== XH 判断（区分主板/双创）=====
+    is_main_board = code.startswith(('600', '601', '603', '000', '001', '002'))
+    is_chip_venture = code.startswith(('300', '688','301'))
+    
+    highest_close = C[-ztts-1:-1].max()
+    vol_peak = VOL[-ztts-1:-1].max()
+    vol_condition = VOL[-1] >= vol_peak * 0.7 if vol_peak > 0 else True
+    
+    if is_main_board:
+        # 主板做突破：放量突破近期高点 + 偏离MA5不过远
+        cond_break1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
+        cond_break3 = C[-2] < highest_close and C[-1] >= highest_close and C[-1]/C[-2]<1.09
+        cond_near_ma5 = C[-1] >= ma5[-1] * 0.97 and C[-1] / ma5[-1] < 1.11
+        result = (cond_break1 or cond_break3) and cond_near_ma5
+        # ===== 反包阳线质量门控：过滤 000026 式「非突破+不放量」的弱反包 =====
+        # 形态：昨日收阴/长上影回落(C[-2]<=C[-3])，今日+5%以上大阳收复 → cond_break1 反包通道。
+        # 反包要有效延续，必须「创新高」(H 突破反包前区间高点)且「真放量」
+        # (量超昨日且超前5日均量×1.1)。否则为套牢区内的缩量诱多反抽，
+        # 例：000026 0904 天量长上影(收19.75<前收)→0907 缩量反包+7%(量未超昨日、
+        #     未收复上影21.65/前高23.61)，次日0908 放量长阴 -6.4%。
+        if result and C[-2] <= C[-3] and C[-1] / C[-2] >= 1.05:
+            _prev_hi = float(H[-ztts - 1:-1].max()) if ztts >= 1 else float(H[-2])
+            _vol_ok = VOL[-1] > VOL[-2] and VOL[-1] > float(np.mean(VOL[-6:-1])) * 1.1
+            if H[-1] <= _prev_hi or not _vol_ok:
+                result = False
+    elif is_chip_venture:
+        # 双创通道A·低吸：回踩MA20企稳 + 缩量 + 距区间高点有空间
+        dist_from_high = (highest_close - C[-1]) / highest_close
+        cond_pullback = 0.03 < dist_from_high < 0.15                      # 从区间高点回落3%-15%
+        cond_ma_support = C[-1] >= ma20[-1] * 0.97 and C[-1] <= ma20[-1] * 1.15  # 在MA20附近
+        cond_shrink_vol = VOL[-1] < vol_peak * 0.6 if vol_peak > 0 else True      # 缩量企稳
+        cond_stable = abs(C[-1] / C[-2] - 1) < 0.04 and abs(C[-1] / C[-3] - 1) < 0.06  # 近2日波动温和
+        pull_setup = cond_pullback and cond_ma_support and cond_shrink_vol and cond_stable
+
+        # 双创通道B·突破：长阳站上区间高点 + 量能放大 + 不远离MA5
+        # 原分支只覆盖低吸，长阳突破日因「现价高于区间高点」必然被 cond_pullback 否决
+        cond_break_up = C[-1] > highest_close and C[-1] / C[-2] >= 1.05 and C[-1] >= O[-1]
+        vol_base5 = float(np.mean(VOL[-6:-1])) if len(VOL) >= 6 else 0.0
+        cond_vol_expand = VOL[-1] >= vol_base5 * 1.3 if vol_base5 > 0 else True   # 量比≥1.3
+        cond_near_ma5 = C[-1] >= ma5[-1] * 0.97 and C[-1] / ma5[-1] < 1.15
+        break_setup = cond_break_up and cond_vol_expand and cond_near_ma5
+
+        result = pull_setup or break_setup
+    else:
+        # 其他（北交所等）使用原逻辑
+        cond_xh1 = C[-1] > C[-2] and C[-1] > C[-3] and C[-1]/C[-2]>1.05 and vol_condition
+        cond_xh3 = C[-2] < highest_close and C[-1] >= highest_close and C[-1]/C[-2]<1.09
+        cond_near_ma5 = C[-1] >= ma5[-1] * 0.97 and C[-1] / ma5[-1] < 1.11
+        result = (cond_xh1 or cond_xh3) and cond_near_ma5 
+    return result
+
+
+def deepseek(prompt, use_flash=True):
+    """AI 报告生成（DeepSeek flash，无联网搜索，精简输出）
+    Args:
+        prompt: 提示词
+        use_flash: True=用Flash快速模型（默认）
+    """
+    if not DEEPSEEK_API_KEY:
+        print("⚠️ 无可用 AI API Key（DEEPSEEK_API_KEY 为空）")
+        return ""
+
+    # 清理 prompt 中的联网搜索要求，避免 DeepSeek 凭空编造数据
+    try:
+        from ai_prompt_cleaner import strip_web_search_requirements
+        clean_prompt = strip_web_search_requirements(prompt)
+    except Exception as e:
+        print(f"⚠️ prompt 清理失败，使用原始 prompt: {e}")
+        clean_prompt = prompt
+
+    url = "https://api.deepseek.com/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    model = "deepseek-v4-flash" if use_flash else "deepseek-v4-pro"
+    data = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "你是A股顶级投资分析师，严格基于用户提供的数据进行分析，"
+                    "绝不编造任何数据、新闻、游资动向、龙虎榜信息或外部事件。"
+                    "如果数据中没有某只股票的信息，就如实说明'数据不足'，绝不能凭空捏造。"
+                    "股票名称和代码必须严格引用用户提供的数据，不得自行修改或臆造。"
+                    "输出要求：精简精炼，每只股票分析不超过3句话，重点突出关键数据和结论。"
+                )
+            },
+            {"role": "user", "content": clean_prompt}
+        ],
+        "temperature": 0.1,
+    }
+    r = requests.post(url, headers=headers, json=data, timeout=120)
+    if r.status_code != 200:
+        print(r.text)
+        return ""
+    return r.json()['choices'][0]['message']['content']
+
+
+def _call_glm(prompt, use_flash=False):
+    """智谱 GLM-5.2 API 调用（带联网搜索）
+    - 自动抓取实时新闻、公告、研报补充分析
+    - 搜索结果会作为 context 注入，最终输出整合到报告
+    """
+    url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {ZHIPU_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    # 模型选择：flash=免费快速，否则=旗舰深度
+    model = "GLM-5.3-Flash"
+
+    data = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "你是A股顶级投资分析师，必须调用联网搜索工具分析个股风险事件，如有风险的必须给出警告。\n"
+                    "【效率优先-绝对不能超时】严格控制联网搜索次数，总搜索次数控制在5次以内，绝不超过。\n"
+                )
+            },
+            {"role": "user", "content": prompt}
+        ],
+        "reasoning_effort": "max",
+        "max_tokens": 65536,
+        "temperature": 0.1,
+        # 启用联网搜索工具（搜狗引擎，覆盖腾讯新闻/知乎/百科等）
+        "tools": [{"type": "web_search", "web_search": {"enable": True, "search_result": True}}],
+    }
+
+    r = requests.post(url, headers=headers, json=data, timeout=300)
+    if r.status_code != 200:
+        print(f"⚠️ GLM API 错误 {r.status_code}: {r.text[:500]}")
+        return ""
+
+    resp = r.json()
+    choice = resp['choices'][0]['message']
+
+    # GLM-4-plus 联网搜索是隐式调用的（搜索结果作为 context 注入，不通过 tool_calls 暴露）
+    # 只要配置了 web_search 工具，模型会自动决定是否搜索
+    content = choice.get('content', '')
+    print(f"[GLM] 模型={model} 联网搜索已启用，报告长度={len(content)}字符")
+
+    return content
+
+
+# =========================
+# MiniMax（备用）
+# =========================
+def minimax(prompt):
+    url = "https://api.minimax.chat/v1/text/chatcompletion_v2"
+
+    headers = {
+        "Authorization": f"Bearer {MINI_MAX_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": "MiniMax-M2.7",
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是A股顶级机构趋势投资专家"
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "max_tokens": 40960
+    }
+
+    r = requests.post(
+        url,
+        headers=headers,
+        json=data
+    )
+
+    if r.status_code != 200:
+
+        print(r.text)
+
+        return ""
+
+    return r.json()['choices'][0]['message']['content']
+
+##== KIMI ==##
+def kimi(prompt):
+
+    KIMI_API_KEY = os.getenv("KIMI_API_KEY")
+    URL = "https://api.moonshot.cn/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {KIMI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "kimi-k2.6",
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是专业A股机构分析师"
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+                
+        
+    }
+
+    try:
+
+        response = requests.post(
+            URL,
+            headers=headers,
+            json=payload,
+            timeout=600
+        )
+
+        data = response.json()
+
+        return data["choices"][0]["message"]["content"]
+
+    except Exception as e:
+
+        print("Kimi接口错误:", e)
+
+        try:
+            print(data)
+        except:
+            pass
+
+        return ""
+    
+##== 豆包 ==##
+def ask_doubao(prompt):
+    from openai import OpenAI
+    client = OpenAI(
+        api_key=DOUBAO_API_KEY,
+        base_url=DOUBAO_BASE_URL,
+    )
+    try:
+        completion = client.chat.completions.create(
+            model=DOUBAO_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是专业A股机构分析师"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2,
+            top_p=0.5,
+            max_tokens=40960
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        print("Doubao接口错误:", e)
+        return ""
+
+from openai import OpenAI
+##== 千问 ==##
+def ask_qwen(prompt):
+    try:
+        client = OpenAI(
+            api_key=QWEN_API_KEY,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+
+        completion = client.chat.completions.create(
+            model="qwen3-max",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是专业A股机构分析师"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            # 稳定输出参数
+            temperature=0.2,
+            top_p=0.5,
+            max_tokens=40960
+        )
+
+        if completion and completion.choices and len(completion.choices) > 0:
+            message = completion.choices[0].message
+            if message and hasattr(message, 'content'):
+                return message.content
+        print("千问接口返回数据格式异常")
+        return ""
+    except Exception as e:
+        print(f"千问接口错误: {str(e)}")
+        return ""
+    
+
+def send_wechat(msg, key):
+    import re
+    # 清理HTML标签（Server酱不支持HTML）
+    msg = re.sub(r'<[^>]+>', '', msg)
+    msg = msg.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+
+    if not key:
+        print("⚠️ Server酱 SCKEY 为空，跳过推送")
+        return
+    url = f"https://sctapi.ftqq.com/{key}.send"
+
+    data = {
+        "title": f"每日复盘 - {TRADE_DATE}",
+        "desp": msg
+    }
+
+    try:
+        resp = requests.post(url, data=data, timeout=15)
+        result = resp.json()
+        if result.get("code") == 0:
+            print("✅ Server酱 已发送")
+        else:
+            print(f"⚠️ Server酱 发送失败: code={result.get('code')} msg={result.get('message', '未知错误')}")
+    except Exception as e:
+        print(f"⚠️ Server酱 请求异常: {e}")
+
+
+def send_pushplus(msg, token):
+    """
+    通过 PushPlus 推送微信消息（支持markdown）
+    API: https://www.pushplus.plus/send
+    """
+    if not token:
+        print("⚠️ PushPlus token 为空，跳过推送")
+        return
+
+    import re
+    # 不清理HTML/标签，PushPlus原生支持markdown
+    msg = msg.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+
+    url = "https://www.pushplus.plus/send"
+    payload = {
+        "token": token,
+        "title": f"每日复盘 - {TRADE_DATE}",
+        "content": msg,
+        "template": "markdown"
+    }
+
+    try:
+        resp = requests.post(url, json=payload, timeout=15)
+        result = resp.json()
+        if result.get("code") == 200:
+            print("✅ PushPlus 已发送")
+        else:
+            print(f"⚠️ PushPlus 发送失败: {result.get('msg', '未知错误')}")
+    except Exception as e:
+        print(f"⚠️ PushPlus 请求异常: {e}")
+
+
+# ---- Agent Mail CLI 邮件推送（与 Server酱/PushPlus 微信推送并行发送） ----
+AGENT_MAIL_CLI = r"C:\Users\kongx\AppData\Roaming\npm\agently-cli.cmd"
+AGENT_MAIL_TO = "stock1975@qq.com"
+_MAIL_ATT_MAX_BYTES = 20 * 1024 * 1024   # 单附件上限 20MB（agently-cli +me 的 max_attachment_size_bytes）
+
+
+# ---- 邮件 HTML 样式（移动端优先：22px 大字、卡片式、宽表可横向滑动） ----
+# 说明：与下面的 _EMAIL_INLINE 保持一致；<style> 仅作渐进增强，
+#       部分客户端会剥离 <head><style>，所以关键元素一律另加内联 style。
+_MAIL_CSS = """
+* { box-sizing: border-box; }
+body { margin:0; padding:0; background:#eef2f7; -webkit-text-size-adjust:100%;
+       font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+       font-size:22px; line-height:1.8; color:#1f2937; }
+.wrap { padding:14px; }
+.hd { background:#1677ff; border-radius:14px; padding:18px 16px; margin-bottom:14px; color:#fff; }
+.hd .t { font-size:26px; font-weight:700; line-height:1.45; }
+.hd .s { font-size:18px; opacity:.92; margin-top:6px; }
+.card { background:#fff; border-radius:14px; padding:18px 16px 8px; box-shadow:0 1px 4px rgba(15,23,42,.08); }
+.ft { text-align:center; color:#94a3b8; font-size:17px; line-height:1.7; padding:14px 8px 4px; }
+h1 { font-size:27px; padding-bottom:12px; border-bottom:3px solid #1677ff; }
+h2 { font-size:25px; color:#fff; background:#1677ff; padding:11px 14px; border-radius:10px; }
+h2 strong { color:#fff; }
+h3 { color:#0b4aa2; }
+.st { font-size:22px; font-weight:700; color:#0b4aa2; background:#eaf3ff;
+      border-left:6px solid #1677ff; border-radius:0 8px 8px 0; padding:7px 0 7px 12px; }
+strong { color:#c2410c; }
+a { color:#1677ff; text-decoration:none; border-bottom:1px solid #bfdbfe; word-break:break-all; }
+hr { border:0; border-top:1px dashed #cbd5e1; margin:22px 0; }
+blockquote { margin:0 0 14px; padding:10px 14px; background:#f8fafc; border-left:6px solid #93c5fd;
+             border-radius:0 8px 8px 0; color:#475569; }
+code { background:#f1f5f9; color:#be123c; border-radius:6px; padding:2px 7px; font-size:21px; word-break:break-all; }
+pre { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:14px; font-size:20px; line-height:1.6; overflow-x:auto; }
+pre code { background:none; color:inherit; padding:0; font-size:20px; }
+.tbl { overflow-x:auto; -webkit-overflow-scrolling:touch; margin:0 0 16px;
+       border:1px solid #e2e8f0; border-radius:10px; }
+table { border-collapse:collapse; width:100%; font-size:20px; }
+th { background:#1677ff; color:#fff; font-weight:600; text-align:left; padding:10px; white-space:nowrap; }
+td { padding:10px; border-top:1px solid #e8eef5; word-break:break-word; }
+tbody tr:nth-child(even) { background:#f8fafc; }
+"""
+
+# 元素级内联样式：与 _MAIL_CSS 同源，防止客户端剥离 <head><style> 后样式全丢
+_EMAIL_INLINE = {
+    "h1": "font-size:27px;font-weight:700;color:#0f172a;line-height:1.4;margin:18px 0 16px;"
+          "padding:0 0 12px;border-bottom:3px solid #1677ff;",
+    "h2": "font-size:25px;font-weight:700;color:#ffffff;line-height:1.5;margin:26px 0 14px;"
+          "padding:11px 14px;background:#1677ff;border-radius:10px;",
+    "h3": "font-size:22px;font-weight:700;color:#0b4aa2;line-height:1.5;margin:22px 0 10px;",
+    "h4": "font-size:22px;font-weight:700;color:#475569;line-height:1.5;margin:20px 0 10px;",
+    "p": "margin:0 0 14px;font-size:22px;line-height:1.8;color:#1f2937;word-break:break-word;",
+    "ul": "margin:0 0 16px;padding-left:1.3em;font-size:22px;line-height:1.8;color:#1f2937;",
+    "ol": "margin:0 0 16px;padding-left:1.5em;font-size:22px;line-height:1.8;color:#1f2937;",
+    "li": "margin:8px 0;font-size:22px;line-height:1.8;color:#1f2937;word-break:break-word;",
+    "strong": "color:#c2410c;font-weight:700;",
+    "a": "color:#1677ff;text-decoration:none;border-bottom:1px solid #bfdbfe;word-break:break-all;",
+    "hr": "border:0;border-top:1px dashed #cbd5e1;margin:22px 0;",
+    "blockquote": "margin:0 0 16px;padding:10px 14px;background:#f8fafc;border-left:6px solid #93c5fd;"
+                  "border-radius:0 8px 8px 0;color:#475569;",
+    "code": "background:#f1f5f9;color:#be123c;border-radius:6px;padding:2px 7px;"
+            "font-size:21px;word-break:break-all;",
+    "pre": "background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;"
+           "font-size:20px;line-height:1.6;overflow-x:auto;",
+    "table": "border-collapse:collapse;width:100%;font-size:20px;line-height:1.6;",
+    "th": "background:#1677ff;color:#ffffff;font-weight:600;text-align:left;padding:10px;"
+          "border-right:1px solid #4d94ff;white-space:nowrap;font-size:20px;",
+    "td": "padding:10px;border-top:1px solid #e8eef5;font-size:20px;line-height:1.6;word-break:break-word;",
+}
+_TBL_WRAP_STYLE = ("overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 16px;"
+                   "border:1px solid #e2e8f0;border-radius:10px;")
+_ST_DIV_STYLE = ("class=\"st\" style=\"font-size:22px;font-weight:700;color:#0b4aa2;background:#eaf3ff;"
+                 "border-left:6px solid #1677ff;border-radius:0 8px 8px 0;padding:7px 0 7px 12px;"
+                 "line-height:1.5;margin:20px 0 10px;word-break:break-word;\"")
+
+# AI 输出的两类 markdown 缺陷（会导致手机端出现字面符号/斜体碎片）
+_PSEUDO_HEADING_RE = re.compile(r"^\*\*[ \u3000]+([^*\n]+?)[ \u3000]*$", re.M)
+_INNER_UNDERSCORE_RE = re.compile(r"(?<=\w)_(?=\w)")
+
+# 第 1 段「大盘分析 · 仓位建议」的仓位数值标红（仅渲染层，不改 markdown 原文）
+_POS_HEADING_RE = re.compile(r"^\s*(?:\*\*?\s*)?仓位建议")
+_POS_PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+_POS_SPAN_STYLE = "color:#e11d48;font-weight:700;"
+_POS_SPAN_RE = re.compile(r'<span style="%s">(.*?)</span>' % re.escape(_POS_SPAN_STYLE))
+
+
+def _highlight_position_values(md):
+    """把「仓位建议」小节里的仓位数值包成红色 span。
+
+    只作用于渲染前的一份副本：报告原文（.txt / 推送 markdown）保持纯净，
+    邮件 HTML / 网页 HTML 由本函数加红，PDF 由 _pdf_inline 转成 <font color>。
+    """
+    lines = md.split("\n")
+    out, in_block, n = [], False, 0
+    for ln in lines:
+        if _POS_HEADING_RE.match(ln):
+            in_block, n = True, 0
+            out.append(ln)
+            continue
+        if in_block:
+            s = ln.strip()
+            if s and not s.startswith(("*", "-", "•")):
+                in_block = False        # 遇到非列表行（如下一个"** 策略"）即结束
+            elif s and "一句话" not in s and n < 3:
+                n += 1
+                ln = _POS_PCT_RE.sub(
+                    lambda m: '<span style="%s">%s%%</span>' % (_POS_SPAN_STYLE, m.group(1)), ln)
+        out.append(ln)
+    return "\n".join(out)
+
+
+def _prep_email_markdown(md):
+    """修正 AI 复盘 markdown 的两类渲染缺陷（不改内容，只保证能被 HTML 正确表达）：
+
+    1. 行首伪标题 `** 小节名`（只有开星号没有闭合）：markdown 不识别，会原样显示
+       `**`；且它后面紧跟的 `* ` 列表会被当成同段落续行，列表符号也原样露出。
+       这里转成独立小标题块并在前后补空行，使后续 `* ` 正常成列表。
+    2. 词内下划线（LOW_BREADTH / T0_High / RE_ACCELERATION 等）会被 markdown 当成
+       强调语法，渲染成 LOW<em>BREADTH 之类的斜体碎片；转义为实体 &#95; 保原样。
+    """
+    md = md.replace("\r\n", "\n").replace("\r", "\n")
+
+    def _to_st(m):
+        return '\n\n<div %s>%s</div>\n\n' % (_ST_DIV_STYLE, m.group(1).strip())
+
+    md = _PSEUDO_HEADING_RE.sub(_to_st, md)
+    return _INNER_UNDERSCORE_RE.sub("&#95;", md)
+
+
+def _add_inline_style(html, tag, style):
+    """给指定标签注入内联 style；已有 style 属性则合并（保留原值，追加新值）。"""
+    pat = re.compile(r"<%s(?=[\s>/])([^>]*)>" % re.escape(tag), re.I)
+
+    def _rep(m):
+        attrs = m.group(1) or ""
+        slash = ""
+        if attrs.rstrip().endswith("/"):
+            attrs, slash = attrs.rstrip()[:-1], " /"
+        sm = re.search(r'style\s*=\s*"([^"]*)"', attrs, re.I) or \
+             re.search(r"style\s*=\s*'([^']*)'", attrs, re.I)
+        if sm:
+            merged = sm.group(1).rstrip().rstrip(";")
+            new = attrs[:sm.start(1)] + (merged + ";" if merged else "") + style + attrs[sm.end(1):]
+        else:
+            new = attrs + ' style="%s"' % style
+        return "<%s%s%s>" % (tag, new, slash)
+
+    return pat.sub(_rep, html)
+
+
+def _inline_email_styles(html):
+    """把邮件样式内联到各元素：部分客户端剥离 <head><style>，只认内联 style。"""
+    stashed = []
+
+    def _stash(m):
+        stashed.append(m.group(0))
+        return "\x00PRE%d\x00" % (len(stashed) - 1)
+
+    # <pre> 块先摘出，避免内部 <code> 被套上「行内代码」底色
+    html = re.sub(r"<pre>.*?</pre>", _stash, html, flags=re.S)
+    for tag in ("h1", "h2", "h3", "h4", "p", "ul", "ol", "li", "strong",
+                "a", "hr", "blockquote", "code", "table", "th", "td"):
+        html = _add_inline_style(html, tag, _EMAIL_INLINE[tag])
+
+    def _restore(m):
+        block = _add_inline_style(stashed[int(m.group(1))], "pre", _EMAIL_INLINE["pre"])
+        return _add_inline_style(block, "code", "background:none;color:inherit;padding:0;font-size:20px;")
+
+    html = re.sub(r"\x00PRE(\d+)\x00", _restore, html)
+
+    # 章节标题为蓝底白字，内部 <strong>（如 "1、**大盘分析**"）需跟随白字而非橙色
+    return re.sub(r"<h[1-4][^>]*>.*?</h[1-4]>",
+                  lambda m: m.group(0).replace("color:#c2410c", "color:inherit"),
+                  html, flags=re.S | re.I)
+
+
+def _wrap_email_tables(html):
+    """给每个 <table> 套一层可横向滚动容器：手机端宽表左右滑动看，不挤压列宽、不撑破版心。"""
+    return (html.replace("<table>", '<div style="%s"><table>' % _TBL_WRAP_STYLE)
+                .replace("</table>", "</table></div>"))
+
+
+def markdown_to_email_html(markdown_text, title="每日复盘", subtitle=""):
+    """把复盘 markdown 转成邮件 HTML 正文：卡片式排版、正文 22px、移动端优先。
+
+    - 先做 markdown 预处理（伪标题 / 词内下划线），再转 HTML
+    - 元素样式全部内联，客户端剥离 <style> 也不掉版；<style> 仅作渐进增强
+    - 宽表套滚动容器，手机端可左右滑动，不压缩列宽
+    - 不依赖外部 CSS/图片，QQ 邮箱等客户端直接渲染
+    """
+    body = markdown2.markdown(
+        _prep_email_markdown(_highlight_position_values(markdown_text)),
+        extras=["tables", "fenced-code-blocks", "strike", "task_list"]
+    )
+    body = _inline_email_styles(_wrap_email_tables(body))
+    sub = f'<div class="s" style="font-size:18px;opacity:.92;margin-top:6px;">{subtitle}</div>' if subtitle else ""
+    gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return (
+        '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{title}</title>\n<style>{_MAIL_CSS}</style>\n</head>\n"
+        '<body style="margin:0;padding:0;background:#eef2f7;-webkit-text-size-adjust:100%;'
+        'font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',\'Microsoft YaHei\',Arial,sans-serif;'
+        'font-size:22px;line-height:1.8;color:#1f2937;">\n'
+        '<div class="wrap" style="padding:14px;">\n'
+        '<div class="hd" style="background:#1677ff;border-radius:14px;padding:18px 16px;'
+        'margin-bottom:14px;color:#ffffff;">\n'
+        f'<div class="t" style="font-size:26px;font-weight:700;line-height:1.45;color:#ffffff;">{title}</div>\n'
+        f"{sub}\n</div>\n"
+        '<div class="card" style="background:#ffffff;border-radius:14px;padding:18px 16px 8px;'
+        'box-shadow:0 1px 4px rgba(15,23,42,.08);">\n'
+        f"{body}\n</div>\n"
+        '<div class="ft" style="text-align:center;color:#94a3b8;font-size:17px;line-height:1.7;'
+        f'padding:14px 8px 4px;">生成时间 {gen_time}<br>本邮件由量化系统自动推送，仅供参考，不构成投资建议</div>\n'
+        "</div>\n</body>\n</html>"
+    )
+
+
+# ---- 邮件附件 PDF（reportlab，中文字体，A4 纵向） ----
+_PDF_FONT_CACHE = {}
+
+
+def _pdf_cjk_font():
+    """注册并缓存中文字体；全部缺失时回退 Helvetica（中文会显示为方框）。"""
+    if _PDF_FONT_CACHE:
+        return _PDF_FONT_CACHE["name"]
+    name = "Helvetica"
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        for path, fn in ((r"C:\Windows\Fonts\msyh.ttc", "MSYaHei"),
+                         (r"C:\Windows\Fonts\simhei.ttf", "SimHei"),
+                         (r"C:\Windows\Fonts\simsun.ttc", "SimSun")):
+            if os.path.exists(path):
+                try:
+                    pdfmetrics.registerFont(TTFont(fn, path))
+                    name = fn
+                    break
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"⚠️ 中文字体注册失败: {e}")
+    _PDF_FONT_CACHE["name"] = name
+    return name
+
+
+def _pdf_inline(text):
+    """行内标记：先转义 XML 实体，再恢复 **粗体**、`代码` 与仓位红标。"""
+    keep = []
+
+    def _stash(m):
+        keep.append(m.group(1))
+        return "\x00P%d\x00" % (len(keep) - 1)
+
+    t = _POS_SPAN_RE.sub(_stash, text)
+    t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    t = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", t)
+    t = re.sub(r"`(.+?)`", r"\1", t)
+    return re.sub(r"\x00P(\d+)\x00",
+                  lambda m: '<font color="#e11d48"><b>%s</b></font>' % keep[int(m.group(1))], t)
+
+
+def markdown_to_email_pdf(markdown_text, pdf_path, title="每日复盘"):
+    """把复盘 markdown 渲染成 PDF 附件：A4 纵向、中文字体、支持标题/列表/表格。
+
+    与邮件正文同源（同一份最终报告 markdown）。字体缺失或 reportlab 异常时抛给
+    调用方，由 send_agent_mail fail-soft 处理，不影响正文发送。
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle, HRFlowable)
+
+    font = _pdf_cjk_font()
+    theme = colors.HexColor("#1677ff")
+    st = {
+        "h1": ParagraphStyle("h1", fontName=font, fontSize=18, leading=26,
+                             textColor=theme, spaceAfter=8),
+        "h2": ParagraphStyle("h2", fontName=font, fontSize=14, leading=21, textColor=colors.white,
+                             backColor=theme, borderPadding=(5, 6, 5, 6),
+                             spaceBefore=14, spaceAfter=8),
+        "h3": ParagraphStyle("h3", fontName=font, fontSize=11.5, leading=18,
+                             textColor=colors.HexColor("#0b4aa2"), spaceBefore=9, spaceAfter=4),
+        "body": ParagraphStyle("body", fontName=font, fontSize=10.5, leading=17, spaceAfter=3),
+        "bullet": ParagraphStyle("bullet", fontName=font, fontSize=10.5, leading=17,
+                                 leftIndent=14, bulletIndent=4, spaceAfter=2),
+        "cell": ParagraphStyle("cell", fontName=font, fontSize=8, leading=11),
+        "cellh": ParagraphStyle("cellh", fontName=font, fontSize=8, leading=11, textColor=colors.white),
+    }
+
+    md = _highlight_position_values(
+        markdown_text.replace("\r\n", "\n").replace("\r", "\n"))
+    lines = md.split("\n")
+    avail = A4[0] - 3.2 * cm
+    story, i = [], 0
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            i += 1
+            continue
+
+        if s.startswith("|"):                       # ── 表格块 ──
+            block = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                block.append(lines[i].strip())
+                i += 1
+            rows = [r for r in block if not re.fullmatch(r"\|[\s\-:|]+\|", r)]
+            grid = [[c.strip() for c in r.strip("|").split("|")] for r in rows]
+            if not grid:
+                continue
+            ncol = max(len(r) for r in grid)
+            grid = [r + [""] * (ncol - len(r)) for r in grid]
+            weights = [max(3, max(len(re.sub(r"[*`]", "", r[j])) for r in grid))
+                       for j in range(ncol)]
+            total = sum(weights)
+            widths = [max(0.9 * cm, avail * w / total) for w in weights]
+            k = avail / sum(widths)
+            widths = [w * k for w in widths]
+            data = [[Paragraph(_pdf_inline(c), st["cellh"] if ri == 0 else st["cell"])
+                     for c in row] for ri, row in enumerate(grid)]
+            tbl = Table(data, colWidths=widths, repeatRows=1)
+            ts = [("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#B8C4D0")),
+                  ("BACKGROUND", (0, 0), (-1, 0), theme),
+                  ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                  ("TOPPADDING", (0, 0), (-1, -1), 3),
+                  ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                  ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                  ("RIGHTPADDING", (0, 0), (-1, -1), 3)]
+            for ri in range(1, len(grid)):
+                if ri % 2 == 0:
+                    ts.append(("BACKGROUND", (0, ri), (-1, ri), colors.HexColor("#F2F6FA")))
+            tbl.setStyle(TableStyle(ts))
+            story += [Spacer(1, 3), tbl, Spacer(1, 6)]
+            continue
+
+        if re.fullmatch(r"[═─=]{3,}", s):           # ── 分隔线 ──
+            story.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#8FA6BC")))
+            i += 1
+            continue
+
+        ph = re.match(r"^\*\*[ \u3000]+(.+)$", s)   # AI 的伪标题 "** 小节名"
+        if s.startswith("###"):
+            story.append(Paragraph(_pdf_inline(s[3:].strip()), st["h3"]))
+        elif s.startswith("##"):
+            story.append(Paragraph(_pdf_inline(s[2:].strip()), st["h2"]))
+        elif s.startswith("#"):
+            story.append(Paragraph(_pdf_inline(s[1:].strip()), st["h1"]))
+        elif ph:
+            story.append(Paragraph(_pdf_inline(ph.group(1).strip()), st["h3"]))
+        elif re.match(r"^[-*]\s+", s):
+            story.append(Paragraph(_pdf_inline(re.sub(r"^[-*]\s+", "", s)),
+                                   st["bullet"], bulletText="•"))
+        else:
+            story.append(Paragraph(_pdf_inline(s), st["body"]))
+        i += 1
+
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4,
+                            leftMargin=1.6 * cm, rightMargin=1.6 * cm,
+                            topMargin=1.4 * cm, bottomMargin=1.4 * cm,
+                            title=title, author="量化系统自动生成")
+    doc.build(story)
+    return pdf_path
+
+
+def send_agent_mail(msg, to_addr=AGENT_MAIL_TO, subject=None):
+    """通过 Agent Mail CLI 发送复盘邮件（替代微信推送），正文为 HTML 格式，另附 PDF 附件。
+
+    发件账号 kongxiangpu1955@agent.qq.com（OAuth 已登录，额度 50 封/日、10 次/分钟）。
+    入参 msg 是 markdown 文本，这里先转成 22px 字号的 HTML 正文，再渲染同源 PDF 作附件。
+    CLI 的 --body-file / --attachment 只接受「相对当前工作目录」的路径且上限分别为
+    1MB / 20MB，故正文与附件先落到 cwd 下的临时文件，发送成功后删除。
+    """
+    subject = subject or f"每日复盘 - {TRADE_DATE}"
+    if not os.path.exists(AGENT_MAIL_CLI):
+        print(f"⚠️ 未找到 Agent Mail CLI: {AGENT_MAIL_CLI}，跳过邮件推送")
+        return
+
+    # CLI 强制 --body-file 必须落在当前工作目录内（含 ..\ 的路径会被拒绝），
+    # 所以临时正文写到 cwd 根下，用相对文件名传参，发送成功后删除。
+    body_path = os.path.join(os.getcwd(), f"_mail_body_{TRADE_DATE}.html")
+    try:
+        html = markdown_to_email_html(msg, title=subject, subtitle="A股每日复盘 · 自动推送")
+        raw = html.encode("utf-8")
+        if len(raw) > 1000 * 1024:
+            html = raw[:1000 * 1024].decode("utf-8", "ignore") + "<p>（正文超过 1MB，已截断）</p>"
+        with open(body_path, "w", encoding="utf-8") as f:
+            f.write(html)
+    except Exception as e:
+        print(f"⚠️ 邮件正文写入失败: {e}")
+        return
+
+    # 附件 PDF：与正文同源（同一份最终报告 markdown）。生成失败不影响正文发送。
+    att_path = os.path.join(os.getcwd(), f"_mail_att_{TRADE_DATE}.pdf")
+    att_name = ""
+    try:
+        markdown_to_email_pdf(msg, att_path, title=subject)
+        att_size = os.path.getsize(att_path)
+        if att_size > _MAIL_ATT_MAX_BYTES:
+            print(f"⚠️ 附件 {att_size / 1048576:.1f}MB 超过 {_MAIL_ATT_MAX_BYTES // 1048576}MB 上限，放弃挂载")
+            os.remove(att_path)
+        else:
+            att_name = os.path.basename(att_path)
+            print(f"📎 邮件附件已生成: {att_name}（{att_size / 1024:.0f}KB）")
+    except Exception as e:
+        print(f"⚠️ 邮件附件 PDF 生成失败: {e}")
+        att_name = ""
+
+    cmd = [AGENT_MAIL_CLI, "message", "+send", "--to", to_addr, "--subject", subject,
+           "--body-file", os.path.basename(body_path), "--body-format", "html", "--confirmed"]
+    if att_name:
+        cmd += ["--attachment", att_name]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="ignore", timeout=180)
+        if r.returncode == 0 and '"ok": true' in (r.stdout or ""):
+            print(f"✅ Agent Mail 已发送: {to_addr}" + (f"（含附件 {att_name}）" if att_name else ""))
+            os.remove(body_path)
+            if att_name and os.path.exists(att_path):
+                os.remove(att_path)
+        else:
+            detail = ((r.stdout or "") + (r.stderr or "")).strip().replace("\n", " ")[:300]
+            print(f"⚠️ Agent Mail 发送失败: rc={r.returncode} {detail}（正文留存: {body_path}）")
+    except Exception as e:
+        print(f"⚠️ Agent Mail 调用异常: {e}")
+
+
+def upload_report_html():
+    """把当日复盘报告 HTML 增量同步到云服务器（网页「复盘报告」页签展示）。
+
+    复用 pick_web/sync_db.py 的 --reports-only 通道，只传 Final_Self_<date>.html，
+    不动选股库（库由 post_close_run.bat 单独同步）。失败只告警，不影响主流程。
+    """
+    script = os.path.join(BASE_DIR, "pick_web", "sync_db.py")
+    if not os.path.exists(script):
+        print(f"⚠️ 未找到报告同步脚本，跳过上传: {script}")
+        return
+    try:
+        r = subprocess.run([sys.executable, script, "--reports-only"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="ignore", timeout=600, cwd=BASE_DIR)
+        out = ((r.stdout or "") + (r.stderr or "")).strip()
+        for line in out.splitlines()[-6:]:
+            print(line)
+        print("✅ 报告 HTML 已同步到服务器" if r.returncode == 0
+              else f"⚠️ 报告上传失败: rc={r.returncode}")
+    except Exception as e:
+        print(f"⚠️ 报告上传异常: {e}")
+
+
+def markdown_to_html_report(
+        markdown_text,
+        output_file="stock_report.html",
+        pdf_file="stock_report.pdf",
+        title="AI股票分析报告"
+):
+
+    # ========= Markdown 转 HTML =========
+    body = markdown2.markdown(
+        _highlight_position_values(markdown_text),
+        extras=[
+            "tables",
+            "fenced-code-blocks",
+            "strike",
+            "task_list"
+        ]
+    )
+
+    # ========= CSS美化 =========
+    html = f"""
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+<meta charset="UTF-8">
+
+<title>{title}</title>
+
+<style>
+
+body {{
+    background-color: #f5f7fa;
+    color: #222;
+
+    font-family:
+        "PingFang SC",
+        "Microsoft YaHei",
+        Arial;
+
+    max-width: 1000px;
+
+    margin: 40px auto;
+
+    padding: 40px;
+
+    background: white;
+
+    border-radius: 16px;
+
+    box-shadow:
+        0 4px 20px rgba(0,0,0,0.08);
+
+    line-height: 1.8;
+}}
+
+h1 {{
+    border-bottom: 3px solid #1677ff;
+    padding-bottom: 12px;
+    color: #1677ff;
+}}
+
+h2 {{
+    margin-top: 35px;
+    color: #0f172a;
+}}
+
+h3 {{
+    color: #334155;
+}}
+
+table {{
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}}
+
+th {{
+    background: #1677ff;
+    color: white;
+    padding: 12px;
+}}
+
+td {{
+    border: 1px solid #dcdfe6;
+    padding: 10px;
+}}
+
+tr:nth-child(even) {{
+    background: #f8fafc;
+}}
+
+code {{
+    background: #f1f5f9;
+    padding: 2px 6px;
+    border-radius: 6px;
+}}
+
+pre {{
+    background: #0f172a;
+    color: #f8fafc;
+
+    padding: 20px;
+
+    border-radius: 12px;
+
+    overflow-x: auto;
+}}
+
+blockquote {{
+    border-left: 5px solid #1677ff;
+    padding-left: 15px;
+    color: #555;
+    background: #f8fafc;
+    margin: 20px 0;
+}}
+
+ul {{
+    padding-left: 25px;
+}}
+
+li {{
+    margin-bottom: 8px;
+}}
+
+strong {{
+    color: #d4380d;
+}}
+
+</style>
+</head>
+
+<body>
+
+{body}
+
+</body>
+</html>
+"""
+
+    # ========= 保存HTML =========
+    with open(
+            output_file,
+            "w",
+            encoding="utf-8"
+    ) as f:
+
+        f.write(html)
+
+    print(f"HTML报告已生成: {output_file}")
+
+
+# =========================
+# 市场数据（带缓存）
+# =========================
+def get_market():
+    cache_file = os.path.join(
+        CACHE_DIR,
+        f"market_{TRADE_DATE}.csv"
+    )
+
+    if os.path.exists(cache_file):
+        try:
+            df = pd.read_csv(cache_file)
+            if not df.empty:  # 缓存文件有数据才使用
+                return df
+            else:
+                print(f"[缓存] 缓存文件为空，重新拉取API")
+        except Exception as e:
+            print(f"[缓存] 市场数据读取失败: {e}")
+
+    daily = _df_daily_by_date(TRADE_DATE)
+
+    basic = _df_stock_list(list_status='L')
+    if basic is not None and len(basic) > 0:
+        basic = basic[['ts_code', 'name']]
+
+    mv = _df_daily_basic_by_date(
+        TRADE_DATE,
+        fields='ts_code,total_mv'
+    )
+
+    df = daily.merge(
+        basic,
+        on='ts_code',
+        how='left'
+    )
+
+    df = df.merge(
+        mv,
+        on='ts_code',
+        how='left'
+    )
+
+    df.to_csv(cache_file, index=False)
+    print(f"[缓存] 市场数据已保存: {cache_file}")
+
+    return df
+
+##==========缓存代码
+def init_db():
+    try:
+        os.makedirs(REPORT_DIR, exist_ok=True)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stock_result (
+                date TEXT,
+                rank INTEGER,
+                code TEXT,
+                name TEXT,
+                close REAL,
+                amount REAL,
+                score REAL,
+                theme TEXT
+            )
+        """)
+        # 兼容旧表：如果表存在但没有theme列，则添加
+        try:
+            cursor.execute("ALTER TABLE stock_result ADD COLUMN theme TEXT")
+        except:
+            pass  # 列已存在，忽略
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"数据库初始化失败，跳过: {e}")
+
+def save_result(df):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        today = TRADE_DATE
+        # 清理当天旧数据（避免重复）
+        conn.execute(
+            "DELETE FROM stock_result WHERE date=?",
+            (today,)
+        )
+        for i, row in enumerate(df.itertuples()):
+            conn.execute("""
+                INSERT INTO stock_result
+                (date, rank, code, name, close, amount, score, theme)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                today,
+                i + 1,
+                getattr(row, "代码", ""),
+                getattr(row, "名称", ""),
+                float(getattr(row, "现价", 0)) if getattr(row, "现价", 0) not in ['', None] else 0.0,
+                float(getattr(row, "成交额", 0)) if getattr(row, "成交额", 0) not in ['', None] else 0.0,
+                float(getattr(row, "总排序评分", 0)) if getattr(row, "总排序评分", 0) not in ['', None] else 0.0,
+                getattr(row, "所属主题", "")
+            ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"保存结果到数据库失败，跳过: {e}")
+
+
+# ======================================================
+# 筹码分布（cyq_chips / cyq_perf）—— 压力/突破判断的核心数据源
+# 采用文件缓存：chip_{ts_code}_{trade_date}_chips.csv / _perf.csv
+# 一旦生成不会变化，命中缓存即可省 2 次 API 调用 + 节流等待
+# ======================================================
+def get_chip_distribution(ts_code, trade_date, current_price=None):
+    """基于 cyq_chips + cyq_perf 计算筹码分布
+    返回: dict，包含：
+      - above_chips_pct: 当前价上方套牢盘比例(%)
+      - below_chips_pct: 当前价下方获利盘比例(%)
+      - avg_cost: 加权平均成本
+      - winner_rate: 盈利筹码占比(%)
+      - his_low / his_high: 历史最低/最高
+      - pressure_peaks: 上方最大的3个筹码峰 [(价格, 占比), ...]
+      - support_peaks: 下方最大的3个筹码峰 [(价格, 占比), ...]
+      - cost_50pct: 成本中位数
+      - cost_85pct / cost_95pct: 压力成本带
+    """
+    result = {}
+    # ========= 缓存文件路径 =========
+    td = str(trade_date).replace('-', '')
+    chip_chips_file = os.path.join(CACHE_DIR, f"chip_{ts_code}_{td}_chips.csv")
+    chip_perf_file = os.path.join(CACHE_DIR, f"chip_{ts_code}_{td}_perf.csv")
+
+    try:
+        # ========= cyq_chips：全量筹码分布（先读缓存，再回源） =========
+        df = None
+        cache_hit = False
+        if os.path.exists(chip_chips_file):
+            try:
+                df = pd.read_csv(chip_chips_file)
+                cache_hit = True
+            except Exception as e:
+                print(f"  [筹码] 缓存读失败 {ts_code} {td}: {e}")
+                df = None
+
+        if df is None or len(df) == 0:
+            df = pro.cyq_chips(ts_code=ts_code, trade_date=td)
+            time.sleep(0.12)
+            # 缓存：仅写当日，非当日（回测）也写
+            if df is not None and len(df) > 0:
+                try:
+                    df.to_csv(chip_chips_file, index=False)
+                except Exception:
+                    pass
+        else:
+            # 缓存命中记录（可保留）
+            pass
+
+        if df is None or len(df) == 0:
+            return result
+
+        if current_price is None:
+            # 从 SQLite daily 缓存取最近收盘价
+            d = _get_daily_from_sqlite(ts_code)
+            if d is not None and len(d) > 0:
+                current_price = float(d['close'].iloc[-1])
+            if current_price is None:
+                d = _df_daily_by_code(ts_code, start_date=td, end_date=td)
+                if d is not None and len(d) > 0:
+                    current_price = float(d['close'].iloc[0])
+                else:
+                    return result
+
+        # 上方套牢盘 vs 下方获利盘（全部历史）
+        above = df[df['price'] > current_price]
+        below = df[df['price'] <= current_price]
+        result['above_chips_pct'] = round(float(above['percent'].sum()), 2)
+        result['below_chips_pct'] = round(float(below['percent'].sum()), 2)
+
+        # 底部稳定筹码：成本在当前价下方15%以外的筹码（深度获利盘）
+        # 这部分筹码的持有者已深度获利，不会因短期波动卖出，是底部支撑
+        bottom_threshold = current_price * 0.85
+        bottom_stable = below[below['price'] <= bottom_threshold]
+        result['bottom_stable_pct'] = round(float(bottom_stable['percent'].sum()), 2)
+        result['bottom_threshold'] = round(bottom_threshold, 2)
+
+        # 短线套牢盘：当前价上方5%以内的筹码（近期追高被套的筹码）
+        # 这部分筹码持有者还在犹豫，一解套就可能卖出，是短期压力源
+        short_term_threshold = current_price * 1.05
+        above_short_term = above[above['price'] <= short_term_threshold]
+        result['short_term_above_pct'] = round(float(above_short_term['percent'].sum()), 2)
+        result['short_term_threshold'] = round(short_term_threshold, 2)
+
+        # 上方压力位（取占比最大的前3个）
+        if len(above) > 0:
+            peaks_above = above.nlargest(3, 'percent')
+            result['pressure_peaks'] = [
+                (float(r['price']), round(float(r['percent']), 2))
+                for _, r in peaks_above.iterrows()
+                if r['percent'] >= 0.3  # 过滤零散筹码
+            ]
+        else:
+            result['pressure_peaks'] = []
+
+        # 下方支撑位（取占比最大的前3个）
+        if len(below) > 0:
+            peaks_below = below.nlargest(3, 'percent')
+            result['support_peaks'] = [
+                (float(r['price']), round(float(r['percent']), 2))
+                for _, r in peaks_below.iterrows()
+            ]
+        else:
+            result['support_peaks'] = []
+
+        # 最近压力位（取上方价格最近的显著压力位）
+        if result['pressure_peaks']:
+            nearest_peak = min(result['pressure_peaks'], key=lambda x: x[0])
+            result['nearest_pressure'] = nearest_peak[0]
+            result['nearest_pressure_pct'] = nearest_peak[1]
+            # 最强压力位（占比最大的）
+            result['strongest_pressure'] = result['pressure_peaks'][0][0]
+            result['strongest_pressure_pct'] = result['pressure_peaks'][0][1]
+        else:
+            above_sorted = above[above['price'] > current_price].sort_values('price')
+            if len(above_sorted) > 0:
+                result['nearest_pressure'] = round(float(above_sorted['price'].iloc[0]), 2)
+            else:
+                result['nearest_pressure'] = round(float(df['price'].max()), 2)
+            result['nearest_pressure_pct'] = 0
+            result['strongest_pressure'] = result['nearest_pressure']
+            result['strongest_pressure_pct'] = 0
+
+        # 最近压力位距离（%）
+        if current_price > 0 and result['nearest_pressure'] > current_price:
+            result['nearest_pressure_dist_pct'] = round(
+                ((result['nearest_pressure'] - current_price) / current_price) * 100, 2
+            )
+        else:
+            result['nearest_pressure_dist_pct'] = 0
+
+        # ========= cyq_perf：筹码成本与胜率（先读缓存，再回源） =========
+        perf = None
+        if os.path.exists(chip_perf_file):
+            try:
+                perf = pd.read_csv(chip_perf_file)
+            except Exception:
+                perf = None
+
+        if perf is None or len(perf) == 0:
+            perf = pro.cyq_perf(ts_code=ts_code, trade_date=td)
+            time.sleep(0.12)
+            if perf is not None and len(perf) > 0:
+                try:
+                    perf.to_csv(chip_perf_file, index=False)
+                except Exception:
+                    pass
+
+        if perf is not None and len(perf) > 0:
+            row = perf.iloc[0]
+            result['his_low'] = round(float(row['his_low']), 2)
+            result['his_high'] = round(float(row['his_high']), 2)
+            result['avg_cost'] = round(float(row['weight_avg']), 2)
+            result['winner_rate'] = round(float(row['winner_rate']), 2)
+            result['cost_5pct'] = round(float(row['cost_5pct']), 2)
+            result['cost_50pct'] = round(float(row['cost_50pct']), 2)
+            result['cost_85pct'] = round(float(row['cost_85pct']), 2)
+            result['cost_95pct'] = round(float(row['cost_95pct']), 2)
+
+        # ========= 综合压力判断（短线套牢盘+底部稳定筹码） =========
+        # 短线套牢盘（上方5%以内）：近期追高被套的筹码，解套就卖，是短期压力源
+        # 底部稳定筹码（下方15%以外）：深度获利盘，不会轻易卖出，是底部支撑
+        # 逻辑：短线套牢盘少 → 短期压力小；底部筹码多 → 底部扎实
+        above_pct = result.get('above_chips_pct', 0)  # 全部历史套牢盘
+        short_pct = result.get('short_term_above_pct', 0)  # 短线套牢盘（5%以内）
+        bottom_pct = result.get('bottom_stable_pct', 0)  # 底部稳定筹码
+        nearest_dist = result.get('nearest_pressure_dist_pct', 999)
+
+        if short_pct < 3:
+            result['pressure_level'] = '轻'
+            result['pressure_desc'] = (
+                f'短线套牢盘仅{short_pct:.1f}%，底筹{bottom_pct:.1f}%，短期无压力'
+                f'（全部套牢盘{above_pct:.1f}%）'
+            )
+        elif short_pct < 10:
+            result['pressure_level'] = '中'
+            result['pressure_desc'] = (
+                f'短线套牢盘{short_pct:.1f}%，底筹{bottom_pct:.1f}%，'
+                f'压力位{result["nearest_pressure"]:.2f}元(距+{nearest_dist:.1f}%)，'
+                f'有一定解套压力（全部套牢盘{above_pct:.1f}%）'
+            )
+        elif bottom_pct >= 20:
+            # 短线套牢盘较多，但底部筹码扎实，短期抛压可控
+            result['pressure_level'] = '中'
+            result['pressure_desc'] = (
+                f'短线套牢盘{short_pct:.1f}%，但底筹{bottom_pct:.1f}%扎实，'
+                f'短期抛压可控（全部套牢盘{above_pct:.1f}%）'
+            )
+        else:
+            result['pressure_level'] = '重'
+            result['pressure_desc'] = (
+                f'短线套牢盘{short_pct:.1f}%，底筹仅{bottom_pct:.1f}%，'
+                f'筹码松散，压力位{result["nearest_pressure"]:.2f}元(距+{nearest_dist:.1f}%)，'
+                f'突破需要放量（全部套牢盘{above_pct:.1f}%）'
+            )
+
+        # 突破有效性判断
+        avg_cost = result.get('avg_cost', current_price)
+        if current_price > avg_cost:
+            result['breakout_status'] = '已突破筹码平均成本'
+        else:
+            result['breakout_status'] = '仍在平均成本下方运行'
+
+    except Exception as e:
+        # 失败时记录但不抛出，避免影响主流程
+        print(f"  [筹码] {ts_code} {td} 获取失败: {e}")
+    return result
+
+
+def calc_tech_indicators(df, ts_code=None, trade_date=None):
+    """计算关键技术指标价格（供AI分析使用）
+    核心数据源：MA均线 + K线高点（辅助参考）+ 筹码分布 cyq_chips / cyq_perf（主压力判断）
+    筹码分布是判断"上方是否真的有套牢盘"的权威数据源，取代仅靠K线高点推测的旧逻辑
+    """
+    result = {}
+    if df is None or len(df) < 5 or not isinstance(df, pd.DataFrame):
+        return result
+
+    try:
+        close = df['close']
+        high = df['high']
+        low = df['low'] if 'low' in df.columns else close
+        current_price = float(close.iloc[-1])
+        result['current_price'] = current_price
+
+        # 均线价格
+        result['ma5'] = round(float(close.rolling(5).mean().iloc[-1]), 2) if len(close) >= 5 else current_price
+        result['ma10'] = round(float(close.rolling(10).mean().iloc[-1]), 2) if len(close) >= 10 else current_price
+        result['ma20'] = round(float(close.rolling(20).mean().iloc[-1]), 2) if len(close) >= 20 else current_price
+        result['ma60'] = round(float(close.rolling(60).mean().iloc[-1]), 2) if len(close) >= 60 else current_price
+
+        # =========================
+        # K线高点（辅助参考，不作为压力判断主依据）
+        # =========================
+        def hhv_exclude_today(window):
+            if len(high) >= window + 1:
+                return float(high.iloc[:-1].tail(window).max())
+            elif len(high) >= 2:
+                return float(high.iloc[:-1].max())
+            else:
+                return float(high.max())
+
+        hist_high_20 = hhv_exclude_today(20)
+        hist_high_60 = hhv_exclude_today(60)
+        hist_high_120 = hhv_exclude_today(120)
+        hist_high_250 = hhv_exclude_today(250)
+        hist_high_all = float(high.iloc[:-1].max()) if len(high) > 1 else float(high.max())
+
+        result['high_20d'] = round(hist_high_20, 2)
+        result['high_60d'] = round(hist_high_60, 2)
+        result['high_120d'] = round(hist_high_120, 2)
+        result['high_250d'] = round(hist_high_250, 2)
+        result['high_all'] = round(hist_high_all, 2)
+
+        # 历史低点
+        hist_low_20 = float(low.iloc[:-1].tail(20).min()) if len(close) > 1 else float(low.tail(20).min())
+        hist_low_60 = float(low.iloc[:-1].tail(60).min()) if len(close) > 1 else float(low.tail(60).min())
+        result['low_20d'] = round(hist_low_20, 2)
+        result['low_60d'] = round(hist_low_60, 2)
+
+        # 距各周期高点的百分比
+        if hist_high_20 > 0:
+            result['dist_to_high20_pct'] = round(((hist_high_20 - current_price) / current_price) * 100, 1)
+        if hist_high_60 > 0:
+            result['dist_to_high60_pct'] = round(((hist_high_60 - current_price) / current_price) * 100, 1)
+        if hist_high_120 > 0:
+            result['dist_to_high120_pct'] = round(((hist_high_120 - current_price) / current_price) * 100, 1)
+        if hist_high_250 > 0:
+            result['dist_to_high250_pct'] = round(((hist_high_250 - current_price) / current_price) * 100, 1)
+        if hist_high_all > 0:
+            result['dist_to_highall_pct'] = round(((hist_high_all - current_price) / current_price) * 100, 1)
+
+        # =========================
+        # 筹码分布（主压力判断依据，cyq_chips / cyq_perf）
+        # =========================
+        chip_result = {}
+        if ts_code and trade_date:
+            # 优先从 df 的最后一行取 trade_date
+            try:
+                td_actual = str(df['trade_date'].iloc[-1]).split(' ')[0] if 'trade_date' in df.columns else trade_date
+            except Exception:
+                td_actual = trade_date
+            chip_result = get_chip_distribution(ts_code, td_actual, current_price)
+
+        if chip_result:
+            # 筹码核心数据
+            result['above_chips_pct'] = chip_result.get('above_chips_pct', 0)
+            result['bottom_stable_pct'] = chip_result.get('bottom_stable_pct', 0)
+            result['short_term_above_pct'] = chip_result.get('short_term_above_pct', 0)
+            result['below_chips_pct'] = chip_result.get('below_chips_pct', 0)
+            result['avg_cost'] = chip_result.get('avg_cost', current_price)
+            result['winner_rate'] = chip_result.get('winner_rate', 0)
+            result['cost_50pct'] = chip_result.get('cost_50pct', current_price)
+            result['cost_85pct'] = chip_result.get('cost_85pct', current_price)
+            result['cost_95pct'] = chip_result.get('cost_95pct', current_price)
+            result['chip_his_high'] = chip_result.get('his_high', 0)
+            result['nearest_pressure'] = chip_result.get('nearest_pressure', 0)
+            result['nearest_pressure_pct'] = chip_result.get('nearest_pressure_pct', 0)
+            result['nearest_pressure_dist_pct'] = chip_result.get('nearest_pressure_dist_pct', 0)
+
+            # 压力位（格式化：价格+占比）
+            pressure_peaks = chip_result.get('pressure_peaks', [])
+            if pressure_peaks:
+                result['pressure_peak_1_price'] = pressure_peaks[0][0]
+                result['pressure_peak_1_pct'] = pressure_peaks[0][1]
+                if len(pressure_peaks) > 1:
+                    result['pressure_peak_2_price'] = pressure_peaks[1][0]
+                    result['pressure_peak_2_pct'] = pressure_peaks[1][1]
+            support_peaks = chip_result.get('support_peaks', [])
+            if support_peaks:
+                result['support_peak_1_price'] = support_peaks[0][0]
+                result['support_peak_1_pct'] = support_peaks[0][1]
+
+            # 综合压力判断（筹码优先）
+            result['pressure_level'] = chip_result.get('pressure_level', '未知')
+            result['pressure_desc'] = chip_result.get('pressure_desc', '筹码数据不可用')
+            result['breakout_status'] = chip_result.get('breakout_status', '')
+
+            # ===== 筹码突破真假评分 =====
+            chip_bt = calc_chip_breakthrough_score(chip_result, current_price)
+            result['chip_breakthrough_score'] = chip_bt['score']
+            result['chip_breakthrough_level'] = chip_bt['level']
+
+            # 保留原有字段名（兼容）
+            pct = chip_result.get('above_chips_pct', 0)
+            result['has_upper_pressure'] = pct >= 3  # 3%为阈值，不是10%K线标准
+            pressure_parts = []
+            if pressure_peaks:
+                for p_price, p_pct in pressure_peaks[:2]:
+                    pressure_parts.append(f"{p_price:.1f}元(占比{p_pct:.1f}%)")
+            if pressure_parts:
+                result['upper_pressure_desc'] = "；".join(pressure_parts)
+            else:
+                result['upper_pressure_desc'] = result['pressure_desc']
+        else:
+            # 筹码不可用时退化为K线判断
+            upper_pressure_levels = []
+            if hist_high_all > current_price * 1.01:
+                pct_all = ((hist_high_all - current_price) / current_price) * 100
+                upper_pressure_levels.append(f"全历史高点{result['high_all']:.2f}元(距+{pct_all:.1f}%)")
+            if hist_high_250 > current_price * 1.01:
+                pct_250 = ((hist_high_250 - current_price) / current_price) * 100
+                upper_pressure_levels.append(f"250日高点{result['high_250d']:.2f}元(距+{pct_250:.1f}%)")
+            if hist_high_120 > current_price * 1.01:
+                pct_120 = ((hist_high_120 - current_price) / current_price) * 100
+                upper_pressure_levels.append(f"120日高点{result['high_120d']:.2f}元(距+{pct_120:.1f}%)")
+            result['upper_pressure_desc'] = "；".join(upper_pressure_levels) if upper_pressure_levels else "上方无显著历史套牢盘"
+            result['has_upper_pressure'] = len(upper_pressure_levels) > 0
+            result['pressure_level'] = 'K线估算'
+            result['pressure_desc'] = result['upper_pressure_desc']
+
+        # 距20/60日均线百分比
+        if result['ma20'] > 0:
+            result['dist_to_ma20_pct'] = round(((current_price - result['ma20']) / result['ma20']) * 100, 1)
+        if result['ma60'] > 0:
+            result['dist_to_ma60_pct'] = round(((current_price - result['ma60']) / result['ma60']) * 100, 1)
+
+        # 近5日K线概况
+        recent_5 = df.tail(5)
+        if len(recent_5) >= 5:
+            result['recent5_high'] = round(float(recent_5['high'].max()), 2)
+            result['recent5_low'] = round(float(recent_5['low'].min()), 2) if 'low' in df.columns else round(float(recent_5['close'].min()), 2)
+            result['recent5_range_pct'] = round(((result['recent5_high'] - result['recent5_low']) / result['recent5_low']) * 100, 1)
+
+        # 近10日涨跌幅
+        if len(df) >= 10:
+            price_10d_ago = float(close.iloc[-10])
+            if price_10d_ago > 0:
+                result['chg_10d_pct'] = round(((current_price - price_10d_ago) / price_10d_ago) * 100, 1)
+
+        # 均线方向
+        if len(close) >= 25:
+            ma20_prev = float(close.iloc[:-1].tail(20).mean())
+            result['ma20_trend'] = '向上' if result['ma20'] > ma20_prev else '向下'
+        if len(close) >= 65:
+            ma60_prev = float(close.iloc[:-1].tail(60).mean())
+            result['ma60_trend'] = '向上' if result['ma60'] > ma60_prev else '向下'
+
+    except Exception as e:
+        print(f"  [tech] calc_tech_indicators 异常: {e}")
+    return result
+
+
+# ======================================================
+# Chip Alpha Engine V2.1 集成
+# 动态筹码Alpha分析：CRE、ChipMomentum、ChipTrendScore 等
+# ======================================================
+_chip_alpha_engine = None
+
+def get_chip_alpha_engine():
+    """获取 ChipAlphaEngineV2 单例（延迟初始化）"""
+    global _chip_alpha_engine
+    if _chip_alpha_engine is None:
+        try:
+            from chip_alpha_engine_v2 import ChipAlphaEngineV2
+            _chip_alpha_engine = ChipAlphaEngineV2(token=TUSHARE_TOKEN)
+        except Exception as e:
+            print(f"[ChipAlpha] 引擎初始化失败: {e}")
+            return None
+    return _chip_alpha_engine
+
+
+def batch_chip_alpha(stocks, lookback_days=20, end_date=None):
+    """
+    批量计算筹码Alpha因子
+    参数: stocks - list of dict，至少包含'代码'字段
+         end_date - 目标交易日 YYYYMMDD；缺省时引擎会回退到运行当天，
+                    历史日期重算会引入前视数据，调用方应显式传入
+    返回: dict {ts_code: chip_result_dict}
+    """
+    engine = get_chip_alpha_engine()
+    if engine is None:
+        return {}
+
+    results = {}
+    total = len(stocks)
+    for i, s in enumerate(stocks):
+        ts_code = s.get('代码') or s.get('code') or s.get('ts_code', '')
+        if not ts_code:
+            continue
+        try:
+            r = engine.analyze(ts_code, end_date=end_date, lookback_days=lookback_days)
+            results[ts_code] = r
+            if (i + 1) % 10 == 0:
+                print(f"[ChipAlpha] 批量计算 {i+1}/{total}")
+        except Exception as e:
+            print(f"[ChipAlpha] {ts_code} 计算失败: {e}")
+    return results
+
+
+def extract_chip_alpha_factors(chip_result):
+    """
+    从 ChipAlphaEngine 结果中提取关键因子（扁平化为简单dict）
+    """
+    if not chip_result:
+        return {
+            'ChipTrendScore': 50,
+            'ChipGrade': 'C',
+            'ChipStage': '未知',
+            'CRE_Score': 50,
+            'ChipMomentum_Score': 50,
+            'PressureDecay_Score': 50,
+            'Absorption_Score': 50,
+            'CenterVelocity_Score': 50,
+        }
+    f = chip_result.get('Factors', {})
+    dim = chip_result.get('DimensionScores', {})
+    return {
+        'ChipTrendScore': chip_result.get('ChipTrendScore', 50),
+        'ChipGrade': chip_result.get('Grade', 'C'),
+        'ChipStage': {
+            'Accumulation': '吸筹中', 'Distribution': '派发中',
+            'Expansion': '扩张期', 'Early Trend': '早期趋势',
+            'Collapse': '崩溃', 'Unknown': '未知',
+        }.get(chip_result.get('TrendStage', ''), chip_result.get('TrendStage', '未知')),
+        'CRE_Score': f.get('CRE', {}).get('score', 50),
+        'ChipMomentum_Score': f.get('ChipMomentum', {}).get('score', 50),
+        'PressureDecay_Score': f.get('PressureDecay', {}).get('score', 50),
+        'Absorption_Score': f.get('Absorption', {}).get('score', 50),
+        'CenterVelocity_Score': f.get('CenterVelocity', {}).get('score', 50),
+        'Structure_Score': dim.get('Structure', {}).get('score', 50),
+        'Flow_Score': dim.get('Flow', {}).get('score', 50),
+        'Momentum_Score': dim.get('Momentum', {}).get('score', 50),
+    }
+
+
+def get_chip_alpha_suggestion(stock_dict):
+    """
+    根据筹码Alpha因子给出操作建议
+    返回 (建议, 理由)
+    """
+    score = stock_dict.get('ChipTrendScore', 50)
+    cre = stock_dict.get('CRE_Score', 50)
+    mom = stock_dict.get('ChipMomentum_Score', 50)
+    pressure = stock_dict.get('PressureDecay_Score', 50)
+    absorption = stock_dict.get('Absorption_Score', 50)
+    stage = stock_dict.get('ChipStage', '未知')
+
+    if score >= 75 and cre >= 65 and mom >= 60:
+        return "积极参与", f"趋势强+CRE高+动量足，{stage}，可沿5日线持有"
+    if score >= 65 and cre >= 50 and mom >= 50:
+        if pressure >= 80:
+            return "可逢低介入", f"趋势向好+上方压力轻，{stage}，回踩MA20低吸"
+        if cre >= 60 and mom >= 60:
+            return "可逢低介入", f"趋势转强+效率提升，{stage}，分批建仓"
+        return "关注观察", f"趋势中性偏强，{stage}，等待CRE/动量进一步确认"
+    if score >= 55 and cre >= 40:
+        if mom >= 60 and pressure >= 70:
+            return "左侧关注", f"动量转强+压力轻，但趋势分未达标，小仓位试错"
+        if absorption >= 60:
+            return "左侧关注", f"吸筹中+吸筹质量尚可，{stage}，等待启动信号"
+        return "纳入观察", f"筹码改善中，{stage}，等待趋势确认信号"
+    if mom >= 65 and pressure >= 80:
+        return "左侧试错", f"动量加速+压力极轻，但趋势分偏低，轻仓试错"
+    if score < 40:
+        return "回避", f"筹码结构弱，{stage}，暂不参与"
+    return "观望等待", f"筹码中性，{stage}，等待明确信号"
+
+
+
+
+# ======================================================
+# 筹码突破真假判断评分（基于 cyq_chips / cyq_perf）
+# 判断突破是否健康：真突破vs假突破
+# 返回 0-100 分，越高代表真突破可信度越高
+# ======================================================
+def calc_chip_breakthrough_score(chip_result, current_price):
+    """
+    基于筹码分布数据，计算短线真突破可信度评分
+    
+    核心逻辑：
+    - 真突破：上方套牢盘少、集中度健康、筹码已获利、无密集压力峰
+    - 假突破：上方套牢盘多、筹码分散、avg_cost在上方、压力峰密集
+    
+    参数：
+        chip_result: get_chip_distribution 返回值
+        current_price: 当前价
+    返回：
+        dict: {score, level, factors}  score=0-100
+    """
+    if not chip_result or not current_price or current_price <= 0:
+        return {'score': 50, 'level': '未知', 'factors': {}, 'judgement': '数据不足'}
+    
+    factors = {}
+    
+    # ===== 因子1: 上方套牢盘比例（weight=30） =====
+    above_pct = chip_result.get('above_chips_pct', 100)
+    if above_pct < 3:
+        s1 = 100
+    elif above_pct < 8:
+        s1 = 85
+    elif above_pct < 15:
+        s1 = 70
+    elif above_pct < 25:
+        s1 = 50
+    elif above_pct < 40:
+        s1 = 30
+    else:
+        s1 = 10
+    factors['above_chips'] = {'score': s1, 'weight': 30, 'value': above_pct}
+    
+    # ===== 因子2: 盈利筹码比例（weight=20） =====
+    winner = chip_result.get('winner_rate', 0)
+    if winner > 85:
+        s2 = 100
+    elif winner > 70:
+        s2 = 80
+    elif winner > 55:
+        s2 = 60
+    elif winner > 40:
+        s2 = 40
+    elif winner > 25:
+        s2 = 20
+    else:
+        s2 = 0
+    factors['winner_rate'] = {'score': s2, 'weight': 20, 'value': winner}
+    
+    # ===== 因子3: 当前价与平均成本距离（weight=20） =====
+    avg_cost = chip_result.get('avg_cost', current_price)
+    if avg_cost > 0:
+        dist_ratio = (current_price - avg_cost) / avg_cost * 100
+        if dist_ratio > 15:
+            s3 = 100
+        elif dist_ratio > 8:
+            s3 = 80
+        elif dist_ratio > 3:
+            s3 = 60
+        elif dist_ratio > -2:
+            s3 = 50
+        elif dist_ratio > -10:
+            s3 = 30
+        else:
+            s3 = 10
+    else:
+        s3 = 50
+    factors['cost_distance'] = {'score': s3, 'weight': 20, 'value': round(dist_ratio, 1)}
+    
+    # ===== 因子4: 最近压力位距离（weight=15） =====
+    nearest_p = chip_result.get('nearest_pressure', 0)
+    if nearest_p > 0:
+        dist_to_pressure = (nearest_p - current_price) / current_price * 100
+        if dist_to_pressure < 0:
+            s4 = 100
+        elif dist_to_pressure < 2:
+            s4 = 30
+        elif dist_to_pressure < 5:
+            s4 = 50
+        elif dist_to_pressure < 10:
+            s4 = 70
+        else:
+            s4 = 85
+    else:
+        s4 = 80
+    factors['pressure_distance'] = {'score': s4, 'weight': 15,
+                                     'value': round(dist_to_pressure, 1) if nearest_p > 0 else 999}
+    
+    # ===== 因子5: 集中度（weight=15） =====
+    cost_85 = chip_result.get('cost_85pct', 0)
+    cost_95 = chip_result.get('cost_95pct', 0)
+    if cost_85 > 0 and cost_95 > 0:
+        spread_pct = (cost_95 - cost_85) / cost_85 * 100
+        if spread_pct < 8:
+            s5 = 100
+        elif spread_pct < 15:
+            s5 = 80
+        elif spread_pct < 25:
+            s5 = 60
+        elif spread_pct < 40:
+            s5 = 40
+        else:
+            s5 = 20
+    else:
+        s5 = 50
+    factors['concentration'] = {'score': s5, 'weight': 15,
+                                 'value': round(spread_pct, 1) if cost_85 > 0 and cost_95 > 0 else 999}
+    
+    # ===== 综合评分 =====
+    total_weight = sum(f['weight'] for f in factors.values())
+    total_score = sum(f['score'] * f['weight'] for f in factors.values()) / total_weight if total_weight > 0 else 50
+    total_score = round(max(0, min(100, total_score)), 1)
+    
+    # 判断等级
+    if total_score >= 85:
+        level = '真突破'
+    elif total_score >= 70:
+        level = '大概率真突破'
+    elif total_score >= 55:
+        level = '中性偏多'
+    elif total_score >= 40:
+        level = '中性偏空'
+    elif total_score >= 25:
+        level = '很可能假突破'
+    else:
+        level = '假突破'
+    
+    return {
+        'score': total_score,
+        'level': level,
+        'factors': factors,
+        'judgement': level
+    }
+
+# =========================
+# 涨跌停数据（替代 emotion.get_limit_stats）
+# =========================
+def get_limit_stats():
+    """获取涨跌停数据，替代原 emotion.get_limit_stats
+    优化：优先使用收盘后的实际涨跌停数据，避免盘中触板数据干扰
+    """
+    try:
+        print("开始获取涨跌停数据...")
+        zt_codes = []
+        dt_codes = []
+        broken_rate = 0.0
+
+        # 方法1：使用每日行情数据计算真实的涨跌停（收盘价）
+        try:
+            # 获取当日所有股票的收盘价和涨跌幅
+            daily = _df_daily_by_date(TRADE_DATE)
+            if daily is not None and not daily.empty:
+                # 计算涨跌停阈值（简化版：主板10%，科创板/创业板20%）
+                daily['is_kcb'] = daily['ts_code'].str.startswith(('688', '301'))
+                daily['is_cn'] = daily['ts_code'].str.startswith('300')
+                daily['limit_up'] = daily.apply(
+                    lambda x: 20.0 if x['is_kcb'] or x['is_cn'] else 10.0, axis=1
+                )
+                daily['limit_down'] = -daily['limit_up']
+                
+                # 真实涨停：收盘价涨幅接近涨停价（>=99%的涨停幅度）
+                if 'pct_chg' in daily.columns:
+                    zt_mask = (daily['pct_chg'] >= daily['limit_up'] * 0.99) & (daily['pct_chg'] < daily['limit_up'] + 0.1)
+                    # 真实跌停：收盘价跌幅接近跌停价
+                    dt_mask = (daily['pct_chg'] <= daily['limit_down'] * 0.99) & (daily['pct_chg'] > daily['limit_down'] - 0.1)
+                else:
+                    zt_mask = pd.Series([False] * len(daily), index=daily.index)
+                    dt_mask = pd.Series([False] * len(daily), index=daily.index)
+                
+                zt_codes = daily[zt_mask]['ts_code'].tolist()
+                dt_codes = daily[dt_mask]['ts_code'].tolist()
+                
+                print(f"涨停(真实收盘): {len(zt_codes)}只")
+                print(f"跌停(真实收盘): {len(dt_codes)}只")
+                
+                # 获取炸板数据（盘中触及涨停但未封住）
+                try:
+                    limit_df = pro.limit_list_d(trade_date=TRADE_DATE)
+                    if limit_df is not None and not limit_df.empty:
+                        # limit='D'表示最终封住, limit='Z'表示炸板
+                        zhaban_codes = limit_df[limit_df['limit'] == 'Z']['ts_code'].astype(str).tolist()
+                        zhaban_count = len(zhaban_codes)
+                        
+                        # 炸板率 = 炸板数 ÷ (封住数 + 炸板数)
+                        total_touch = len(zt_codes) + zhaban_count
+                        if total_touch > 0:
+                            broken_rate = (zhaban_count / total_touch) * 100
+                            print(f"炸板率: {broken_rate:.1f}% (炸板{zhaban_count}只/触及涨停{total_touch}只)")
+                except Exception as e:
+                    print(f"获取炸板数据失败: {e}")
+                    
+        except Exception as e:
+            print(f"方法1失败: {e}")
+
+        # 如果以上方法都失败，使用 limit_list_d 官方接口作为备选（但不作为主要数据源）
+        if not zt_codes and not dt_codes:
+            print("[备选] 使用limit_list_d接口...")
+            try:
+                d_zt = pro.limit_list_d(trade_date=TRADE_DATE, limit_type='U')
+                if d_zt is not None and not d_zt.empty:
+                    zt_codes = d_zt['ts_code'].astype(str).tolist()
+                    print(f"涨停(limit_list_d备选): {len(zt_codes)}只")
+            except Exception as e:
+                print(f"limit_list_d涨停失败: {e}")
+
+            try:
+                d_dt = pro.limit_list_d(trade_date=TRADE_DATE, limit_type='D')
+                if d_dt is not None and not d_dt.empty:
+                    dt_codes = d_dt['ts_code'].astype(str).tolist()
+                    print(f"跌停(limit_list_d备选): {len(dt_codes)}只")
+            except Exception as e:
+                print(f"limit_list_d跌停失败: {e}")
+
+        return {
+            "zt_count": len(zt_codes),
+            "dt_count": len(dt_codes),
+            "zt_codes": zt_codes,
+            "dt_codes": dt_codes,
+            "broken_rate": round(broken_rate, 1)
+        }
+    except Exception as e:
+        print("获取涨跌停失败:", e)
+        return {"zt_count": 0, "dt_count": 0, "zt_codes": [], "dt_codes": [], "broken_rate": 0}
+
+def calc_max_limit_height():
+    """计算最高连板高度，替代原 emotion.calc_max_limit_height"""
+    try:
+        # 优先使用 akshare 免费接口
+        import akshare as ak
+        try:
+            # akshare 1.18.x 版本使用 stock_zt_pool_em
+            zt_df = ak.stock_zt_pool_em(date=TRADE_DATE)
+            if zt_df is not None and not zt_df.empty:
+                # 提取连板数并转换为整数
+                if '连板数' in zt_df.columns:
+                    zt_df['连板数'] = pd.to_numeric(zt_df['连板数'], errors='coerce').fillna(1).astype(int)
+                    max_lb = zt_df['连板数'].max()
+                    print(f"[连板高度] akshare获取成功: 最高连板 {max_lb} 板")
+                    return int(max_lb)
+                elif '连扳数' in zt_df.columns:  # 兼容不同版本的字段名
+                    zt_df['连扳数'] = pd.to_numeric(zt_df['连扳数'], errors='coerce').fillna(1).astype(int)
+                    max_lb = zt_df['连扳数'].max()
+                    print(f"[连板高度] akshare获取成功: 最高连板 {max_lb} 板")
+                    return int(max_lb)
+        except Exception as ak_error:
+            print(f"[连板高度] akshare获取失败: {ak_error}")
+        
+        # akshare失败时，尝试 tushare pro 接口
+        if pro is not None:
+            zt_df = pro.limit_step(trade_date=TRADE_DATE)
+            if zt_df is not None and not zt_df.empty:
+                if 'nums' in zt_df.columns:
+                    max_lb = zt_df['nums'].fillna(1).astype(int).max()
+                    return int(max_lb)
+            return 1
+        
+        # 都失败时返回默认值
+        return 3
+    except Exception as e:
+        print(f"[连板高度] 计算失败: {e}")
+        return 3
+
+
+# =========================
+# 主题过滤：读取 theme_analysis_v2 报告，以 主线 + 轮动 主题为过滤范围
+# =========================
+# V3 生命周期 → 共振系数可识别阶段
+_LC_STAGE_V6 = {'启动': '启动', '升温': '启动', '主升': '主升', '分歧转一致': '调整',
+                '高潮': '高潮', '退潮': '衰退', '震荡': '调整', '弱势': '衰退'}
+
+
+def _load_mainline_rotation_themes(trade_date):
+    """读取 theme_analysis_v2_{date}.txt，提取 主线(▶)+轮动(▸) 主题及其报告字段
+
+    报告行格式（theme_score_v2.py 生成，含主线类型分级 V1.0）：
+      主线: ▶ 半导体 [主升] 情绪+趋势共振 质量90 | 策略:龙头+中军 | 趋势81 情绪74 涨停13 迁移11.0
+      轮动: ▸ 可控核聚变 [升温] 非主线 质量55 | 趋势50 综合51 涨停1 迁移6.9
+      回避: ✕ 消费 [退潮] 综合34 → 【坚决回避/清仓】
+    返回 {主题名: {theme, stage, kind, mainline_type, mainline_quality, trading_style,
+                   trend_score, sentiment_score, composite_score, zt_count,
+                   migration_score, stage_v6, ...}}
+    """
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "report_daily", f"theme_analysis_v2_{trade_date}.txt")
+    if not os.path.exists(path):
+        print(f"[主题过滤] 未找到主题评分报告: {path}")
+        return {}
+
+    themes = {}
+    section = None
+    with open(path, 'r', encoding='utf-8') as f:
+        lines = f.read().splitlines()
+    for ln in lines:
+        ln = ln.strip()
+        if ln.startswith('### 第一部分'):
+            section = 'mainline'
+            continue
+        if ln.startswith('### 第二部分'):
+            section = 'rotation'
+            continue
+        if ln.startswith('### 第三部分'):
+            section = 'junk'
+            continue
+        if ln.startswith('### 主线与轮动交易决策表'):
+            break
+        if section not in ('mainline', 'rotation', 'junk'):
+            continue
+        if not (ln.startswith('▶') or ln.startswith('▸') or ln.startswith('✕')):
+            continue
+        m = re.match(r'^[▶▸✕]\s+(\S+)\s+\[([^\]]+)\](.*)$', ln)
+        if not m:
+            continue
+        theme, stage, rest = m.group(1), m.group(2), m.group(3)
+        _num = lambda pat: (lambda mm: float(mm.group(1)) if mm else 0.0)(re.search(pat, rest))
+        _int = lambda pat: (lambda mm: int(float(mm.group(1))) if mm else 0)(re.search(pat, rest))
+        trend = _num(r'趋势([\d.]+)')
+        senti = _num(r'情绪([\d.]+)')
+        comp = _num(r'综合([\d.]+)')
+        # 主线类型分级 V1.0 附加字段（无则留空，兼容旧报告）
+        _mt = re.search(r'(情绪\+趋势共振|情绪主线|趋势主线)', rest)
+        _mq = re.search(r'质量(\d+)', rest)
+        _ms = re.search(r'策略:([^\s|]+)', rest)
+        themes[theme] = {
+            'theme': theme, 'stage': stage, 'kind': section,
+            'mainline_type': _mt.group(1) if _mt else '',
+            'mainline_quality': int(_mq.group(1)) if _mq else 0,
+            'trading_style': _ms.group(1) if _ms else '',
+            'trend_score': trend,
+            'sentiment_score': senti,
+            'composite_score': comp if comp else trend,  # 主线行无综合，用趋势兜底
+            'zt_count': _int(r'涨停(\d+)'),
+            'migration_score': _num(r'迁移([\d.]+)'),
+            'stage_v6': _LC_STAGE_V6.get(stage, '调整'),
+            # V6 兼容默认字段（报告未提供）
+            'capital_score': 0, 'continuation_score': 50,
+            'risk_score': 50, 'confidence': 0,
+            'continuation_tag': '', 'leader': '', 'divergence_buy': False,
+            'trade_signal': '看多' if section == 'mainline' else ('回避' if section == 'junk' else '关注'),
+        }
+    # 补充解析"主线与轮动交易决策表"：报告第三部分 ✕ 只列前3个，
+    # 其余回避主题在决策表中以"回避"类型出现，补全到 junk 集合（含医疗器械等）
+    in_decision = False
+    for ln in lines:
+        if ln.startswith('### 主线与轮动交易决策表'):
+            in_decision = True
+            continue
+        if in_decision:
+            if ln.startswith('### '):
+                break
+            m = re.match(r'^\s*\d+\s+(\S+)\s+回避\s+\S+\s+\S+\s+\S+\s+(\S+)', ln)
+            if m and m.group(1) not in themes:
+                themes[m.group(1)] = {
+                    'theme': m.group(1), 'stage': m.group(2), 'kind': 'junk',
+                    'trend_score': 0, 'sentiment_score': 0,
+                    'composite_score': 0, 'zt_count': 0, 'migration_score': 0.0,
+                    'mainline_type': '', 'mainline_quality': 0, 'trading_style': '',
+                    'stage_v6': '调整',
+                    'capital_score': 0, 'continuation_score': 50,
+                    'risk_score': 50, 'confidence': 0,
+                    'continuation_tag': '', 'leader': '', 'divergence_buy': False,
+                    'trade_signal': '回避',
+                }
+    # 补充：CSV 补全主题评分
+    # 轮动区(▸)报告行缺情绪字段（theme_score_v2.py save_to_text_report_v2 未输出情绪），
+    # 导致 sentiment_score 解析为 0。优先用 theme_scores_v2_{date}.csv 的精确值覆盖。
+    csv_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "report_daily", f"theme_scores_v2_{trade_date}.csv")
+    if os.path.exists(csv_path):
+        try:
+            csv_df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            csv_map = {}
+            for _, r in csv_df.iterrows():
+                _t = str(r.get('theme', '')).strip()
+                if _t:
+                    csv_map[_t] = {
+                        'trend': float(r.get('trend_score', 0) or 0),
+                        'sentiment': float(r.get('sentiment_score', 0) or 0),
+                        'composite': float(r.get('composite_score', 0) or 0),
+                        # V2 额外字段（V6 兼容层）
+                        'capital': float(r.get('fund_score', 0) or 0),
+                        'continuation': float(r.get('persistence', 0) or 0),
+                        'confidence': float(r.get('confidence', 0) or 0),
+                        'migration': float(r.get('migration_score', 0) or 0),
+                        'leader': str(r.get('leader_name', '') or ''),
+                        'lifecycle': str(r.get('lifecycle', '') or ''),
+                        'trade_action': str(r.get('trade_action', '') or ''),
+                        'mainline_type': str(r.get('mainline_type', '') or ''),
+                        'mainline_quality': float(r.get('mainline_quality', 0) or 0),
+                        'trading_style': str(r.get('trading_style', '') or ''),
+                    }
+            _patched = 0
+            for t, info in themes.items():
+                cv = csv_map.get(t)
+                if cv:
+                    info['trend_score'] = cv['trend']
+                    info['sentiment_score'] = cv['sentiment']
+                    if cv['composite'] > 0:
+                        info['composite_score'] = cv['composite']
+                    # V2 字段覆盖 V6 兼容默认值
+                    info['capital_score'] = cv['capital']
+                    info['continuation_score'] = cv['continuation']
+                    info['confidence'] = cv['confidence']
+                    info['migration_score'] = cv['migration']
+                    if cv['leader']:
+                        info['leader'] = cv['leader']
+                    if cv['lifecycle']:
+                        info['stage'] = cv['lifecycle']
+                        info['stage_v6'] = _LC_STAGE_V6.get(cv['lifecycle'], info['stage_v6'])
+                    if cv['trade_action']:
+                        if '回避' in cv['trade_action'] or '观望' in cv['trade_action']:
+                            info['trade_signal'] = '回避'
+                        elif '加仓' in cv['trade_action'] or '追买' in cv['trade_action']:
+                            info['trade_signal'] = '强买'
+                        elif '持股' in cv['trade_action'] or '网格' in cv['trade_action']:
+                            info['trade_signal'] = '看多'
+                        else:
+                            info['trade_signal'] = '关注'
+                    if cv['mainline_type']:
+                        info['mainline_type'] = cv['mainline_type']
+                    if cv['mainline_quality'] > 0:
+                        info['mainline_quality'] = int(cv['mainline_quality'])
+                    if cv['trading_style']:
+                        info['trading_style'] = cv['trading_style']
+                    _patched += 1
+            if _patched:
+                print(f"[主题过滤] 已用 CSV 补全 {_patched} 个主题的评分字段（{os.path.basename(csv_path)}）")
+        except Exception as e:
+            print(f"[主题过滤] CSV 补全失败（保留报告解析值）: {e}")
+    return themes
+
+
+# =========================
+# 报告第2段"主题分析"喂料
+# 主口径：主题热度 V2.5.1 主题雷达（theme_heat_v25：状态+边际+人话+确认/失效条件）
+# 回退口径：主题热度 V2.4 三窗口 Top5（theme_heat_v24）
+# （20260928 起弃用 theme_scores.db：该口径在 0928 出现 36 个主题全部"清仓回避"、
+#   主线候选为空，与实际热度严重背离）
+# =========================
+def _build_theme_advice_feed(trade_date):
+    """组装【今日主题分析情况】结构化喂料 —— 主题热度 V2.5.1 主题雷达
+
+    数据源 = report_daily/theme_heat_v25_{date}.json，经 _load_theme_evolution() 读取。
+    只描述「主题热度正在往哪里移动」，不含个股、不含买卖建议：
+      · ◆ 主题雷达   —— 状态分组，组内按 (边际状态, 人话) 归并后只写一次人话
+                        （边际/人话是「状态级」描述，逐只重复属冗余）
+      · ◆ 重点解读   —— 非降温状态的 Heat 头部主题：当前状态 + 支持证据 +
+                        确认条件/失效条件（短期约5日、中期约20日严格分开）
+      · ◆ 正在降温   —— 只列名字，不展开
+      · ◆ 一句话市场总结（§二十）
+    V2.5 结果缺失时回退 V2.4 三窗口 Top5（_build_theme_feed_v24）。
+    """
+    evo = _load_theme_evolution(trade_date)
+    if not evo:
+        return _build_theme_feed_v24(trade_date)
+    try:
+        import theme_heat_v22 as ev
+        order, info = list(ev.STATE_ORDER), ev.STATE_INFO
+        minfo = ev.MARGINAL_INFO
+        summary = ev.evolution_summary(evo)
+    except Exception as e:
+        print(f"[实盘建议] V2.5 主题雷达组装失败，回退 V2.4: {e}")
+        return _build_theme_feed_v24(trade_date)
+
+    rows = [r for r in evo.values() if r.get('theme')]
+    rows.sort(key=lambda r: (order.index(r['state']) if r.get('state') in order else 99,
+                             -(r.get('heat') or 0.0)))
+
+    def _f(x, d=1):
+        try:
+            return f"{float(x):.{d}f}"
+        except (TypeError, ValueError):
+            return '-'
+
+    def _i(x):
+        try:
+            return str(int(x))
+        except (TypeError, ValueError):
+            return '-'
+
+    def _flags(r):
+        fl = r.get('flags') or []
+        return f"｜标记:{'/'.join(str(x) for x in fl)}" if fl else ''
+
+    feed = [f"【主题分析结构化数据 · {trade_date} · 主题热度V2.5.1主题雷达(theme_heat_v25) 自动组装，禁止改动数值】",
+            "状态 = 基于最近5/10/20日热度变化、排名迁移、内部扩散与持续性判定的七种生命周期："
+            + "/".join(f"{info[s][1]}{info[s][0]}" for s in order) + "。",
+            "边际状态 = 只看最近5日方向、与层级无关："
+            + "/".join(f"{minfo[k][1]}{minfo[k][0]}" for k in
+                       ('IMPROVING', 'FLAT', 'DETERIORATING')) + "。",
+            "本段只描述「主题热度正在往哪里移动」，不预测涨跌幅与收益率，也不构成买卖建议。"]
+
+    # ◆ 当日最强（独立于状态分组）：Heat 第一名，防止「当天最热但状态不是主线」被埋没
+    if rows:
+        _top = max(rows, key=lambda r: (r.get('heat') if r.get('heat') is not None else -1.0))
+        _st = _top.get('state')
+        _st_txt = f"{info[_st][1]}{info[_st][0]}" if _st in info else '-'
+        feed.append("")
+        feed.append(f"◆ 当日最强：{_top['theme']}（Heat {_f(_top.get('heat'))}"
+                    f"·第{_i(_top.get('rank_today'))}｜{_st_txt}）")
+
+    # ◆ 主题雷达（状态分组；同一「边际·人话」的主题合并为一段，人话只写一次）
+    # 20261003 精简：边际/人话是「状态级」描述（同一状态下除 LEADING 有 2 种人话外
+    # 其余全部相同），逐只重复纯属冗余 → 按 (边际, 人话) 归并后再输出。
+    # COOLING 不在此列（另有"◆ 正在降温"单独一行）；空状态固定输出"（无）"，
+    # 保证下游报告模板的取值是确定性的。
+    feed.append("")
+    feed.append("◆ 主题雷达（分组：主题名（边际·人话）；同一「边际·人话」的主题已合并）")
+    for s in order:
+        if s == 'COOLING':
+            continue
+        sel = [r for r in rows if r.get('state') == s]
+        if not sel:
+            feed.append(f"{info[s][1]}{info[s][0]}：（无）")
+            continue
+        _merged = {}
+        for r in sel:
+            _key = ((minfo.get(r.get('marginal')) or ('', ''))[0] or '-',
+                    r.get('radar') or '-')
+            _merged.setdefault(_key, []).append(r['theme'])
+        cells = "｜".join(f"{'、'.join(_names)}（{_lab}·{_radar}）"
+                          for (_lab, _radar), _names in _merged.items())
+        feed.append(f"{info[s][1]}{info[s][0]}：{cells}")
+
+    # ◆ 重点主题解读（非降温状态各取 Heat 头部，合计不超过 8 个）
+    cap = {'LEADING': 3, 'ACCELERATING': 2, 'RELAUNCH': 2, 'REBOUND': 2,
+           'EMERGING': 2, 'PEAKING': 2}
+    det = []
+    for s in order:
+        det += [r for r in rows if r.get('state') == s][:cap.get(s, 0)]
+    if det:
+        feed.append("")
+        feed.append("◆ 重点主题解读（当前状态 / 支持证据 / 确认条件 / 失效条件）")
+        for r in det[:8]:
+            feed.append(f"▸ {r['theme']}｜{info[r['state']][1]}{info[r['state']][0]}"
+                        f"｜边际{(minfo.get(r.get('marginal')) or ('', ''))[0] or '-'}"
+                        f"｜Heat {_f(r.get('heat'))}｜HM5 {_f(r.get('hm5'))}"
+                        f"｜ACC {_f(r.get('acc'))}"
+                        f"｜Rank 今{_i(r.get('rank_today'))}/20日前{_i(r.get('rank_20d'))}"
+                        f"｜近20日TOP10 {_i(r.get('top10_count_20d'))}天"
+                        f"{_flags(r)}")
+            if r.get('status'):
+                feed.append(f"    当前状态：{r['status']}")
+            if r.get('evidence'):
+                feed.append(f"    {r['evidence']}")
+            for key, lab in (('confirm_short', '确认条件（短期）'),
+                             ('invalid_short', '失效条件（短期）'),
+                             ('confirm_long', '确认条件（中期）'),
+                             ('invalid_long', '失效条件（中期）')):
+                if r.get(key):
+                    feed.append(f"    {lab}：{r[key]}")
+
+    # ◆ 正在降温（只列名，不展开）
+    cool = [r for r in rows if r.get('state') == 'COOLING']
+    if cool:
+        feed.append("")
+        feed.append("◆ 正在降温（只列名，不展开）：" + "、".join(r['theme'] for r in cool))
+
+    # ◆ 一句话市场总结（§二十）
+    if summary:
+        feed.append("")
+        feed.append("◆ 一句话市场总结")
+        feed.append(summary)
+
+    feed.append("")
+    feed.append("◆ 数据说明：本段只允许引用上述主题名与数值，数据块里没有的主题一律不得出现；"
+                "本数据块不含个股，禁止编造领涨龙头/容量中军等个股，也禁止改写状态标签。")
+    return "\n".join(feed)
+
+
+def _build_theme_feed_v24(trade_date):
+    """【回退口径】组装 V2.4 三窗口热度 Top5 结构化喂料：本日 / 本周 / 本月
+
+    数据源 = 主题热度 V2.4（report_daily/theme_heat_v24_{date}.json），
+    统一经 theme_heat_v22.load_heat() 读取（消费端唯一入口）。
+    热度为 0~100 分位制（越高越热）：
+      本日 = 当日热度 / 本周 = 近5个交易日 / 本月 = 近20个交易日。
+    纯热度口径，不含个股与涨停梯队。
+    无 V2.4 结果时返回 ""（由调用方回退 theme_analysis_v2 文本）。
+    """
+    heat = _load_theme_heat(trade_date)
+    if not heat:
+        print(f"[实盘建议] 无 {trade_date} 主题热度V2.4结果，主题喂料跳过")
+        return ""
+
+    def _top5(key):
+        rows = [v for v in heat.values() if v.get(key) is not None]
+        rows.sort(key=lambda v: -float(v[key]))
+        return rows[:5]
+
+    def _fstr(v, key):
+        try:
+            return f"{float(v.get(key)):.1f}"
+        except (TypeError, ValueError):
+            return '-'
+
+    def _istr(v, key):
+        try:
+            return str(int(v.get(key)))
+        except (TypeError, ValueError):
+            return '-'
+
+    def _rkey(heat_key):
+        """today_heat -> today_rank"""
+        return heat_key[:-5] + '_rank'
+
+    # (本窗口键, 标题, [(交叉引用窗口键, 简称), ...])
+    windows = (('today_heat', '本日', (('week_heat', '周'), ('month_heat', '月'))),
+               ('week_heat', '本周', (('today_heat', '本日'), ('month_heat', '月'))),
+               ('month_heat', '本月', (('today_heat', '本日'), ('week_heat', '周'))))
+
+    feed = [f"【主题分析结构化数据 · {trade_date} · 主题热度V2.4(theme_heat_v24) 自动组装，禁止改动数值】",
+            "热度口径：0~100 分位制（越高越热）；本日=当日 / 本周=近5交易日 / 本月=近20交易日。"]
+    for key, title, others in windows:
+        feed.append(f"◆ {title}热度 Top5（{key}）")
+        rows = _top5(key)
+        if not rows:
+            feed.append("  （无）")
+            continue
+        for i, v in enumerate(rows, 1):
+            line = (f"#{i} {str(v.get('theme') or '').strip()}"
+                    f" | 热度{_fstr(v, key)}(排名{_istr(v, _rkey(key))})")
+            for ok, ow in others:
+                line += f" | {ow}热度{_fstr(v, ok)}(排名{_istr(v, _rkey(ok))})"
+            if key == 'today_heat':
+                line += f" | 广度{_fstr(v, 'up_ratio')}% | 样本{_istr(v, 'n')}只"
+                _fl = str(v.get('flags') or '').strip()
+                if _fl:
+                    line += f" | 标记:{_fl}"
+            feed.append(line)
+    feed.append("◆ 数据说明：本段只允许引用上述三组 Top5 中的主题名与数值，数据块里没有的主题一律不得出现；"
+                "本数据块不含个股，禁止编造领涨龙头/容量中军等个股。")
+    return "\n".join(feed)
+
+
+def filter_by_top_themes(result_df, top_n=15, mode='filter'):
+    """
+    主题筛选 / 共振评分
+
+    突破股池(mode='resonance')：主题范围来自 主题热度 V2.4 结果
+    （report_daily/theme_heat_v24_{date}.json）的 本日Top10 ∪ 本周Top10 ∪ 本月Top10，
+    theme_analysis_v2 报告仅用于补充主题元数据（阶段/情绪/主线类型/质量分），
+    且不再对 heat 命中的主题做回避否决；V2.4 缺失时回退「主线+轮动」口径。
+
+    跟踪池(mode='filter')：沿用 report_daily/theme_analysis_v2_{date}.txt 的
+    "核心主线阵营(▶)"与"潜在轮动与接力机会(▸)"作为过滤范围，回避区(✕)否决。
+
+    参数：
+        result_df: 待过滤的股票DataFrame
+        top_n: 保留（兼容旧签名；主题范围为固定集合，不截断）
+        mode: 'filter'=二元过滤（淘汰不匹配股票，用于跟踪池）
+              'resonance'=共振评分（保留全部股票，注入共振系数，用于突破股池）
+
+    返回：
+        mode='filter': 过滤后的DataFrame（仅保留匹配股票）
+        mode='resonance': 全部股票DataFrame + 共振系数列
+    """
+    if result_df.empty:
+        return result_df
+
+    # ===== 1. 主题范围 =====
+    # 突破股池(mode='resonance')：范围改用 主题热度 V2.4 的
+    #   本日Top10 ∪ 本周Top10 ∪ 本月Top10（去重）；theme_analysis_v2 报告只用来
+    #   补充主题元数据（阶段/情绪/主线类型/质量分），不再决定范围，也不再对
+    #   heat 命中的主题做回避否决。V2.4 缺失时回退原「主线+轮动」口径（fail-soft）。
+    # 跟踪池(mode='filter')：沿用 theme_analysis_v2 主线+轮动 + 回避区否决。
+    theme_report_data = _load_mainline_rotation_themes(TRADE_DATE)
+
+    # 主题强度统一改用 主题热度 V2.4（TODAY+WEEK 综合 Heat）；缺失时把 V2 趋势分折算到同一尺度
+    theme_heat = _load_theme_heat(TRADE_DATE)
+    heat_mode = (mode == 'resonance' and bool(theme_heat))
+
+    if heat_mode:
+        keep_themes = set()
+        for _win in ('today_heat', 'week_heat', 'month_heat'):
+            _ranked = [t for t, v in theme_heat.items() if v.get(_win) is not None]
+            _ranked.sort(key=lambda t: -float(theme_heat[t][_win]))
+            keep_themes.update(_ranked[:10])
+        # heat 口径下取消回避否决：报告判「回避」的主题只要进了热度Top10 仍参与匹配
+        junk_themes_info = {}
+        keep_themes_info = {t: theme_report_data.get(t, {}) for t in keep_themes}
+    else:
+        if not theme_report_data:
+            print(f"[主题过滤] 主题评分报告不可用，跳过过滤")
+            # 确保至少有所属主题列
+            if '所属主题' not in result_df.columns:
+                result_df['所属主题'] = ''
+            return result_df
+        # 主线+轮动全部作为过滤范围；回避区(✕)主题单独处理，命中时标注"(回避)"
+        junk_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') == 'junk'}
+        keep_themes_info = {t: v for t, v in theme_report_data.items() if v.get('kind') != 'junk'}
+        keep_themes = set(keep_themes_info.keys())
+
+    def _theme_strength(t, fallback):
+        s = theme_heat.get(t, {}).get('strength')
+        return float(s) if s is not None else _v2_strength(fallback)
+
+    if heat_mode:
+        print(f"\n[主题过滤] 热度V2.4 Top10并集(本日/本周/本月) -> 保留 {len(keep_themes)} 个主题:")
+        for t in sorted(keep_themes, key=lambda x: -(theme_heat.get(x, {}).get('strength') or 0.0)):
+            hv = theme_heat.get(t, {})
+            _rk = lambda k: ('-' if hv.get(k) is None else str(int(hv[k])))
+            print(f"  {t:<16} 排名 本{_rk('today_rank'):>3}/周{_rk('week_rank'):>3}/月{_rk('month_rank'):>3}"
+                  f"  强度{_theme_strength(t, 0.0):<5.1f}"
+                  f"  热度 本{(hv.get('today_heat') or 0):.1f}"
+                  f"/周{(hv.get('week_heat') or 0):.1f}/月{(hv.get('month_heat') or 0):.1f}")
+    else:
+        print(f"\n[主题过滤] 主线+轮动 -> 保留 {len(keep_themes)} 个主题:")
+        for t, info in sorted(
+                keep_themes_info.items(),
+                key=lambda x: (0 if x[1].get('kind') == 'mainline' else 1,
+                               -x[1].get('composite_score', 0))):
+            print(f"  [{info.get('kind', ''):<8}] {t:<16} stage={info.get('stage', ''):<4} "
+                  f"强度{_theme_strength(t, float(info.get('trend_score', 0) or 0)):<5.1f} "
+                  f"涨停{info.get('zt_count', 0)}")
+        if junk_themes_info:
+            print(f"  回避区主题 {len(junk_themes_info)} 个: {', '.join(sorted(junk_themes_info))}")
+    print()
+
+    # ===== 2. 加载主题配置（只保留有效主题）=====
+    theme_cfg = {}
+    cfg_path = os.path.join(BASE_DIR, 'theme.json')
+    if os.path.exists(cfg_path):
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            all_themes = json.load(f).get('HOT_THEMES', {})
+            for theme_name in keep_themes:
+                if theme_name in all_themes:
+                    theme_cfg[theme_name] = all_themes[theme_name]
+
+    # ===== 3. 从 JSON 缓存加载主题-个股映射 =====
+    try:
+        theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = _load_theme_stock_map_from_json()
+    except Exception as e:
+        print(f"[主题过滤] load_theme_stock_map_from_json 失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return _filter_by_top_themes_fallback(result_df, keep_themes, theme_cfg)
+
+    # ===== 4. 遍历股票，匹配主题并注入V6多维评分 =====
+    keep = []
+    matched_themes = []
+    match_scores = []
+    secondary_themes_list = []
+    resonance_coeffs = []  # 共振系数（resonance mode）
+    # V6 多维评分
+    theme_stages = []
+    theme_trends = []
+    theme_capitals = []
+    theme_sentiments = []
+    theme_continuations = []
+    theme_risks = []
+    theme_confidences = []
+    theme_signals = []
+    theme_cont_tags = []
+    theme_leaders = []
+    theme_div_buy = []
+    theme_mainline_types = []
+    theme_mainline_qualities = []
+    theme_mainline_labels = []
+    theme_trading_styles = []
+
+    for _, row in result_df.iterrows():
+        ts_code = row['代码']
+        stock_name = row.get('名称', '')
+        # 收集该股票在所有保留主题中的匹配记录
+        theme_hits = []
+        for theme_name in keep_themes:
+            stocks = theme_stock_map.get(theme_name, {})
+            if ts_code in stocks:
+                s_info = stocks[ts_code]
+                s_score = s_info.get('score', 0) if isinstance(s_info, dict) else 0
+                theme_hits.append((theme_name, s_score))
+
+        if theme_hits:
+            theme_hits.sort(key=lambda x: -x[1])
+            found_theme = theme_hits[0][0]
+            secondary_theme = theme_hits[1][0] if len(theme_hits) >= 2 and theme_hits[1][1] > 0 else ''
+            keep.append(True)
+            matched_themes.append(found_theme)
+            match_scores.append(theme_hits[0][1] if theme_hits[0][1] > 0 else 100)
+            secondary_themes_list.append(secondary_theme)
+            # 从V6结果注入字段
+            vi = keep_themes_info.get(found_theme, {})
+            theme_stages.append(vi.get("stage", ""))
+            theme_trends.append(_theme_strength(found_theme, float(vi.get("trend_score", 0) or 0)))
+            theme_capitals.append(vi.get("capital_score", 0))
+            theme_sentiments.append(vi.get("sentiment_score", 0))
+            theme_continuations.append(vi.get("continuation_score", 0))
+            theme_risks.append(vi.get("risk_score", 0))
+            theme_confidences.append(vi.get("confidence", 0))
+            theme_signals.append(vi.get("trade_signal", ""))
+            theme_cont_tags.append(vi.get("continuation_tag", ""))
+            theme_leaders.append(vi.get("leader", ""))
+            theme_div_buy.append(vi.get("divergence_buy", ""))
+            theme_mainline_types.append(vi.get("mainline_type", ""))
+            theme_mainline_qualities.append(vi.get("mainline_quality", 0))
+            theme_mainline_labels.append(vi.get("mainline_quality_label", ""))
+            theme_trading_styles.append(vi.get("trading_style", ""))
+            # 共振系数 = f(信号, 阶段, 延续分)（阶段用 V3 生命周期映射后的 V6 阶段）
+            resonance_coeffs.append(_calc_resonance_coeff(
+                vi.get("trade_signal", ""),
+                vi.get("stage_v6", vi.get("stage", "")),
+                vi.get("continuation_score", 50),
+            ))
+        else:
+            # 无主线/轮动主题匹配：检查是否属于回避区主题（标注"(回避)"，不入选）
+            junk_hit = ''
+            for jname in junk_themes_info:
+                if ts_code in theme_stock_map.get(jname, {}):
+                    junk_hit = jname
+                    break
+            if junk_hit:
+                jv = junk_themes_info[junk_hit]
+                keep.append(False)
+                matched_themes.append(f"{junk_hit}(回避)")
+                match_scores.append(0)
+                secondary_themes_list.append('')
+                theme_stages.append(jv.get("stage", ""))
+                theme_trends.append(_theme_strength(junk_hit, float(jv.get("trend_score", 0) or 0)))
+                theme_capitals.append(jv.get("capital_score", 0))
+                theme_sentiments.append(jv.get("sentiment_score", 0))
+                theme_continuations.append(jv.get("continuation_score", 0))
+                theme_risks.append(jv.get("risk_score", 0))
+                theme_confidences.append(jv.get("confidence", 0))
+                theme_signals.append(jv.get("trade_signal", "回避"))
+                theme_cont_tags.append(jv.get("continuation_tag", ""))
+                theme_leaders.append(jv.get("leader", ""))
+                theme_div_buy.append(jv.get("divergence_buy", ""))
+                theme_mainline_types.append(jv.get("mainline_type", "非主线"))
+                theme_mainline_qualities.append(jv.get("mainline_quality", 0))
+                theme_mainline_labels.append(jv.get("mainline_quality_label", ""))
+                theme_trading_styles.append(jv.get("trading_style", ""))
+                # 回避区主题：共振系数压到最低
+                resonance_coeffs.append(0.3)
+            else:
+                keep.append(False)
+                matched_themes.append('')
+                match_scores.append(0)
+                secondary_themes_list.append('')
+                theme_stages.append('')
+                theme_trends.append(0)
+                theme_capitals.append(0)
+                theme_sentiments.append(0)
+                theme_continuations.append(0)
+                theme_risks.append(0)
+                theme_confidences.append(0)
+                theme_signals.append('')
+                theme_cont_tags.append('')
+                theme_leaders.append('')
+                theme_div_buy.append('')
+                theme_mainline_types.append('')
+                theme_mainline_qualities.append(0)
+                theme_mainline_labels.append('')
+                theme_trading_styles.append('')
+                # 无主题匹配：基础共振系数 0.5
+                resonance_coeffs.append(0.5)
+
+    # ===== 5. 过滤/共振 处理 =====
+    before = len(result_df)
+
+    if mode == 'filter':
+        # ── 二元过滤模式：只保留匹配股票（跟踪池） ──
+        result_df = result_df[keep].reset_index(drop=True)
+        kept_indices = [i for i in range(len(keep)) if keep[i]]
+
+        result_df['所属主题'] = [matched_themes[i] for i in kept_indices]
+        result_df['主题匹配度'] = [match_scores[i] for i in kept_indices]
+        result_df['次强主题'] = [secondary_themes_list[i] for i in kept_indices]
+        result_df['共振系数'] = [resonance_coeffs[i] for i in kept_indices]
+        # V6 多维评分
+        result_df['所属状态'] = [theme_cont_tags[i] for i in kept_indices]
+        result_df['主题趋势分'] = [theme_trends[i] for i in kept_indices]
+        result_df['主题情绪分'] = [theme_sentiments[i] for i in kept_indices]
+        result_df['主题阶段'] = [theme_stages[i] for i in kept_indices]
+        result_df['主题资金分'] = [theme_capitals[i] for i in kept_indices]
+        result_df['主题延续分'] = [theme_continuations[i] for i in kept_indices]
+        result_df['主题风险分'] = [theme_risks[i] for i in kept_indices]
+        result_df['主题置信度'] = [theme_confidences[i] for i in kept_indices]
+        result_df['主题信号'] = [theme_signals[i] for i in kept_indices]
+        result_df['主题龙头'] = [theme_leaders[i] for i in kept_indices]
+        result_df['非一日游阶段'] = [theme_stages[i] for i in kept_indices]
+        result_df['确认天数'] = [0 for _ in kept_indices]
+        result_df['龙头序列'] = [theme_leaders[i] for i in kept_indices]
+        result_df['分歧买点'] = [theme_div_buy[i] for i in kept_indices]
+        result_df['主线类型'] = [theme_mainline_types[i] for i in kept_indices]
+        result_df['主线质量分'] = [theme_mainline_qualities[i] for i in kept_indices]
+        result_df['主线质量'] = [theme_mainline_labels[i] for i in kept_indices]
+        result_df['交易方式'] = [theme_trading_styles[i] for i in kept_indices]
+    else:
+        # ── 共振模式：保留全部股票，不匹配的注入空值（突破股池） ──
+        kept_indices = list(range(len(result_df)))
+        result_df = result_df.reset_index(drop=True)
+        result_df['共振系数'] = resonance_coeffs
+        result_df['所属主题'] = matched_themes
+        result_df['主题匹配度'] = match_scores
+        result_df['次强主题'] = secondary_themes_list
+        result_df['所属状态'] = theme_cont_tags
+        result_df['主题趋势分'] = theme_trends
+        result_df['主题情绪分'] = theme_sentiments
+        result_df['主题阶段'] = theme_stages
+        result_df['主题资金分'] = theme_capitals
+        result_df['主题延续分'] = theme_continuations
+        result_df['主题风险分'] = theme_risks
+        result_df['主题置信度'] = theme_confidences
+        result_df['主题信号'] = theme_signals
+        result_df['主题龙头'] = theme_leaders
+        result_df['非一日游阶段'] = theme_stages
+        result_df['确认天数'] = [0] * len(result_df)
+        result_df['龙头序列'] = theme_leaders
+        result_df['分歧买点'] = theme_div_buy
+        result_df['主线类型'] = theme_mainline_types
+        result_df['主线质量分'] = theme_mainline_qualities
+        result_df['主线质量'] = theme_mainline_labels
+        result_df['交易方式'] = theme_trading_styles
+
+    print(f"[主题过滤] {'共振评分' if mode=='resonance' else '过滤'}后 {before} -> {len(result_df)} 只 (mode={mode})")
+    return result_df
+
+
+def _calc_resonance_coeff(signal, stage, continuation_score):
+    """
+    计算个股-主题共振系数 (0.5 ~ 1.5)
+
+    核心逻辑：
+      个股技术与主题热度的共振强度。
+      主题越强、阶段越早期、延续分越高 → 共振系数越大 → 评分加权越高。
+      无主题匹配时系数=0.5（不死，但有惩罚）。
+
+    公式：
+      共振系数 = signal_weight * stage_weight * cont_weight
+        signal_weight: 强买1.3 / 看多1.15 / 关注1.0 / 持有0.9 / 中性0.8
+        stage_weight:  启动1.2 / 主升1.1 / 调整1.0 / 筑底0.9 / 高潮0.8 / 衰退0.7
+        cont_weight:   1.0 + (continuation_score - 50)/200
+        范围：0.5 ~ 1.5
+    """
+    signal_map = {'强买': 1.30, '看多': 1.15, '关注': 1.00, '持有': 0.90, '中性': 0.80}
+    stage_map = {'启动': 1.20, '主升': 1.10, '调整': 1.00, '筑底': 0.90, '高潮': 0.80, '衰退': 0.70}
+    signal_weight = signal_map.get(signal, 0.60)
+    stage_weight = stage_map.get(stage, 0.80)
+    cont_weight = 1.0 + (float(continuation_score) - 50) / 200
+    coeff = signal_weight * stage_weight * cont_weight
+    return round(max(min(coeff, 1.5), 0.5), 2)
+
+
+def _filter_by_top_themes_fallback(result_df, valid_themes, theme_cfg):
+    """降级版主题匹配算法：当match_theme_stocks不可用时使用"""
+    print("[主题过滤] 使用降级匹配逻辑")
+    
+    keep = []
+    matched_themes = []
+    match_scores = []
+    
+    for _, row in result_df.iterrows():
+        ts_code = row['代码']
+        stock_name = row.get('名称', '')
+        
+        best_theme = ''
+        best_score = 0
+        
+        # 检查核心公司
+        for theme_name in valid_themes:
+            cfg = theme_cfg.get(theme_name, {})
+            core_companies = cfg.get('core_companies', [])
+            if stock_name in core_companies:
+                best_theme = theme_name
+                best_score = 100
+                break
+        
+        if best_theme:
+            keep.append(True)
+            matched_themes.append(best_theme)
+            match_scores.append(best_score)
+        else:
+            keep.append(False)
+            matched_themes.append('')
+            match_scores.append(0)
+    
+    before = len(result_df)
+    result_df = result_df[keep].reset_index(drop=True)
+    result_df['所属主题'] = [matched_themes[i] for i in range(len(matched_themes)) if keep[i]]
+    result_df['主题匹配度'] = [match_scores[i] for i in range(len(match_scores)) if keep[i]]
+    
+    print(f"[主题过滤] 降级过滤后 {before} -> {len(result_df)} 只")
+    return result_df
+
+
+def add_themes_to_stocks_no_filter(result_df):
+    """
+    给股票添加主题信息，但不做过滤（保留所有股票）
+    
+    参数：
+        result_df: 待添加主题的股票DataFrame
+        
+    返回：
+        添加了主题字段的DataFrame（保留所有股票）
+    """
+    if result_df.empty:
+        return result_df
+    
+    # 1. 加载 V6 引擎结果，获取所有主题及状态
+    keep_themes = []
+    theme_state_map = {}
+    
+    try:
+        # 主题评分改用 Theme Score V2（trade_action/lifecycle/mainline等）
+        v2_data = _load_v2_theme_scores(TRADE_DATE)
+        if v2_data:
+            for r in v2_data:
+                tname = str(r.get('theme', ''))
+                if tname:
+                    keep_themes.append(tname)
+                    theme_state_map[tname] = {
+                        'theme_state': r.get('trade_action', '') or r.get('theme_state', ''),
+                        'trend_score': float(r.get('trend_score', 0) or 0),
+                        'sentiment_score': float(r.get('sentiment_score', 0) or 0),
+                        'composite_score': float(r.get('composite_score', 0) or 0),
+                        'forward_alpha': float(r.get('migration_score', 0) or 0),
+                        'forward_signal': r.get('target_state', '') or r.get('migration_direction', ''),
+                        'alpha_gate': '',
+                        'cycle_phase': r.get('lifecycle', ''),
+                        'confirmed_days': 0,
+                        'leader_sequence': r.get('leader_name', ''),
+                    }
+        else:
+            # V2 不可用时回退 V8
+            v6_data = _load_v6_result(TRADE_DATE)
+            if v6_data:
+                for r in v6_data:
+                    tname = r.get('theme', '')
+                    if tname:
+                        keep_themes.append(tname)
+                        theme_state_map[tname] = {
+                            'theme_state': r.get('trade_signal', ''),
+                            'trend_score': float(r.get('trend_score', 0) or 0),
+                            'sentiment_score': float(r.get('sentiment_score', 0) or 0),
+                            'composite_score': float(r.get('composite_score', 0) or 0),
+                            'forward_alpha': float(r.get('forward_alpha', 0) or 0),
+                            'forward_signal': r.get('forward_signal', ''),
+                            'alpha_gate': r.get('alpha_gate', ''),
+                            'cycle_phase': r.get('stage', ''),
+                            'confirmed_days': 0,
+                            'leader_sequence': r.get('leader', ''),
+                        }
+    except Exception as e:
+        print(f"[添加主题] 读取主题评分失败: {e}")
+
+    # 主题强度统一改用 主题热度 V2.3（TODAY+WEEK 综合 Heat）；
+    #    V2/V8 仅保留其独有的交易态字段（theme_state / lifecycle / 龙头等），
+    #    未被 V2.3 覆盖的主题把 V2/V8 趋势分折算到同一尺度
+    theme_heat = _load_theme_heat(TRADE_DATE)
+    for tname, st in theme_state_map.items():
+        s = theme_heat.get(tname, {}).get('strength')
+        st['trend_score'] = float(s) if s is not None else _v2_strength(st.get('trend_score', 0))
+    if theme_heat and not keep_themes:          # V2/V8 均不可用：主题范围改由 V2.3 提供
+        keep_themes = sorted(theme_heat)
+        theme_state_map = {t: {'theme_state': '', 'trend_score': r['strength'],
+                               'sentiment_score': 0, 'composite_score': 0,
+                               'forward_alpha': 0, 'forward_signal': '', 'alpha_gate': '',
+                               'cycle_phase': '', 'confirmed_days': 0, 'leader_sequence': ''}
+                           for t, r in theme_heat.items() if r['strength'] is not None}
+
+    if not keep_themes:
+        print("[添加主题] 无主题数据，仅返回原始DataFrame")
+        return result_df
+    
+    # 2. 加载主题配置
+    theme_cfg = {}
+    cfg_path = os.path.join(BASE_DIR, 'theme.json')
+    if os.path.exists(cfg_path):
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            all_themes_cfg = json.load(f).get('HOT_THEMES', {})
+            for theme_name in keep_themes:
+                if theme_name in all_themes_cfg:
+                    theme_cfg[theme_name] = all_themes_cfg[theme_name]
+    
+    # 3. 从 JSON 缓存加载主题-个股映射
+    try:
+        theme_stock_map, name_map_basic, stock_basic_industry, stock_concepts = _load_theme_stock_map_from_json()
+    except Exception as e:
+        print(f"[添加主题] load_theme_stock_map_from_json 失败: {e}")
+        return result_df
+    
+    # 4. 遍历股票，匹配主题并注入主题状态
+    matched_themes = []
+    match_scores = []
+    theme_states_list = []
+    theme_trends = []
+    theme_sentiments = []
+    cycle_phases = []
+    confirmed_days_list = []
+    leader_sequences_list = []
+    secondary_themes_list = []
+    
+    for _, row in result_df.iterrows():
+        ts_code = row['代码']
+        stock_name = row.get('名称', '')
+        theme_hits = []
+        for theme_name in keep_themes:
+            stocks = theme_stock_map.get(theme_name, {})
+            if ts_code in stocks:
+                s_info = stocks[ts_code]
+                s_score = s_info.get('score', 0) if isinstance(s_info, dict) else 0
+                theme_hits.append((theme_name, s_score))
+        
+        if theme_hits:
+            theme_hits.sort(key=lambda x: -x[1])
+            found_theme = theme_hits[0][0]
+            secondary_theme = theme_hits[1][0] if len(theme_hits) >= 2 and theme_hits[1][1] > 0 else ''
+            matched_themes.append(found_theme)
+            match_scores.append(theme_hits[0][1] if theme_hits[0][1] > 0 else 100)
+            secondary_themes_list.append(secondary_theme)
+            st = theme_state_map.get(found_theme, {})
+            theme_states_list.append(st.get("theme_state", ""))
+            theme_trends.append(st.get("trend_score", 0))
+            theme_sentiments.append(st.get("sentiment_score", 0))
+            cycle_phases.append(st.get("cycle_phase", ""))
+            confirmed_days_list.append(st.get("confirmed_days", 0))
+            leader_sequences_list.append(st.get("leader_sequence", ""))
+        else:
+            matched_themes.append('')
+            match_scores.append(0)
+            secondary_themes_list.append('')
+            theme_states_list.append('')
+            theme_trends.append(0)
+            theme_sentiments.append(0)
+            cycle_phases.append('')
+            confirmed_days_list.append(0)
+            leader_sequences_list.append('')
+    
+    # 5. 注入字段（不过滤，保留所有股票）
+    result_df = result_df.copy()
+    result_df['所属主题'] = matched_themes
+    result_df['主题匹配度'] = match_scores
+    result_df['次强主题'] = secondary_themes_list
+    result_df['所属状态'] = theme_states_list
+    result_df['主题趋势分'] = theme_trends
+    result_df['主题情绪分'] = theme_sentiments
+    result_df['非一日游阶段'] = cycle_phases
+    result_df['确认天数'] = confirmed_days_list
+    result_df['龙头序列'] = leader_sequences_list
+    
+    print(f"[添加主题] 已给 {len(result_df)} 只股票添加主题信息，其中 {sum(1 for t in matched_themes if t)} 只有匹配主题")
+    return result_df
+
+
+# =========================
+# 主程序
+# =========================
+def run(target_date=None, simple_mode=False):
+    """运行量化选股分析
+    
+    Args:
+        target_date: 目标日期，格式为 'YYYYMMDD'，默认为当前交易日
+        simple_mode: 简易模式，只输出个股和评分，不进行AI分析、不发送微信
+    """
+    global TRADE_DATE
+    
+    # 如果指定了目标日期，验证并设置
+    if target_date:
+        target_date = str(target_date)
+        TRADE_DATE = validate_trade_date(target_date)
+        print(f"\n{'='*60}")
+        print(f"[回溯模式] 目标日期: {TRADE_DATE}")
+        print(f"{'='*60}\n")
+
+    er20_top2_text = _format_er20_top2(_load_er20_top2(TRADE_DATE))
+    print(f"\n{er20_top2_text}\n")
+    
+    # =========================
+    # 主题状态全景（来自 Theme Score V2 引擎，含阶段迁移预测）
+    # =========================
+    print("\n========== 主题状态全景（来自 Theme Score V2 引擎）==========\n")
+    sector_text_his = ""
+    try:
+        # 优先加载 V2 评分结果
+        v2_data = _load_v2_theme_scores(TRADE_DATE)
+        if v2_data:
+            lines = []
+            date_str = f" ({TRADE_DATE})" if TRADE_DATE else ""
+            lines.append(f"━━ V2 Theme Score 引擎报告{date_str} ━━")
+            lines.append(f"共{len(v2_data)}个主题 | 趋势分(长期动量)+情绪分(短期爆发)→综合分 | 含阶段迁移预测&交易动作建议")
+            lines.append("")
+
+            # ── 排名表 ──
+            lines.append(f"{'#':<3} {'主题':<12} {'趋势':<6} {'情绪':<6} {'综合':<6} {'涨停':<4} {'状态':<8} {'迁移分':<6} {'目标':<8} {'交易动作':<8}")
+            lines.append("")
+            for i, r in enumerate(v2_data[:30]):
+                lines.append(
+                    f"{i+1:<3} {r['theme']:<12} {r['trend_score']:<6.1f} {r['sentiment_score']:<6.1f} "
+                    f"{r['composite_score']:<6.1f} {r.get('zt_count',0):<4} {r.get('theme_state',''):<8} "
+                    f"{r.get('migration_score',0):<6.1f} {r.get('target_state',''):<8} {r.get('trade_action',''):<8}"
+                )
+            lines.append("")
+
+            # ── 迁移预测详情 ──
+            lines.append("【阶段迁移预测（未来3-5个交易日）- 6因子分解】")
+            lines.append(f"{'#':<3} {'主题':<12} {'P':<5} {'M':<5} {'C':<5} {'$':<5} {'L':<5} {'R':<5} {'方向':<6} {'目标':<8} {'动作':<8} {'理由'}")
+            lines.append("")
+            for i, r in enumerate(v2_data[:7]):
+                mf = r.get('migration_factors', {}) or {}
+                direction_icon = '↑向上' if r.get('migration_direction') == 'upward' else ('↓向下' if r.get('migration_direction') == 'downward' else '→震荡')
+                lines.append(
+                    f"{i+1:<3} {r['theme']:<12} "
+                    f"{mf.get('proximity',0):<5.0f} {mf.get('momentum',0):<5.0f} {mf.get('confirmation',0):<5.0f} "
+                    f"{mf.get('money_resonance',0):<5.0f} {mf.get('leader_health',0):<5.0f} {mf.get('regime',0):<5.0f} "
+                    f"{direction_icon:<6} {r.get('target_state',''):<8} {r.get('trade_action',''):<8} {r.get('action_reason','')}"
+                )
+            lines.append("")
+
+            # ── 龙头/中军一览 ──
+            lines.append("【龙头 & 中军一览（V2引擎评分）】")
+            for i, r in enumerate(v2_data[:7]):
+                leader = r.get('leader_name', '') or '-'
+                core = r.get('core_name', '') or '-'
+                lines.append(f"  {r['theme']:<12} 龙头:{leader} 中军:{core}")
+            lines.append("")
+
+            sector_text_his = "\n".join(lines)
+        else:
+            print(f"  V2评分数据不可用")
+
+            # 回退：使用原 FUSION/V8 引擎当兜底
+            v6_data = _load_fusion_result(TRADE_DATE)
+            if v6_data:
+                lines = []
+                is_fusion = '融合分' in (v6_data[0] if v6_data else {})
+                if is_fusion:
+                    meta = {}
+                    try:
+                        fusion_path = os.path.join(BASE_DIR, 'theme_alpha_v6', 'cache',
+                                                   f'theme_fusion_rank_{TRADE_DATE}.json')
+                        if os.path.exists(fusion_path):
+                            with open(fusion_path, encoding='utf-8') as _ff:
+                                _fp = json.load(_ff)
+                                meta = _fp.get("meta", {})
+                    except Exception:
+                        pass
+                    mode = meta.get('模式', '')
+                    date_str = f" ({TRADE_DATE})" if TRADE_DATE else ""
+                    lines.append(f"FUSION 融合排名报告{date_str} | {mode} | 共{len(v6_data)}个主题（V2数据不可用，回退）")
+                    lines.append(f"{'#':<3} {'主题':<14} {'融合分':<6} {'V6':<6} {'V8':<6} {'奖惩':<5} {'信号':<18} {'操作建议':<10}")
+                    lines.append("")
+                    for i, r in enumerate(v6_data[:30]):
+                        lines.append(f"{i+1:<3} {r.get('主题',''):<14} {r.get('融合分',0):<6.1f} "
+                                     f"{r.get('V6分',0):<6.1f} {r.get('V8分',0):<6.1f} "
+                                     f"{r.get('奖惩',0):<5} {r.get('信号',''):<18} {r.get('操作建议',''):<10}")
+                else:
+                    v6_date = v6_data[0].get('trade_date', '')
+                    date_str = f" ({v6_date})" if v6_date else ""
+                    source_label = "V8.0" if any('T_start' in r for r in v6_data[:5]) else "V6.2"
+                    lines.append(f"Theme Alpha {source_label} 引擎报告{date_str} (共{len(v6_data)}个主题, V2回退)")
+                    lines.append(f"{'#':<3} {'主题':<14} {'综合':<6} {'D阶段':<8} {'动作':<12} {'T_s':<4} {'T_M':<4} {'R_v':<6} {'趋势':<6} {'资金':<6} {'信号':<6}")
+                    lines.append("")
+                    for i, r in enumerate(v6_data[:30]):
+                        t_start = r.get('T_start', '')
+                        t_ma = r.get('T_MA', '')
+                        r_vol = r.get('R_volume', '')
+                        d_stage = r.get('D阶段', r.get('stage', ''))
+                        d_action = r.get('策略动作', '')
+                        if t_start == '' or t_start is None: t_start = '-'
+                        if t_ma == '' or t_ma is None: t_ma = '-'
+                        if r_vol == '' or r_vol is None: r_vol = '-'
+                        else: r_vol = f"{r_vol:.2f}" if isinstance(r_vol, (int, float)) else r_vol
+                        lines.append(f"{i+1:<3} {r.get('theme',''):<14} {r.get('composite_score',0):<6.1f} "
+                                     f"{str(d_stage):<8} {str(d_action):<12} "
+                                     f"{str(t_start):<4} {str(t_ma):<4} {str(r_vol):<6} "
+                                     f"{r.get('trend_score',0):<6.1f} {r.get('capital_score',0):<6.1f} "
+                                     f"{r.get('trade_signal',''):<6}")
+                lines.append("")
+                sector_text_his = "\n".join(lines)
+            else:
+                print(f"  引擎结果均不可用")
+                sector_text_his = ""
+    except Exception as e:
+        print(f"⚠️ 读取主题状态简报失败: {e}")
+        import traceback
+        traceback.print_exc()
+        sector_text_his = ""
+    
+    emotion_stage = "强"
+    
+    # 市场情绪 -> 直接读取 market_analysis.py 已生成的 txt 报告
+    ma_txt, ma_position, ma_reason = _load_market_analysis_result(TRADE_DATE)
+
+    # 从txt中提取趋势分和市场状态（用于策略判断）
+    import re as _re
+    _m_ts = _re.search(r'总趋势分.*?:\s*(\d+\.?\d*)', ma_txt)
+    ts = float(_m_ts.group(1)) if _m_ts else 50.0
+    _m_ms = _re.search(r'市场状态:\s*(.+)', ma_txt)
+    ms = _m_ms.group(1).strip() if _m_ms else "震荡"
+    _m_it = _re.search(r'指数趋势.*?:\s*(\d+\.?\d*)', ma_txt)
+    it = float(_m_it.group(1)) if _m_it else 50.0
+    _m_tt = _re.search(r'主题趋势.*?:\s*(\d+\.?\d*)', ma_txt)
+    tt = float(_m_tt.group(1)) if _m_tt else 50.0
+    tp = ma_position
+    pr = ""
+
+    # 根据大盘状态确定操作策略
+    if "主升浪" in ms or ts >= 75:
+        market_action = "大盘强势，聚焦强势股池追涨"
+    elif "上升" in ms or ts >= 50:
+        market_action = "大盘偏强，强势股池为主，低吸辅助"
+    elif "退潮" in ms or "主跌" in ms or ts < 40:
+        market_action = "大盘弱势，重点关注低吸股池潜伏"
+    else:
+        market_action = "大盘经历中期调整，关注中线股池B浪机会"
+
+    # P0 趋势硬门槛开关：仅主升浪/趋势偏强市启用；
+    # 弱市(退潮/主跌/震荡)突破多为假突破或超跌反抽，硬剔反而误杀唯一有效的超跌反弹
+    _p0_on = ("主升浪" in ms) or ts >= 60
+    print(f"[P0环境] 总趋势分{ts:.0f} 市场状态:{ms} → 大周期趋势硬门槛{'启用' if _p0_on else '关闭(弱市保留超跌反弹)'}")
+
+    # 直接用 txt 报告原文作为 emotion_text
+    emotion_text = ma_txt if ma_txt else "（无大盘分析报告）"
+    
+    # 过滤掉【指数趋势分】【市场趋势总评分】【市场情绪】三个区块（手机端冗余）
+    emotion_text = _re.sub(
+        r'【指数趋势分】[^\n]*\n?', '', emotion_text
+    )
+    emotion_text = _re.sub(
+        r'【市场趋势总评分】[^\n]*\n?', '', emotion_text
+    )
+    emotion_text = _re.sub(
+        r'【市场情绪】[^\n]*\n?', '', emotion_text
+    )
+
+    # 追加 MarketNode 大盘节点结论（第一段「大盘分析」的数据补充）
+    _mn_block = _load_marketnode_block(TRADE_DATE)
+    if _mn_block:
+        emotion_text = f"{emotion_text}\n\n{_mn_block}"
+
+    # 追加 V10.0 五状态机环境结论（风险档位 + 目标仓位）
+    _v10_block = _load_v10_regime_block(TRADE_DATE)
+    if _v10_block:
+        emotion_text = f"{emotion_text}\n\n{_v10_block}"
+
+    print(emotion_text)
+
+    result = []
+
+    # 批量预取：解决高频API调用问题
+    # 在循环之前一次性下载所有股票数据到本地缓存
+
+    market = get_market()
+    if market is not None and not market.empty:
+        all_codes = market['ts_code'].tolist()
+        print(f"\n[批量预取] 共 {len(all_codes)} 只股票，开始下载历史数据...")
+        batch_prefetch_hist_data(all_codes)
+        print(f"[批量预取] 完成，后续循环将命中本地缓存\n")
+
+    # 注: 原「盘后技术因子按日快照预计算(factor_snapshot_cache)」已移除。
+    # realtime_theme_monitor 的 KDJ/RSI/ATR 改为从自身已加载的 stock_klines
+    # 就地派生(公式与该快照表口径一致)，不再需要每日对全市场做约250交易日
+    # 预热的跑批(实测单次约 700s)。
+
+    total = len(market)
+
+    for idx, row in market.iterrows():
+
+        ts_code = row['ts_code']
+
+        #print(f"[{idx+1}/{total}] {ts_code}")
+
+        try:
+
+            hist = get_hist_data(ts_code)
+
+            if hist is None or len(hist) < 80:
+                continue
+
+            # ============================================================
+            # 20261003：候选来源改为「全市场独立双底扫描」。
+            # 原 strategy() 是「放量突破」口径的强股前置过滤（总市值≥80亿、60日
+            # 振幅、均线多头、不涨停等），挑的是"高位突破强股"；而双底是"大涨后
+            # 深调、右底低吸"，两者语义互斥——实跑证实当日全市场双底命中集合与
+            # strategy() 候选池零重叠，只要双底检测还挂在 strategy() 下游就必然
+            # 空池。故此处不再调用 strategy()。
+            # 主题共振同样不再作准入（仅作排名加分，见 _apply_pool_rank_score）。
+            # 保留本池既有硬约束：总市值≥80亿 / 排除北交所 / 排除 ST / 排除今日涨停。
+            # ============================================================
+            if (row.get('total_mv', 0) or 0) / 10000 < 80:
+                continue
+            if ts_code.startswith('1') or ts_code.startswith('2'):      # 北交所
+                continue
+            _nm = str(row.get('name', ''))
+            if _nm.upper().startswith('ST') or _nm.upper().startswith('*ST'):
+                continue
+            _is_cyb_kcb = (ts_code.startswith('3') or ts_code.startswith('688')
+                           or ts_code.startswith('689'))
+            _zt_line = 1.198 if _is_cyb_kcb else 1.098
+            if len(hist) >= 2 and float(hist['close'].iloc[-2]) > 0:
+                if float(hist['close'].iloc[-1]) / float(hist['close'].iloc[-2]) >= _zt_line:
+                    continue                                            # 今日已涨停 → 低吸无买点
+
+            _dbl_row = detect_right_bottom(ts_code)
+            if not _dbl_row.get('dbl_hit'):
+                continue
+
+            result.append({
+                '代码': ts_code,
+                '名称': row.get('name', ''),
+                '现价': row.get('close', 0),
+                '涨跌幅': row.get('pct_chg', 0),
+                '成交额': row.get('amount', 0),
+                '总市值（亿元）': row.get('total_mv', 0)/10000,
+                'total_market_cap': row.get('total_mv', 0) * 10000,  # 转换为元
+                'market_cap': row.get('total_mv', 0) * 10000,       # 兼容字段
+                '双底结构': _dbl_row,                                # 双底几何（下游直接复用）
+            })
+
+            print("✅ 命中双底:", ts_code, row.get('name', ''))
+               
+        except Exception as e:
+
+            print(ts_code, e)
+
+            continue
+
+
+    # =========================
+    # 输出
+    # =========================
+    result_df = pd.DataFrame(result)
+
+    if result_df.empty:
+        print("无结果")
+
+
+    # =========================
+    # 主题过滤：注入所属主题等字段
+    # =========================
+    if not result_df.empty:
+        result_df = filter_by_top_themes(result_df, mode='resonance')
+
+    # 20261003：全市场扫描后主题常为空（映射未覆盖 / 所属主题未进当日热点），
+    # 用所属行业兜底，保证报告第7段「主题」字段有内容可写。
+    _industry_map = build_industry_map()
+    if _industry_map:
+        print(f"[双底股池] 所属行业兜底映射已加载 {len(_industry_map)} 只")
+    _theme_index = build_stock_theme_index()
+    if _theme_index:
+        print(f"[双底股池] V2.4 个股↔主题对照索引已加载 {len(_theme_index)} 只")
+    
+
+    # =========================
+    # 突破股池：统一评分 + 二波形态 + 筹码
+    # =========================
+    # 基本面 Bull 评分注入（读取 multi_factor_picker 每日生成的 bull_stocks_all.csv）
+    bull_score_map = {}
+    try:
+        _bull_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily", "bull_stocks_all.csv")
+        if os.path.exists(_bull_path):
+            _bull_df = pd.read_csv(_bull_path, dtype={'code': str}, encoding='utf-8-sig')
+            for _bidx, _br in _bull_df.iterrows():
+                bull_score_map[str(_br['code']).zfill(6)] = (_br.get('最终分', 0) or 0, str(_br.get('等级', '')))
+            print(f"[突破股池] 加载基本面Bull评分 {len(bull_score_map)} 只 (来源: {_bull_path})")
+        else:
+            print(f"[突破股池] 未找到Bull评分文件: {_bull_path}")
+    except Exception as _e:
+        print(f"[突破股池] Bull评分加载失败: {_e}")
+
+    # V11.1：换手率负向因子需在「候选池内」取截面分位，必须在打分循环前先建好
+    try:
+        _n_pct = build_pool_turnover_pct(result_df['代码'].tolist())
+        print(f"[突破股池] 换手率池内分位构建: {_n_pct} 只"
+              f"{'' if _n_pct else '（不足5只，本轮换手率因子回退中性分50）'}")
+    except Exception as _e:
+        print(f"[突破股池] 换手率分位构建失败，回退中性分: {_e}")
+
+    ranked_stocks = []
+    for idx, row in result_df.iterrows():
+        ts_code = row['代码']
+        name = row['名称']
+        theme_name = str(row.get('所属主题', ''))
+        
+        df = get_hist_data(ts_code)
+        if df is None or len(df) < 20 or not isinstance(df, pd.DataFrame) or 'close' not in df.columns:
+            continue
+        
+        try:
+            today_pct = ((df['close'].iloc[-1] / df['close'].iloc[-2]) - 1) * 100 if len(df) >= 2 else float(row.get('涨跌幅', 0))
+            today_amount = 0.0
+            today_close = float(df['close'].iloc[-1])
+            if 'amount' in df.columns:
+                today_amount = round(float(df['amount'].iloc[-1]) / 100000, 2)
+            today_turnover = get_cached_turnover(ts_code)
+            
+            theme_trend_score = float(row.get('主题趋势分', 0))
+            theme_sentiment_score = float(row.get('主题情绪分', 0))
+            _ml_type = str(row.get('主线类型', ''))
+            _ml_quality = float(row.get('主线质量分', 0) or 0)
+            # 共振系数统一纳入软天花板计算（避免硬顶扎堆）
+            resonance_coeff = float(row.get('共振系数', 1.0))
+            integrated_score, recommendation, details, failure_prob = calc_unified_stock_score(
+                df, ts_code, theme_name, theme_trend_score, theme_sentiment_score,
+                mainline_type=_ml_type, mainline_quality=_ml_quality,
+                extra_mult=resonance_coeff,
+            )
+            integrated_score_orig = details.get('基础裸分', integrated_score)
+            tech = calc_tech_indicators(df, ts_code, TRADE_DATE)
+            # 基本面 Bull 评分（无则回退 details，均无视为数据不足）
+            _bull_rc = bull_score_map.get(str(ts_code).split('.')[0].zfill(6), (0, ''))
+            # 20261003：主题展示三级兜底 —— 当日热点主题 → V2.4 个股↔主题对照 → 所属行业
+            _industry_name = _industry_map.get(str(ts_code).strip(), '')
+            _v24_theme_str = '/'.join(_theme_index.get(str(ts_code).strip(), [])[:3])
+            _theme_disp = theme_name or (
+                f"{_v24_theme_str}（未入当前热点主题）" if _v24_theme_str
+                else (f"{_industry_name}（未入当前热点主题）" if _industry_name else "未匹配主题"))
+            
+            stock_data = {
+                '代码': ts_code, '名称': name, '现价': today_close,
+                '涨跌幅': today_pct, '成交额': today_amount, '换手率': today_turnover,
+                '所属主题': theme_name, '所属行业': _industry_name, '主题展示': _theme_disp,
+                '整合评分': integrated_score, '失败概率': failure_prob,
+                '推荐理由': recommendation,
+                'Alpha评分': _bull_rc[0] if _bull_rc[0] else details.get('Alpha评分', 0),
+                'Alpha信号': _bull_rc[1] or details.get('Alpha信号', ''),
+                '量能爆发': details.get('量能爆发', 0),
+                '所属状态': str(row.get('所属状态', '')),
+                '主题趋势分': float(row.get('主题趋势分', 0)), '主题情绪分': float(row.get('主题情绪分', 0)),
+                '非一日游阶段': str(row.get('非一日游阶段', '')),
+                '确认天数': int(row.get('确认天数', 0)),
+                '龙头序列': str(row.get('龙头序列', '')),
+                '主线类型': str(row.get('主线类型', '')),
+                '主线质量分': float(row.get('主线质量分', 0) or 0),
+                '共振系数': round(resonance_coeff, 2),
+                '原始整合评分': round(integrated_score_orig, 1),
+                'YRI历史总分': details.get('YRI历史总分', 0), 'YRI标签': details.get('YRI标签', ''),
+                'YRI最大连板': details.get('YRI最大连板', 0),
+                # V10 完整评分详情（传递给AI prompt）
+                '评分详情': details,
+                # 强势股池回测优化：保存买入日时点特征用于硬过滤
+                # 回测验证：量比<1胜率0%, 距MA20>20%胜率9%, 近20日涨幅>40%胜率0%, 距MA5<0%胜率20%
+                '当日量比': _calc_vol_ratio(df),
+                '距MA5_pct': _calc_dist_ma(df, 5),
+                '距MA10_pct': _calc_dist_ma(df, 10),
+                '距MA20_pct': _calc_dist_ma(df, 20),
+                '近20日涨幅_pct': _calc_pct_n(df, 20),
+                # 20261003：候选阶段已扫过全市场双底，此处按当前 row 携带几何
+                # （必须在本循环内取 row，下游循环无 row 变量）
+                '双底结构': (row.get('双底结构') if isinstance(row.get('双底结构'), dict) else {}),
+            }
+            ranked_stocks.append(stock_data)
+        except Exception as e:
+            print(f"[突破评分] {ts_code} {name} 失败: {e}")
+            continue
+    
+    # 突破 + 二波信号（先于主题去重：让"每主题保留3只"与展示/风控统一使用同一T+5风险模型口径）
+    for s in ranked_stocks:
+        try:
+            current_price = s.get('现价', 0)
+            # 筹码数据已移除
+
+            # 突破信号
+            breakout_result = detect_breakout(s['代码'], pro)
+            s['突破信号'] = breakout_result.get('signal', '')
+            s['突破评分'] = breakout_result.get('breakout_score', 0)
+            # 突破类型（假突破/有效突破/即将突破/形态不具备），供突破池排名分门控使用
+            s['突破类型'] = breakout_result.get('breakout_type', '')
+            # 距阻力位百分比（负数=尚在阻力位下方），供排名分判断"突破前夜"
+            s['距阻力_pct'] = breakout_result.get('distance_to_resistance', 0)
+
+            # 二波形态检测+共振评分
+            wave2_result = detect_wave2_reversal(s['代码'], pro)
+            s['二波形态'] = wave2_result.get('pattern', '其他')
+            s['二波信号'] = wave2_result.get('signal', '')
+            s['二波评分'] = wave2_result.get('wave2_score', 0)
+            s['入场价'] = wave2_result.get('entry_price', 0)
+            s['止损价'] = wave2_result.get('stop_loss', 0)
+            s['目标价'] = wave2_result.get('target', 0)
+            # T+5 突破有效性风险模型（连续2日守位 = 突破有效，统一口径）
+            s['失败概率'] = calc_t5_breakout_failure_risk(
+                get_hist_data(s['代码']), s.get('评分详情', {}))
+            s['评分详情']['失败概率模型'] = 'T+5突破有效性风险模型（连续2日守位口径）'
+
+            # 双底调整到位（右底低吸）—— 本池主口径（20261003）
+            # 候选阶段已对全市场扫过双底，几何已挂在本只 s 上，直接复用避免重复计算
+            _dbl = s.get('双底结构')
+            if not isinstance(_dbl, dict) or not _dbl.get('dbl_hit'):
+                _dbl = detect_right_bottom(s['代码'])
+            s['双底命中'] = bool(_dbl.get('dbl_hit'))
+            s['双底结构'] = _dbl
+        except Exception:
+            s['突破信号'] = ''; s['突破评分'] = 0; s['突破类型'] = ''; s['距阻力_pct'] = 0
+            s['二波信号'] = '非二波形态'; s['二波评分'] = 0
+            s['双底命中'] = False; s['双底结构'] = {}
+            s['失败概率'] = min(90.0, max(10.0, float(s.get('失败概率', 50))))
+
+    # ====================================================================
+    # 20261003：原「IGE 行业弹性硬过滤(ige_adj≥75)」已移除。
+    # 该过滤是「放量突破」口径下"只在高景气行业里选股"的闸门，与双底低吸口径
+    # 冲突——双底标的多处于调整充分的非热门行业，叠加该闸门会重现
+    # 「候选池与双底命中集合零重叠 → 空池」的问题。行业弹性不再作硬门槛。
+    # （build_ige_adj_map / IGE_ADJ_MIN 保留定义，供其他池与排查复用。）
+    # ====================================================================
+    # ====================================================================
+    # 双底调整到位兜底门槛（20261003）：候选阶段已按「全市场独立双底扫描」准入，
+    # 正常情况下此处不会再剔除任何票，保留作一致性校验（若上游有票未携带双底
+    # 几何则在此兜底判定）。口径完全复用 W7/HVT 的 right_bottom 九条硬条件；
+    # 无命中即空池（允许为空，如实提示）。
+    # ====================================================================
+    _before_dbl = len(ranked_stocks)
+    ranked_stocks = [s for s in ranked_stocks if s.get('双底命中')]
+    print(f"[双底股池] 双底调整到位门槛校验: {_before_dbl} -> {len(ranked_stocks)} 只")
+    if not ranked_stocks:
+        print("[双底股池] 今日无双底调整到位标的（空池，不落库）")
+
+    # 20261003：原「每个主题只保留失败概率最低的3只」已移除——该规则建立在
+    # 「候选池按主题分组」的假设上；本池已改为全市场独立双底扫描，主题不再是
+    # 准入条件（仅作排名加分），若仍按主题分组会把无主题标签的双底票强行压缩到3只。
+    # 去重与截断统一交由最终「双底排名分」排序决定。
+
+    # 20261003：原「过滤假突破」已移除——假突破判定属于放量突破口径，
+    # 本池选股主轴已改为双底调整到位（低吸买点），不再以突破形态作否决。
+
+    # ====================================================================
+    # 双底股池硬过滤（沿用原强势股池口径，20261003 迁移）
+    # 1. 近20日涨幅 ≤ 80%  —— 涨幅透支后进场即被套
+    # 2. 距MA20 ≤ 30%      —— 远离均线表示追高过度
+    # （原「距MA10 ≥ 0」已移除：双底调整到位的硬条件本就要求收盘 ≤MA10，
+    #   即右底必然在 MA10 下方，该条与低吸口径直接冲突，会清零全池。20261003）
+    # ====================================================================
+    before_strong_filter = len(ranked_stocks)
+    strong_pass = []
+    strong_filtered_reasons = {'近20日涨幅>80%': 0, '距MA20>30%': 0}
+    for s in ranked_stocks:
+        pct_20d = s.get('近20日涨幅_pct', 0) or 0
+        dist_ma20 = s.get('距MA20_pct', 0) or 0
+        if pct_20d > 80:
+            strong_filtered_reasons['近20日涨幅>80%'] += 1
+            continue
+        if dist_ma20 > 30:
+            strong_filtered_reasons['距MA20>30%'] += 1  
+            continue
+        strong_pass.append(s)
+    ranked_stocks = strong_pass
+    after_strong_filter = len(ranked_stocks)
+    if before_strong_filter != after_strong_filter:
+        reason_str = ' | '.join([f"{k}:{v}只" for k, v in strong_filtered_reasons.items() if v > 0])
+        print(f"[双底股池] 过滤透支/追高股: {before_strong_filter} -> {after_strong_filter} 只 ({reason_str})")
+
+    # =========================
+    # Chip Alpha 注入（突破股池）
+    # =========================
+    if ranked_stocks:
+        print(f"[ChipAlpha-突破股池] 批量计算 {len(ranked_stocks)} 只股票的筹码Alpha...")
+        _chip_results = batch_chip_alpha(ranked_stocks, lookback_days=20, end_date=TRADE_DATE)
+        for s in ranked_stocks:
+            _code = s.get('代码', '')
+            _chip_r = _chip_results.get(_code)
+            _factors = extract_chip_alpha_factors(_chip_r)
+            s.update(_factors)
+            _sug, _reason = get_chip_alpha_suggestion(s)
+            s['ChipSuggestion'] = _sug
+            s['ChipSuggestionReason'] = _reason
+
+    # ====================================================================
+    # 双底池排名分 RankScore —— 排序口径（v3：双底调整到位版，20261003）
+    # 池定位由「放量突破」改为「一波大涨后双底调整到位」，故原「突破质量门控」
+    # （假突破/有效突破/即将突破/距阻力位）整体作废——它衡量的是"突破前夜"，
+    # 与本池的低吸买点语义相反（低吸必然在 MA10 下方、不可能贴着突破位）。
+    # 新口径：以未受系数污染的基础裸分（=原始整合评分，共振系数会压掉过半）为主导，
+    # 叠加「双底几何质量」修正，从四个维度刻画"大涨 → 深调 → 右底到位"的成色：
+    #   ① 前波涨幅：H0 相对其前 60 根最低的涨幅 —— "一波大涨"的幅度；
+    #   ② 右底贴合：右底/左底比值 —— 越贴近 1 越标准（不破左底且不过高）；
+    #   ③ 右底缩量：当日量/前20日均量 —— 越缩量说明抛压越枯竭；
+    #   ④ 上行空间：颈线（触发位）距现价的幅度 —— 站上颈线后的空间；
+    #     以及自颈线回撤深度（调整更充分）。
+    # T+5 失败概率不再参与本池排序：该模型口径是"突破后连续2日守位"，
+    # 对低吸买点不适用（与 W7 引擎对 RIGHT_BOTTOM 豁免 dist_risk 同理）；
+    # 失败概率仍照常计算并展示，仅作风险参考。
+    # ====================================================================
+    def _apply_pool_rank_score(_s):
+        _base = float(_s.get('原始整合评分', 0) or 0)
+        if _base <= 0:
+            _base = float(_s.get('整合评分', 0) or 0)
+        _adj = 0.0
+        _reasons = []
+        _d = _s.get('双底结构', {}) or {}
+
+        _rise = float(_d.get('dbl_prior_rise', 0) or 0)   # 前波涨幅
+        _ratio = float(_d.get('dbl_ratio', 0) or 0)       # 右底/左底
+        _volr = float(_d.get('dbl_volr20', 0) or 0)       # 右底缩量比
+        _retr = float(_d.get('dbl_retrace', 0) or 0)      # 自颈线回撤
+        _mid = float(_d.get('dbl_mid_high', 0) or 0)      # 颈线=触发位
+        _cls = float(_s.get('现价', 0) or 0)
+
+        # 1) 前波涨幅：大涨幅度越大，「大涨后深调」的前提越扎实
+        if _rise >= 0.60:
+            _adj += 6; _reasons.append('前波涨幅≥60%+6')
+        elif _rise >= 0.40:
+            _adj += 4; _reasons.append('前波涨幅≥40%+4')
+        else:
+            _adj += 2; _reasons.append('前波涨幅≥25%+2')
+
+        # 2) 右底贴合度：越贴近左底越标准（不破左底、也不过高于左底）
+        if 0.98 <= _ratio <= 1.02:
+            _adj += 4; _reasons.append('右底贴合左底+4')
+        elif 0.95 <= _ratio <= 1.05:
+            _adj += 2; _reasons.append('右底贴近左底+2')
+
+        # 3) 右底缩量成色
+        if _volr <= 0.50:
+            _adj += 4; _reasons.append('右底极缩量+4')
+        elif _volr <= 0.65:
+            _adj += 2; _reasons.append('右底缩量+2')
+
+        # 4) 站上颈线后的上行空间
+        if _mid > 0 and _cls > 0:
+            _space = _mid / _cls - 1
+            if _space >= 0.25:
+                _adj += 4; _reasons.append('距颈线空间≥25%+4')
+            elif _space >= 0.15:
+                _adj += 2; _reasons.append('距颈线空间≥15%+2')
+
+        # 5) 自颈线回撤更充分（调整更到位）
+        if _retr >= 0.20:
+            _adj += 2; _reasons.append('自颈线回撤≥20%(调整更充分)+2')
+
+        # 6) 主题共振（20261003：不作准入，仅作加分——本池已改为全市场独立双底
+        #    扫描，主题命中说明该双底票同时处在热点方向上，给优先级而非门槛）
+        _res = float(_s.get('共振系数', 1.0) or 1.0)
+        if _res >= 1.30:
+            _adj += 4; _reasons.append('主题强共振+4')
+        elif _res >= 1.10:
+            _adj += 2; _reasons.append('主题共振+2')
+
+        _s['排名分'] = round(max(0.0, _base + _adj), 1)
+        _s['排名分_原始'] = round(_base, 1)
+        _s['排名分_修正'] = round(_adj, 1)
+        _s['排名分_明细'] = " ".join(_reasons)
+
+    for _s in ranked_stocks:
+        _apply_pool_rank_score(_s)
+
+    # 按突破池排名分从高到低排序
+    ranked_stocks = sorted(ranked_stocks, key=lambda x: -x.get('排名分', 0))
+
+    # 突破股池每日快照：保存全量候选(主题/排名分/整合评分/T+5失败概率/排名/入选Top10)，
+    # 供后续攒真实样本回测验证"预筛口径统一"后的排序效果
+    try:
+        _snap_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_daily")
+        _snap = {'trade_date': str(TRADE_DATE), 'pool_size': len(ranked_stocks), 'stocks': []}
+        for _rk, _st in enumerate(ranked_stocks, 1):
+            _snap['stocks'].append({
+                'rank': _rk,
+                '代码': _st.get('代码', ''), '名称': _st.get('名称', ''),
+                '所属主题': _st.get('所属主题', ''),
+                '整合评分': _st.get('整合评分', 0),
+                '原始整合评分': _st.get('原始整合评分', 0),
+                '排名分': _st.get('排名分', 0),
+                '排名分_明细': _st.get('排名分_明细', ''),
+                '失败概率': _st.get('失败概率', 0),
+                '突破类型': _st.get('突破类型', ''),
+                '距阻力_pct': _st.get('距阻力_pct', 0),
+                '突破信号': _st.get('突破信号', ''),
+                '突破评分': _st.get('突破评分', 0),
+                '二波信号': _st.get('二波信号', ''),
+                '二波评分': _st.get('二波评分', 0),
+                # 20261003：本池主口径——双底调整到位（右底低吸）几何
+                '双底命中': bool(_st.get('双底命中')),
+                '双底结构': _st.get('双底结构', {}),
+                '入选Top10': _rk <= 10,
+            })
+        _snap_path = os.path.join(_snap_dir, "breakout_pool_snapshot_{}.json".format(TRADE_DATE))
+        with open(_snap_path, 'w', encoding='utf-8') as _f:
+            json.dump(_snap, _f, ensure_ascii=False, indent=1)
+        print(f"[突破股池] 每日快照已保存: {_snap_path} ({len(_snap['stocks'])}只)")
+    except Exception as _e:
+        print(f"[突破股池] 快照保存失败: {_e}")
+
+    # 突破股池 Top10 落库 stock_pick_db：供 stock_pick_db.py tracking 回填 T+N 收益、
+    # 统计该池真实胜率（口径=最终排名分排序后的前10，与报告展示一致）。
+    # 失败不阻塞主流程；除标准列外的字段自动序列化进 indicators。
+    try:
+        _top10 = ranked_stocks[:10]
+        if not _top10:
+            print("[突破股池] 池内无标的，stock_pick_db 无写入")
+        else:
+            from stock_pick_db import record_picks as _pick_record
+            _rows = []
+            for _rk, _st in enumerate(_top10, 1):
+                # 20261003：本池主口径已是双底调整到位（右底低吸），signal 以其为准
+                _sig = '双底调整到位' if _st.get('双底命中') else (
+                    _st.get('突破信号') or _st.get('二波信号') or '双底调整到位')
+                _dbl = _st.get('双底结构', {}) or {}
+                _rows.append({
+                    'ts_code': _st.get('代码', ''),
+                    'stock_name': _st.get('名称', ''),
+                    'close': _st.get('现价'),
+                    'pct_chg': _st.get('涨跌幅'),
+                    'signal': _sig,
+                    'action': _st.get('ChipSuggestion') or '观察',
+                    'score': _st.get('排名分', 0),
+                    'rank_no': _rk,
+                    'industry': _st.get('所属主题', '') or _st.get('所属行业', ''),
+                    'reason': _st.get('排名分_明细', ''),
+                    'stop_price': _st.get('止损价'),
+                    'target_price': _st.get('目标价'),
+                    '整合评分': _st.get('整合评分', 0),
+                    '原始整合评分': _st.get('原始整合评分', 0),
+                    '排名分_原始': _st.get('排名分_原始', 0),
+                    '排名分_修正': _st.get('排名分_修正', 0),
+                    '失败概率': _st.get('失败概率', 0),
+                    '突破类型': _st.get('突破类型', ''),
+                    '突破信号': _st.get('突破信号', ''),
+                    '突破评分': _st.get('突破评分', 0),
+                    '二波信号': _st.get('二波信号', ''),
+                    '二波评分': _st.get('二波评分', 0),
+                    '距阻力_pct': _st.get('距阻力_pct', 0),
+                    '共振系数': _st.get('共振系数', 0),
+                    '主题趋势分': _st.get('主题趋势分', 0),
+                    '主题情绪分': _st.get('主题情绪分', 0),
+                    'ChipSuggestion': _st.get('ChipSuggestion', ''),
+                    'ChipTrendScore': _st.get('ChipTrendScore', 50),
+                    'CRE_Score': _st.get('CRE_Score', 50),
+                    'ChipMomentum_Score': _st.get('ChipMomentum_Score', 50),
+                    # 20261003：双底调整到位（本池主口径）结构证据
+                    '双底命中': bool(_st.get('双底命中')),
+                    '双底_前波涨幅': round(float(_dbl.get('dbl_prior_rise', 0) or 0) * 100, 1),
+                    '双底_左底': _dbl.get('dbl_left_low', 0),
+                    '双底_颈线': _dbl.get('dbl_mid_high', 0),
+                    '双底_右底': _dbl.get('dbl_right_low', 0),
+                    '双底_右底左底比': round(float(_dbl.get('dbl_ratio', 0) or 0), 3),
+                    '双底_缩量比': round(float(_dbl.get('dbl_volr20', 0) or 0), 2),
+                    '双底_左底日期': _dbl.get('dbl_left_date', ''),
+                    '入选Top10': True,
+                })
+            _n = _pick_record('breakout_pool', '双底调整到位股池', _rows, pick_date=TRADE_DATE)
+            print(f"[双底股池] stock_pick_db 写入 {_n}/{len(_rows)} 条 (strategy=breakout_pool pick_date={TRADE_DATE})")
+    except Exception as _e:
+        print(f"[突破股池] stock_pick_db 落库失败: {_e}")
+
+    lines = []
+    lines.append("")
+    lines.append("🔥 双底调整到位股池 (一波大涨后回落成双底、右底缩量不破左底；按双底排名分排序)")
+    lines.append("")
+
+    top_stocks = ranked_stocks[:10]
+    if not top_stocks:
+        lines.append("  今日无双底调整到位标的（空池）。")
+        lines.append("")
+    for i, s in enumerate(top_stocks, 1):
+        alpha_val = s.get('Alpha评分', 0)
+        alpha_sig = s.get('Alpha信号', '')
+        alpha_str = f" (Alpha={alpha_val:.1f} {alpha_sig})" if alpha_sig else f" (Alpha={alpha_val:.1f})"
+        _chip_score = s.get('ChipTrendScore', 50)
+        _cre_score = s.get('CRE_Score', 50)
+        _mom_score = s.get('ChipMomentum_Score', 50)
+        _chip_str = f" 筹码={_chip_score:.0f}/CRE={_cre_score:.0f}/动量={_mom_score:.0f}"
+        lines.append(f"【第{i}名】{s['名称']} ({s['代码']}) 现价={s['现价']:.2f} 涨跌幅={s['涨跌幅']:+.2f}% 成交额={s['成交额']:.2f}亿 量能爆发={s['量能爆发']:.2f}{alpha_str}{_chip_str}")
+        lines.append(f"  排名分: {s.get('排名分', 0):.1f} (原始{s.get('排名分_原始', 0):.1f} 修正{s.get('排名分_修正', 0):+.1f}: {s.get('排名分_明细', '')})")
+        lines.append(f"  整合评分: {s['整合评分']:.1f} | 失败概率(T+5): {s['失败概率']:.1f}% | T+5状态: {s.get('评分详情', {}).get('T5风险状态', '')}")
+        _det = s.get('评分详情', {})
+        if _det and isinstance(_det, dict):
+            _mom = _det.get('动量爆发力', 0)
+            _cap = _det.get('资金行为', 0)
+            _pos = _det.get('位置安全性', 0)
+            _hot = _det.get('热度', 0)
+            _fun = _det.get('基本面', 0)
+            _pen = _det.get('追高惩罚', 0)
+            _ldb = _det.get('龙头加分', 0)
+            _rec = _det.get('辨识度加分', 0)
+            _msl = _det.get('资金斜率', 0)
+            _mps = _det.get('资金持续性', 0)
+            _md = _det.get('资金扩散率', 0)
+            _fl = _det.get('基本面逻辑', [])
+            _qbi = _det.get('量比', 0)
+            lines.append(f"  V10: 动量={_mom:.0f} 资金={_cap:.0f} 位置={_pos:.0f} 热度={_hot:.0f} 基本面={_fun:.0f}")
+            lines.append(f"  资金: 斜率={_msl:.1f}/持续={_mps:.0%}/扩散={_md:.0%} | 量比={_qbi:.1f} | 惩罚={_pen:.0f} 龙头={_ldb:.0f} 辨识={_rec:.0f}")
+            if _fl:
+                lines.append(f"  基本面因子: {' | '.join(str(x) for x in _fl[:4])}")
+        _chip_sug = s.get('ChipSuggestion', '观望等待')
+        _chip_sug_reason = s.get('ChipSuggestionReason', '')
+        lines.append(f"  筹码建议: {_chip_sug} | {_chip_sug_reason}")
+        # 主题信息
+        cycle = s.get('非一日游阶段', '') or s.get('所属状态', '')
+        confirm_days = s.get('确认天数', 0)
+        cycle_str = f"非一日游:{cycle}" if cycle else ""
+        days_str = f"{confirm_days}天" if confirm_days > 0 else ""
+        leader_seq = s.get('龙头序列', '')
+        leader_str = f"龙头:{leader_seq}" if leader_seq else ""
+        _ml_type = str(s.get('主线类型', ''))
+        _ml_qual = float(s.get('主线质量分', 0) or 0)
+        _ml_str = f"主线:{_ml_type}(质量{_ml_qual:.0f})" if _ml_type else ""
+        _tt_s = float(s.get('主题趋势分', 0) or 0)
+        _ts_s = float(s.get('主题情绪分', 0) or 0)
+        # 20261003：主题字段展示（命中当日热点主题 → 全市场所属行业兜底）。未命中热点
+        # 主题时不追加「趋势分0/情绪分0」，避免把无意义的 0 分当成有效主题强度喂给 AI。
+        _theme_hit = str(s.get('所属主题', '') or '')
+        info_parts = [str(s.get('主题展示', '') or _theme_hit or '未匹配主题')]
+        if _ml_str: info_parts.append(_ml_str)
+        if cycle_str: info_parts.append(cycle_str)
+        if days_str: info_parts.append(days_str)
+        if leader_str: info_parts.append(leader_str)
+        if _theme_hit:
+            info_parts.append(f"趋势分{_tt_s:.0f}/情绪分{_ts_s:.0f}")
+        lines.append(f"  主题: {' | '.join(info_parts)}")
+        # 突破
+        bs = s.get('突破信号', '')
+        bsc = s.get('突破评分', 0)
+        lines.append(f"  突破: 评分={bsc} | {bs}" if bs else f"  突破: 评分={bsc}")
+        # 双底调整到位（本池主口径，20261003）
+        _dbl = s.get('双底结构', {}) or {}
+        if _dbl.get('dbl_hit'):
+            lines.append(
+                f"  双底: 前波涨幅={_dbl.get('dbl_prior_rise', 0) * 100:.1f}%"
+                f" 左底={_dbl.get('dbl_left_low', 0):.2f}({_dbl.get('dbl_left_date', '')})"
+                f" 颈线={_dbl.get('dbl_mid_high', 0):.2f}"
+                f" 右底={_dbl.get('dbl_right_low', 0):.2f}"
+                f" 右底/左底={_dbl.get('dbl_ratio', 0):.3f}"
+                f" 缩量={_dbl.get('dbl_volr20', 0):.2f}"
+                f" 自颈线回撤={_dbl.get('dbl_retrace', 0) * 100:.1f}%")
+        # YRI
+        yri_total = s.get('YRI历史总分', 0)
+        if yri_total > 0:
+            yri_tags = s.get('YRI标签', '')
+            yri_lb = s.get('YRI最大连板', 0)
+            lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_lb}板 标签={yri_tags}")
+        lines.append("")
+    
+    # 突破池明细：控制台输出供排查 + 作为报告第7段【双底调整到位股池】的喂料
+    print("\n".join(lines))
+    double_bottom_pool_text = "\n".join(lines)
+    
+    icpm_top10_list = []
+    for s in ranked_stocks[:20]:
+        icpm_top10_list.append({
+            'code': s.get('代码', ''),
+            'name': s.get('名称', ''),
+            'theme': s.get('所属主题', ''),
+            'open_score': s.get('整合评分', 0),
+        })
+
+
+    # =========================
+    # 实盘交易建议（主题分析第2段喂料）
+    # 优先：主题热度 V2.5.1 主题雷达（theme_heat_v25 当日产出，状态+边际+确认/失效条件）
+    #       内部回退：主题热度 V2.4 三窗口 Top5（theme_heat_v24）
+    # 兜底：theme_analysis_v2 报告文本
+    # =========================
+    trade_advice_text = ""
+    try:
+        trade_advice_text = _build_theme_advice_feed(TRADE_DATE)
+        if trade_advice_text:
+            print(f"[实盘建议] 主题喂料(热度V2.5主题雷达): {len(trade_advice_text)}字")
+    except Exception as e:
+        print(f"[实盘建议] 结构化喂料失败: {e}")
+        trade_advice_text = ""
+    if not trade_advice_text:
+        try:
+            theme_report = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "report_daily", f"theme_analysis_v2_{TRADE_DATE}.txt")
+            if os.path.exists(theme_report):
+                with open(theme_report, 'r', encoding='utf-8') as f:
+                    trade_advice_text = f.read().strip()
+                print(f"[实盘建议] 主题喂料(theme_analysis_v2文本兜底): {theme_report}")
+            else:
+                print(f"[实盘建议] 未找到主题评分报告: {theme_report}")
+        except Exception as e:
+            print(f"[实盘建议] 读取失败: {e}")
+            trade_advice_text = ""
+
+    # =========================
+    # V7.0 拉升回调买点（market_regime_v3 rally_pullback 引擎，读取当日 JSON）
+    # =========================
+    def _load_rally_pullback_v7(trade_date: str) -> str:
+        r"""读取 rally_pullback_{date}.json（market_regime_v3 V7 引擎输出）。
+        选股逻辑：20日内放量+≥2次涨停拉升 -> 回撤5%~20%洗盘 -> 当日低开阳线承接 -> 发出信号。
+        总分≥60 有效，按 total_score 降序；直接输出引擎自带的参考价/止损/止盈。
+        """
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"rally_pullback_{trade_date}.json"),
+            os.path.join(REPORT_DIR, f"rally_pullback_{trade_date}.json"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ""
+        latest = max(files, key=os.path.getmtime)
+        try:
+            with open(latest, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            signals = d.get("signals") or []
+            if not signals:
+                return ""
+            lines = []
+            lines.append("【V7 拉升回调买点池】")
+            lines.append(
+                f"数据来源：market_regime_v3 拉升回调引擎（{d.get('trade_date', trade_date)}，"
+                f"市场分{d.get('market_score', '-')}，环境{d.get('regime', '-')}），共{len(signals)}只"
+                "（拉升->洗盘->低开阳线承接，总分≥60）"
+            )
+            lines.append("")
+            for i, s in enumerate(signals, 1):
+                code = str(s.get("ts_code") or "-")
+                name = str(s.get("name") or "-")
+                score_v = float(s.get("total_score") or 0)
+                amp = float(s.get("rally_amplitude") or 0) * 100
+                vexp = float(s.get("rally_vol_expansion") or 0)
+                lu_cnt = s.get("rally_limit_up_count") or 0
+                max_lu = s.get("rally_max_consecutive_lu") or 0
+                high_d = str(s.get("rally_high_date") or "")[:8]
+                dd = float(s.get("drawdown") or 0) * 100
+                pdays = s.get("pullback_days") or 0
+                lo_pos = s.get("is_low_open_positive")
+                gap = float(s.get("candle_open_gap") or 0) * 100
+                body = float(s.get("candle_body_pct") or 0) * 100
+                ref_p = s.get("ref_price")
+                sl = s.get("stop_loss")
+                tp = s.get("take_profit")
+                stype = str(s.get("stock_type") or "-")
+                sugg = str(s.get("suggestion") or "")
+
+                def _f2(v):
+                    try:
+                        return f"{float(v):.2f}"
+                    except (TypeError, ValueError):
+                        return "-"
+
+                candle = "低开阳线" if lo_pos else ("阳线" if (s.get("candle_body_pct") or 0) > 0 else "阴线")
+                gap_s = f"低开{gap:.1f}%" if gap > 0 else f"高开{abs(gap):.1f}%"
+                high_s = f"{high_d[4:6]}/{high_d[6:8]}" if len(high_d) == 8 else "-"
+                lines.append(
+                    f"【{name}】({code}) 总分:{score_v:.1f} | 拉升:{amp:.0f}% 量比:{vexp:.1f}倍 "
+                    f"涨停{lu_cnt}次(最大连板{max_lu}) 高点:{high_s} | 回撤:{dd:.1f}% 回调{pdays}天 | "
+                    f"当日:{candle}({gap_s},实体{body:.1f}%) | 参考价:{_f2(ref_p)} 止损:{_f2(sl)} "
+                    f"止盈:{_f2(tp)} | 类型:{stype} | 建议:{sugg}"
+                )
+            return "\n".join(lines)
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            print(f"[V7拉升回调] 加载失败: {e}")
+            return ""
+
+    rally_pullback_v7_text = _load_rally_pullback_v7(TRADE_DATE)
+    if rally_pullback_v7_text:
+        print(f"[V7拉升回调] 已加载拉升回调买点信号（{rally_pullback_v7_text.count('】')}只）")
+
+    # =========================
+    # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」七态；
+    # 原 A/B/MID 全池铺开已由 W7 引擎 V5.1 收口，只同步当日可执行信号）
+    # =========================
+    def _load_w7_today_action(trade_date: str) -> str:
+        r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
+        20261028 起统一为两类：T0_PULLBACK_HOLD(类型A-缩量回踩止跌低吸)/T0_REBREAK(类型B-回踩后突破T0收盘)。
+        （旧九态 BREAKOUT_RETEST/MIDLINE_HOLD/SHAKEOUT_HOLD/RIGHT_BOTTOM/SQUAT_SHRINK 等已不再产出可操作买点。）
+        JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
+        """
+        def _num(v):
+            try:
+                fv = float(v)
+                return fv
+            except (TypeError, ValueError):
+                return None
+
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"w7_today_action_{trade_date}.json"),
+            os.path.join(REPORT_DIR, f"w7_today_action_{trade_date}.json"),
+        ]
+        items = []
+        for p in cand:
+            if not os.path.exists(p):
+                continue
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                for s in d.get("signals") or []:
+                    items.append({
+                        "code": str(s.get("code") or ""),
+                        "name": str(s.get("name") or s.get("code") or "-"),
+                        "ige_adj": _num(s.get("ige_adj")),
+                        "score": _num(s.get("score")),
+                        "type": str(s.get("type") or "-"),
+                        "state": str(s.get("state") or ""),
+                        "state_cn": str(s.get("state_cn") or s.get("state") or "-"),
+                        "close": _num(s.get("close")), "pressure": _num(s.get("pressure")),
+                        "ma20": _num(s.get("ma20")), "volr": _num(s.get("volr")),
+                        # MIDLINE_HOLD（W7-不破中位）专属：长阳半分位=低吸防线；其余状态为 None
+                        "mid_line": _num(s.get("mid_line")),
+                        # BREAKOUT_RETEST（放量突破后缩量回踩）专属：放量突破日低点=回踩平台防线
+                        "retest_low": _num(s.get("retest_low")),
+                        # RIGHT_BOTTOM（W7-右底低吸）专属：左底（前低）=结构防线
+                        "rb_left_low": _num(s.get("rb_left_low")),
+                        # SQUAT_SHRINK（W7-缩量十字星下蹲）专属：下蹲日最低价=结构防线
+                        "squat_low": _num(s.get("squat_low")),
+                    })
+                break
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                print(f"[W7今日可操作] JSON 加载失败: {e}")
+                items = []
+                break
+        if not items:
+            md_cand = [
+                os.path.join(r"D:\mystock\solo\report_daily", f"w7_second_wave_{trade_date}.md"),
+                os.path.join(REPORT_DIR, f"w7_second_wave_{trade_date}.md"),
+            ]
+            md_files = [p for p in md_cand if os.path.exists(p)]
+            if md_files:
+                try:
+                    with open(max(md_files, key=os.path.getmtime), "r", encoding="utf-8") as f:
+                        rows, col_idx, in_b = [], {}, False
+                        for ln in f.read().splitlines():
+                            s = ln.strip()
+                            if s.startswith("## 今日可操作榜"):
+                                in_b = True
+                                continue
+                            if in_b:
+                                if s.startswith("## "):
+                                    break
+                                if s.startswith("|"):
+                                    cells = [c.strip() for c in s.strip("|").split("|")]
+                                    if s.startswith("| #"):
+                                        col_idx = {name: i for i, name in enumerate(cells)}
+                                        continue
+                                    if not col_idx or "| --" in s or "|---" in s:
+                                        continue
+                                    rows.append(cells)
+                    _cn = {"SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
+                           "RE_EXPANSION": "重新扩张", "T0_CONFIRM": "T0天量确认买点",
+                           "BREAKOUT_RETEST": "放量突破后缩量回踩买点",
+                           "MIDLINE_HOLD": "W7-不破中位",
+                           "RIGHT_BOTTOM": "W7-右底低吸",
+                           "SQUAT_SHRINK": "W7-缩量十字星下蹲"}
+
+                    def _cv(cells, name):
+                        return cells[col_idx[name]] if name in col_idx else ""
+
+                    for c in rows:
+                        state = _cv(c, "状态")
+                        items.append({
+                            "code": _cv(c, "代码"), "name": _cv(c, "名称"),
+                            "ige_adj": _num(_cv(c, "IGE_ADJ")), "score": _num(_cv(c, "总分")),
+                            "type": _cv(c, "类型"), "state": state, "state_cn": _cn.get(state, state),
+                            "close": _num(_cv(c, "现价")), "pressure": _num(_cv(c, "触发价")),
+                            "ma20": _num(_cv(c, "MA20")), "volr": _num(_cv(c, "量比")),
+                            # md 表格无「半分位/回踩低点/左底/下蹲低点」列：回退路径取不到，如实留空
+                            "mid_line": None, "retest_low": None, "rb_left_low": None, "squat_low": None,
+                        })
+                except OSError:
+                    pass
+        if not items:
+            return ""
+        # =====================================================================
+        # 输出层三状态执行分层 V1.0（只做展示与状态分类）
+        # 不改候选池生成 / 评分公式 / IGE_ADJ / CORE·MID 定义 / 触发价 / MA20 /
+        # 量比口径 / 回测逻辑；原有 W7 候选全部保留，只改最终展示与状态标签。
+        # 状态只由「实际交易距离 + 触发条件 + 结构是否失效」决定，与总分无关；
+        # 排序一律「执行状态 > 综合评分」。原有量能阀门（放量突破需量比≥1.2）不可绕过。
+        # =====================================================================
+        NEAR_PCT = 0.03        # 距触发价 ≤3% 视为「接近触发」
+        MA20_BREAK_TOL = 0.03  # 收盘低于 MA20 达 3% 才算「明确跌破总防线」
+        VOLR_MIN = 1.2         # 原策略量能阀门：放量突破触发价需量比≥1.2（禁止下调）
+        VOLR_HUGE = 3.0        # 原口径：量比≥3 的巨量日不追高，只等回踩
+
+        def _f2(v):
+            return f"{v:.2f}" if isinstance(v, (int, float)) else "-"
+
+        def _f1(v):
+            return f"{v:.1f}" if isinstance(v, (int, float)) else "-"
+
+        def _struct_line(it):
+            """该票的结构防线（失效位）与名称：MIDLINE_HOLD=长阳半分位；
+            BREAKOUT_RETEST=放量突破日低点；RIGHT_BOTTOM=左底（前低）；
+            SQUAT_SHRINK=下蹲日最低价；其余=MA20 总防线。"""
+            st = it["state"]
+            if st == "MIDLINE_HOLD" and isinstance(it.get("mid_line"), (int, float)) and it["mid_line"] > 0:
+                return it["mid_line"], "长阳半分位"
+            if st == "BREAKOUT_RETEST" and isinstance(it.get("retest_low"), (int, float)) and it["retest_low"] > 0:
+                return it["retest_low"], "放量突破日低点"
+            if st == "RIGHT_BOTTOM" and isinstance(it.get("rb_left_low"), (int, float)) and it["rb_left_low"] > 0:
+                return it["rb_left_low"], "左底（前低）"
+            if st == "SQUAT_SHRINK" and isinstance(it.get("squat_low"), (int, float)) and it["squat_low"] > 0:
+                return it["squat_low"], "下蹲日最低价"
+            if isinstance(it.get("ma20"), (int, float)) and it["ma20"] > 0:
+                return it["ma20"], "MA20总防线"
+            return None, ""
+
+        def _classify(it):
+            """返回 (W7_STATUS, invalid_reason, d, def_buffer, line, line_nm)。d=距触发价比例。
+            口径与 W7 引擎 w7_exec_status 完全一致（20261001 裁定 + 20261002 RIGHT_BOTTOM 例外）：
+            · 失效位按各形态自身口径，MIDLINE_HOLD/回踩低点/左底严格跌破，MA20 总防线留 MA20_BREAK_TOL 容差；
+            · 状态一律按「距触发价」纯距离分档，BREAKOUT_RETEST 现价低于触发价不因「在买点区」升级；
+            · RIGHT_BOTTOM（右底低吸）例外：买点＝当日右底本身，不以距颈线分档，结构未失效即归 EXECUTION。
+            · SQUAT_SHRINK（缩量十字星下蹲）同理：买点＝当日下蹲本身，结构未失效即归 EXECUTION。"""
+            close, trig, st = it["close"], it["pressure"], it["state"]
+            line, line_nm = _struct_line(it)
+            ma20 = it.get("ma20")
+            dbuf = None
+            if isinstance(close, (int, float)) and close > 0 and isinstance(line, (int, float)) and line > 0:
+                dbuf = (close - line) / line
+            # INVALID：结构失效 —— 移出「今日执行状态」主体，不参与排名
+            if isinstance(close, (int, float)) and close > 0:
+                if st == "MIDLINE_HOLD" and isinstance(it.get("mid_line"), (int, float)) and it["mid_line"] > 0 and close < it["mid_line"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破长阳半分位 {it['mid_line']:.2f}（结构失效）",
+                            None, dbuf, line, line_nm)
+                if st == "BREAKOUT_RETEST" and isinstance(it.get("retest_low"), (int, float)) and it["retest_low"] > 0 and close < it["retest_low"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破放量突破日低点 {it['retest_low']:.2f}（突破后跌回关键平台）",
+                            None, dbuf, line, line_nm)
+                if st == "RIGHT_BOTTOM" and isinstance(it.get("rb_left_low"), (int, float)) and it["rb_left_low"] > 0 and close < it["rb_left_low"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破左底（前低）{it['rb_left_low']:.2f}（双底结构失效）",
+                            None, dbuf, line, line_nm)
+                if st == "SQUAT_SHRINK" and isinstance(it.get("squat_low"), (int, float)) and it["squat_low"] > 0 and close < it["squat_low"]:
+                    return ("INVALID", f"收盘 {close:.2f} 跌破下蹲日最低价 {it['squat_low']:.2f}（下蹲形态失效）",
+                            None, dbuf, line, line_nm)
+                # 其余形态才以 MA20 为总防线；MIDLINE_HOLD/BREAKOUT_RETEST/RIGHT_BOTTOM/SQUAT_SHRINK 已按自身失效位判定
+                if st not in ("MIDLINE_HOLD", "BREAKOUT_RETEST", "RIGHT_BOTTOM", "SQUAT_SHRINK") \
+                        and isinstance(ma20, (int, float)) and ma20 > 0 and close < ma20 * (1 - MA20_BREAK_TOL):
+                    return ("INVALID", f"收盘 {close:.2f} 明确跌破 MA20 总防线 {ma20:.2f}（低于 {MA20_BREAK_TOL * 100:.0f}% 以上）",
+                            None, dbuf, line, line_nm)
+            # RIGHT_BOTTOM：买点＝当日右底本身（现价即低吸区），结构未失效即进入执行区；
+            # 右底须缩量，不适用放量阀门，故不做量比判定。
+            # SQUAT_SHRINK：买点＝当日缩量十字星下蹲（极致缩量），同样不适用放量阀门。
+            if st in ("RIGHT_BOTTOM", "SQUAT_SHRINK"):
+                return "EXECUTION", "", None, dbuf, line, line_nm
+            if not isinstance(trig, (int, float)) or trig <= 0 or not isinstance(close, (int, float)):
+                return "PULLBACK_WATCH", "", None, dbuf, line, line_nm
+            d = (trig - close) / trig
+            volr = it.get("volr")
+            # EXECUTION：已站上触发价（纯距离口径；量能阀门统一执行，量比<1.2 或缺失=量能未确认）
+            if close >= trig:
+                if not isinstance(volr, (int, float)) or volr < VOLR_MIN:
+                    return "EXECUTION_WAIT_VOLUME", "", d, dbuf, line, line_nm
+                return "EXECUTION", "", d, dbuf, line, line_nm
+            if 0 <= d <= NEAR_PCT:
+                return "TRIGGER_WATCH", "", d, dbuf, line, line_nm
+            return "PULLBACK_WATCH", "", d, dbuf, line, line_nm
+
+        rows, invalid_rows = [], []
+        for it in items:
+            status, reason, d, dbuf, line, line_nm = _classify(it)
+            rec = {"it": it, "status": status, "reason": reason, "d": d,
+                   "def_buffer": dbuf, "line": line, "line_nm": line_nm}
+            (invalid_rows if status == "INVALID" else rows).append(rec)
+
+        # 排序优先级：W7_STATUS → 距离触发位 → 量能/结构完整度 → IGE_ADJ → W7总分
+        _ORD = {"EXECUTION": 0, "EXECUTION_WAIT_VOLUME": 1, "TRIGGER_WATCH": 2, "PULLBACK_WATCH": 3}
+
+        def _sort_key(r):
+            so = _ORD[r["status"]]
+            it = r["it"]
+            ige = it["ige_adj"] if isinstance(it["ige_adj"], (int, float)) else -1e9
+            sc = it["score"] if isinstance(it["score"], (int, float)) else -1e9
+            volr = it["volr"] if isinstance(it["volr"], (int, float)) else -1e9
+            d = r["d"] if isinstance(r["d"], (int, float)) else 9.9
+            dbuf = r["def_buffer"] if isinstance(r["def_buffer"], (int, float)) else -1e9
+            if so <= 1:   # EXECUTION：量能确认程度优先；其次距触发价越近越不追高
+                # 20261002：RIGHT_BOTTOM（右底低吸）当日即无等待条件的买点，排 EXECUTION 组内最前
+                # 20261026：SQUAT_SHRINK（缩量十字星下蹲）同属当日即买点，与其并列最前
+                rb = 0 if it.get("state") in ("RIGHT_BOTTOM", "SQUAT_SHRINK") else 1
+                return (so, rb, -volr, abs(d), -ige, -sc)
+            if so == 2:   # TRIGGER_WATCH：距触发价最近优先，其次量能越接近阀门越好
+                return (so, d, -volr, -ige, -sc)
+            return (so, -dbuf, d, -ige, -sc)   # PULLBACK_WATCH：结构完整度优先
+
+        rows.sort(key=_sort_key)
+
+        exec_rows = [r for r in rows if r["status"] in ("EXECUTION", "EXECUTION_WAIT_VOLUME")]
+        trig_rows = [r for r in rows if r["status"] == "TRIGGER_WATCH"]
+        pull_rows = [r for r in rows if r["status"] == "PULLBACK_WATCH"]
+        n_exec = len(exec_rows)
+        n_wait = len([r for r in exec_rows if r["status"] == "EXECUTION_WAIT_VOLUME"])
+        # 20261002：RIGHT_BOTTOM（右底低吸）不适用放量阀门，单独计数（不计入「量能已确认」）
+        n_rb = len([r for r in exec_rows if r["it"].get("state") == "RIGHT_BOTTOM"])
+        # 20261026：SQUAT_SHRINK（缩量十字星下蹲）同理，单独计数
+        n_sq = len([r for r in exec_rows if r["it"].get("state") == "SQUAT_SHRINK"])
+
+        def _struct_txt(r):
+            line, nm = r["line"], r["line_nm"]
+            if not isinstance(line, (int, float)):
+                return "结构防线（数据缺失，禁止自行估算）"
+            return "{}{}".format(_f2(line), f"（{nm}）" if nm else "")
+
+        def _price_line(it):
+            return "现价{}｜触发价{}｜MA20 {}｜量比{}｜IGE_ADJ {}｜W7总分{}".format(
+                _f2(it["close"]), _f2(it["pressure"]), _f2(it["ma20"]),
+                _f1(it["volr"]), _f1(it["ige_adj"]), _f1(it["score"]))
+
+        def _vol_short(it):
+            """量能状态短语：已确认 / 未确认（巨量单独提示，不追高）；RIGHT_BOTTOM（右底低吸）走缩量口径；
+            SQUAT_SHRINK（缩量十字星下蹲）走极致缩量口径"""
+            volr = it["volr"]
+            if it.get("state") == "RIGHT_BOTTOM":
+                return "右底缩量（量比×{}）".format(_f1(volr))
+            if it.get("state") == "SQUAT_SHRINK":
+                return "下蹲极致缩量（量比×{}）".format(_f2(volr))
+            if not isinstance(volr, (int, float)) or volr < VOLR_MIN:
+                return "量能未确认"
+            if volr >= VOLR_HUGE:
+                return "量能已确认（但≥3倍巨量，别追高，等回踩）"
+            return "量能已确认"
+
+        p = [
+            "【W7 二波·今日执行状态（三状态分层 V1.0）】",
+            "候选{}只（其中结构失效{}只已移出）。状态只由「距触发价 + 结构是否失效 + 量能」决定，与总分无关；"
+            "执行状态优先于总分。".format(len(items), len(invalid_rows)),
+            "口径：EXECUTION=现价≥触发价且结构未坏（RIGHT_BOTTOM右底低吸例外：买点＝当日右底本身，"
+            "不以距颈线分档，缩量不破左底即入执行区；SQUAT_SHRINK缩量十字星下蹲例外：买点＝当日下蹲本身，"
+            "不破下蹲日最低价即入执行区）；EXECUTION_WAIT_VOLUME=已到价但量比<1.2（量能未确认，"
+            "禁止写成“已确认买入/立即买入”）；TRIGGER_WATCH=距触发≤3%；PULLBACK_WATCH=距触发>3%（需等待回踩/重新确认）。",
+            "规则：放量突破需量比≥1.2（不可绕过）；量比≥3 的巨量日不追高、只等回踩；"
+            "失效位=MIDLINE_HOLD长阳半分位 / BREAKOUT_RETEST放量突破日低点 / RIGHT_BOTTOM左底（前低） / "
+            "SQUAT_SHRINK下蹲日最低价 / 其余MA20总防线（低于MA20达{:.0f}%算明确跌破）。".format(
+                MA20_BREAK_TOL * 100),
+            "排序：EXECUTION → EXECUTION_WAIT_VOLUME → TRIGGER_WATCH → PULLBACK_WATCH（同状态内按各状态口径，"
+            "RIGHT_BOTTOM / SQUAT_SHRINK 置 EXECUTION 组内最前，末位 IGE_ADJ / W7总分）。",
+            "",
+            "【W7状态速览·仅供核对，禁止在报告开头单独成节】EXECUTION：{}只（量能已确认 {}只 / 量能未确认 {}只{}{}）｜TRIGGER_WATCH：{}只｜PULLBACK_WATCH：{}只".format(
+                n_exec, n_exec - n_wait - n_rb - n_sq, n_wait,
+                "／右底低吸 {}只".format(n_rb) if n_rb else "",
+                "／缩量下蹲 {}只".format(n_sq) if n_sq else "",
+                len(trig_rows), len(pull_rows)),
+            "速览-今日真正进入执行区：{}只　速览-今日等待触发：{}只　速览-今日等待回踩/确认：{}只（≠ W7 候选总数{}只）".format(
+                n_exec, len(trig_rows), len(pull_rows), len(items)),
+        ]
+        if n_exec == 0:
+            p.append("今日 W7 无 EXECUTION 标的。结论：不强行交易。")
+
+        if exec_rows:
+            p += ["", "【EXECUTION｜已进入执行区】", ""]
+            for k, r in enumerate(exec_rows, 1):
+                it, status = r["it"], r["status"]
+                if status == "EXECUTION_WAIT_VOLUME":
+                    how = "做法：已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"
+                elif it.get("state") == "SQUAT_SHRINK":
+                    how = ("做法：缩量十字星下蹲低吸买点，可按计划分批建仓（该形态需 3~10 日发酵，"
+                           "非次日冲高型）；站上下蹲日最高价{}＝下蹲结束、转突破/二波，可加仓").format(_f2(it["pressure"]))
+                elif it.get("state") == "RIGHT_BOTTOM":
+                    how = ("做法：右底低吸买点，可按计划分批建仓；放量站上双底颈线{}（量比≥{:.1f}）"
+                           "＝转突破/二波，可加仓").format(_f2(it["pressure"]), VOLR_MIN)
+                else:
+                    how = "做法：可按计划买入，单只不超过10%"
+                p.append("{}. **{}({})**（{}｜EXECUTION｜{}）".format(
+                    k, it["name"], it["code"], it["type"], _vol_short(it)))
+                p.append(_price_line(it))
+                p.append(how)
+                if it.get("state") == "RIGHT_BOTTOM":
+                    p.append("说明：触发价＝双底颈线（中间高点），现价位于右底区（左底上方）属正常；"
+                             "右底缩量、不破左底＝结构成立")
+                elif it.get("state") == "SQUAT_SHRINK":
+                    p.append("说明：触发价＝下蹲日最高价（站上即下蹲结束），现价低于触发价属正常（当日即买点）；"
+                             "极致缩量窄幅十字星、跌破MA20仍守MA60＝下蹲成立")
+                p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
+                p.append("")
+
+        if trig_rows:
+            p += ["", "【TRIGGER_WATCH｜等待触发】", ""]
+            for k, r in enumerate(trig_rows, 1):
+                it = r["it"]
+                p.append("{}. **{}({})**（{}｜等待触发｜距触发{:.2f}%）".format(
+                    k, it["name"], it["code"], it["type"], r["d"] * 100))
+                p.append(_price_line(it))
+                p.append("条件：放量站上{}（量比≥{:.1f}）才算触发".format(_f2(it["pressure"]), VOLR_MIN))
+                if it["state"] == "MIDLINE_HOLD":
+                    p.append("说明：W7-不破中位属于没突破的低吸形态，现价低于触发价是正常的")
+                else:
+                    p.append("现状：还没触发，不追价")
+                p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
+                p.append("")
+
+        if pull_rows:
+            p += ["", "【PULLBACK_WATCH｜等待回踩/重新确认】", ""]
+            for k, r in enumerate(pull_rows, 1):
+                it = r["it"]
+                p.append("{}. **{}({})**（{}｜等待回踩确认｜距触发{:.2f}%）".format(
+                    k, it["name"], it["code"], it["type"], r["d"] * 100))
+                p.append(_price_line(it))
+                p.append("现状：还在回踩、没重新站上关键位，先观察不动手")
+                p.append("条件：放量站上{}（量比≥{:.1f}）再考虑".format(_f2(it["pressure"]), VOLR_MIN))
+                p.append("防线：收盘跌破{} 就出局".format(_struct_txt(r)))
+                p.append("")
+
+        if invalid_rows:
+            p += ["", "【已失效｜不参与排名】"]
+            for r in invalid_rows:
+                it = r["it"]
+                p.append("- {}({})：{}".format(it["name"], it["code"], r["reason"] or "跌破结构防线"))
+        return "\n".join(p)
+
+    w7_today_action_text = _load_w7_today_action(TRADE_DATE)
+    if w7_today_action_text:
+        print(f"[W7今日执行状态] 已加载二波当日买点（{w7_today_action_text.count('｜W7总分')}只）"
+              f" | " + " / ".join(
+                  ln.strip() for ln in w7_today_action_text.splitlines()
+                  if ln.startswith(("EXECUTION：", "TRIGGER_WATCH：", "PULLBACK_WATCH："))
+              ))
+
+    # =========================
+    # HVT-BULL 第一梯队（读取天量牛股日报「★ 第一梯队重点解读」段；PRIMARY_BUY 最高置信买点层级，与 hvt_bull/daily.py 同步）
+    # =========================
+    def _load_hvt_bull_first_echelon(trade_date: str) -> str:
+        r"""读取 hvt_bull_report_{date}.md，提取「★ 第一梯队重点解读」段（PRIMARY_BUY 层级）。
+        第一梯队定义：ENTRY≥70 × 供给吸收≥12 × 突破日放量A/A+ × RS20≥70，无硬否决；FE≥70=A级（四要素×Future Expansion双重确认）。
+        """
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"hvt_bull_report_{trade_date}.md"),
+            os.path.join(REPORT_DIR, f"hvt_bull_report_{trade_date}.md"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ""
+        latest = max(files, key=os.path.getmtime)
+        try:
+            with open(latest, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError as e:
+            print(f"[HVT 第一梯队] 读取失败: {e}")
+            return ""
+        # 解析「## ★ 第一梯队重点解读」段（起于该标题，止于下一个 ## 标题）
+        seg = []
+        in_s = False
+        for ln in lines:
+            s = ln.strip()
+            if s.startswith("## ★ 第一梯队重点解读"):
+                in_s = True
+                continue
+            if in_s:
+                if s.startswith("## "):
+                    break
+                seg.append(ln)
+        if not seg:
+            print(f"[HVT 第一梯队] {trade_date} 报告缺少第一梯队段（引擎版本过旧？）")
+            return ""
+        out = ["【HVT-BULL 第一梯队（PRIMARY_BUY 最高置信买点层级）】",
+               f"数据来源：{os.path.basename(latest)}（HVT-BULL 天量牛股引擎 V3，宁缺毋滥、数量稀少为常态）",
+               ""]
+        out.extend(seg)
+        return "\n".join(out).strip()
+
+    def _load_hvt_bull_te_buy_pool(trade_date: str) -> str:
+        r"""读取 hvt_bull_report_{date}.md，提取「① 次日买入候选」段（te_buy_pool 执行买点池）。
+        池定义：execution_state ∈ (READY_BUY, PULLBACK_BUY) 且 next_day_action ∈ (BUY, BUY_ON_CONFIRM)，
+        按执行分取 top≤3、并经 R1/R2 再入规则剔除；本函数只保留 next_day_action=BUY
+        （无需再确认、次日可直接执行），BUY_ON_CONFIRM（需盘中重新走强确认）不进 AI 段。
+        """
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"hvt_bull_report_{trade_date}.md"),
+            os.path.join(REPORT_DIR, f"hvt_bull_report_{trade_date}.md"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ""
+        latest = max(files, key=os.path.getmtime)
+        try:
+            with open(latest, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError as e:
+            print(f"[HVT 执行买点池] 读取失败: {e}")
+            return ""
+        seg = []
+        in_s = False
+        for ln in lines:
+            s = ln.strip()
+            if s.startswith("### ① 次日买入候选"):
+                in_s = True
+                continue
+            if in_s:
+                if s.startswith("### "):
+                    break
+                seg.append(ln)
+        if not seg:
+            print(f"[HVT 执行买点池] {trade_date} 报告缺少次日买入候选段（引擎版本过旧？）")
+            return ""
+
+        # 只留 ACTION=BUY：表格按 ACTION 列过滤，明细块按块内是否含 BUY_ON_CONFIRM 过滤
+        kept, i, n_seg = [], 0, len(seg)
+        n_buy = 0
+        while i < n_seg:
+            ln = seg[i]
+            s = ln.strip()
+            if s.startswith("**【"):
+                blk = [ln]
+                i += 1
+                while i < n_seg and not seg[i].strip().startswith("**【"):
+                    blk.append(seg[i])
+                    i += 1
+                if "BUY_ON_CONFIRM" not in "\n".join(blk):
+                    kept.extend(blk)
+                    n_buy += 1
+                continue
+            if s.startswith("|"):
+                cells = [c.strip() for c in ln.split("|")]
+                if len(cells) > 7 and cells[1] and not cells[1].startswith("-") and cells[1] != "代码":
+                    if cells[7] != "BUY":
+                        i += 1
+                        continue
+            kept.append(ln)
+            i += 1
+
+        out = ["【HVT-BULL 执行买点池（te_buy_pool 次日买入候选·仅 ACTION=BUY 可直接执行）】",
+               f"数据来源：{os.path.basename(latest)}（HVT-BULL te_buy_pool 已剔除 R1/R2 低胜率形态；"
+               f"本段只含 next_day_action=BUY，BUY_ON_CONFIRM 需盘中确认、已排除）",
+               ""]
+        if n_buy == 0:
+            kept.append("（今日次日买入候选中无可直接执行（ACTION=BUY）的标的：其余为 BUY_ON_CONFIRM 需盘中确认，或已剔除；不强行交易）")
+        out.extend(kept)
+        return "\n".join(out).strip()
+
+    hvt_first_echelon_text = _load_hvt_bull_first_echelon(TRADE_DATE)
+    if hvt_first_echelon_text:
+        print("[HVT 第一梯队] 已加载天量牛股 PRIMARY_BUY 层级")
+
+    hvt_te_buy_text = _load_hvt_bull_te_buy_pool(TRADE_DATE)
+    if hvt_te_buy_text:
+        _n_buy = sum(1 for _l in hvt_te_buy_text.splitlines() if _l[:2] == '| ' and _l[2:3].isdigit())
+        print(f"[HVT 执行买点池] 已加载 te_buy_pool 可直接执行（ACTION=BUY）候选（{_n_buy}只；BUY_ON_CONFIRM 已排除）")
+
+    # =========================
+    # ETF操作提示（读取主线轮动汇总报告的精简版）
+    # =========================
+    etf_tips_text = ""
+    summary_path = rf'D:\mystock\report_daily\etf_mainline_summary_{TRADE_DATE}.txt'
+    try:
+        if os.path.exists(summary_path):
+            with open(summary_path, 'r', encoding='utf-8') as f:
+                full = f.read().strip()
+            # 摘要文件本身即精简版（TOP5动量+持仓），直接全文引用，避免关键词筛行漏掉动量明细
+            etf_tips_text = full if len(full) <= 2000 else full[:2000]
+            print(f"[ETF提示] 汇总报告缩略: {summary_path}")
+        else:
+            etf_tips_text = ""
+            print(f"[ETF提示] 未生成ETF决策报告")
+    except Exception as e:
+        print(f"[ETF提示] 读取失败: {e}")
+
+
+    # =========================
+    # 量能放大信号选股（VSW 量能爆发+宽幅震荡策略·下蹲买点池）
+    # 数据源：picks_db/stock_picks.db（strategy_id='vsw'，由 volume_surge_select.py 收盘后落库）
+    # 作为报告第 8 段【量能放大信号选股】的喂料（20261003 用户要求：加在 AI prompt 最后一段）
+    # =========================
+    def _load_vsw_squat_signals(trade_date: str) -> str:
+        """读取当日 VSW 下蹲买点信号并格式化；无信号返回空池提示行（fail-soft）。"""
+        db = os.path.join(BASE_DIR, 'picks_db', 'stock_picks.db')
+        rows = []
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % db.replace("\\", "/"), uri=True, timeout=5)
+            con.row_factory = sqlite3.Row
+            try:
+                rows = con.execute(
+                    "select * from stock_pick where strategy_id='vsw' and pick_date=? "
+                    "order by score desc, rank_no", (trade_date,)).fetchall()
+            finally:
+                con.close()
+        except Exception as e:
+            print(f"[量能放大信号] 读取 stock_pick 失败: {e}")
+
+        out = ["【量能放大信号选股】",
+               f"数据来源：picks_db/stock_picks.db（strategy_id=vsw, pick_date={trade_date}，"
+               "volume_surge_select.py 收盘后落库；signal 后缀 (优选)/(扩大) 为形态分支）",
+               ""]
+        if not rows:
+            out.append(f"  今日（{trade_date}）无 VSW 下蹲买点信号（空池）。")
+            out.append("")
+            return "\n".join(out).strip()
+
+        for i, r in enumerate(rows, 1):
+            try:
+                ind = json.loads(r['indicators']) if r['indicators'] else {}
+            except Exception:
+                ind = {}
+            if not isinstance(ind, dict):
+                ind = {}
+            _burst, _fes = ind.get('量能爆发评分'), ind.get('FinalEntryScore')
+            _rating = ind.get('Rating') or ''
+            _theme = ind.get('所属主题') or '未匹配主题'
+            _num = lambda v: isinstance(v, (int, float))
+            line1 = (f"【第{i}名】{r['stock_name']} ({r['ts_code']}) [{r['signal']}] "
+                     f"收盘={r['close']:.2f} 涨跌幅={r['pct_chg']:+.2f}%"
+                     + (f" 量能爆发评分={_burst:.1f}" if _num(_burst) else "")
+                     + (f" 选股总分={_fes:.1f}({_rating})" if _num(_fes) else ""))
+            line2 = f"  {r['reason'] or ''}"
+            line3 = (f"  操作：{r['action'] or ''} | 主题：{_theme}"
+                     + (f" | 止损位={r['stop_price']:.2f}" if _num(r['stop_price']) else ""))
+            out += [line1, line2, line3, ""]
+        return "\n".join(out).strip()
+
+    vsw_squat_text = _load_vsw_squat_signals(TRADE_DATE)
+    print(f"[量能放大信号] 已加载 VSW 下蹲买点池（{vsw_squat_text.count('【第')}只）")
+
+
+    #return
+
+    prompt = f"""
+以下是我自己计算的量化分析结果：
+
+**【大盘分析】**
+
+{emotion_text}
+
+**【ER20 TOP2 次日信号】**
+{er20_top2_text}
+
+**【今日主题分析情况】**
+{trade_advice_text}
+
+
+请分析并输出内容：
+开头以“这是大盘和个股推送微信消息”开头
+标题：**每日复盘({TRADE_DATE})**
+内容(分成以下部分，输出中也显示序号1、2、3、4、....段落名称及换行)：
+1、**大盘分析**：严格按照上述“大盘分析”给定的内容进行分析，【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
+（"大盘节点"来自 MarketNode 引擎，看短线情绪冷热与节点轨迹；"大盘环境 V10"来自 V10.0 五状态机，看市场环境风险档位与对应目标仓位。两者是独立且互补的判断，都要照抄，不得互相替代、不得合并成一句话、不得只挑一个写）
+** 市场分析
+* 节点：{{照抄"大盘节点"数据块的「当前节点」，并保留"是否新节点"里的"新节点"字样（若为"是"则在节点后加"（新节点）"）；数据块显示"无新节点"则写"无新节点"}} | 状态：{{照抄「市场状态」}} | 情绪：{{照抄「情绪子状态」}} | 强度：{{照抄「节点强度」}} | 置信度：{{照抄「置信度」}}
+* 节点动态：{{照抄"大盘节点"数据块的「节点动态」冒号后的全部内容（含轨迹与今日节点·第N日）；数据块无此行则写"无"}}
+* 上证指数：XXXX | 成交额：XX万亿 | 涨跌比 X%
+* 市场：XXXXX | 赚钱：XX 
+* 风险：XXXXXX | 节奏：XXXXXX
+* 节点风险：{{照抄"大盘节点"数据块的「失效条件」；数据块无此行则写"无"}}
+* 环境状态：{{照抄"大盘环境 V10"数据块的「当前状态」与「节点类型」（如"S3 恐慌加速｜恐慌加速"）；数据块无此行则写"无"}}
+** 仓位建议
+* 当前目标：xx%
+* 环境目标：{{照抄"大盘环境 V10"数据块的「环境目标仓位」；数据块无此行则写"无"}}
+* 正常区间：xx%～xx%   确认上限：xx%
+* 触发原因：{{仅当"大盘分析"数据块出现「⚠ 关键低点：X已跌破且未收复（日期）」时输出这一行，数值与日期一字不差照抄，写成"跌破关键低点X（日期）未收复 → 强制0仓，等底分型或右侧信号"；数据块无此行时写"无强制闸门"，禁止自行编造原因}}
+* 一句话：XXXXX。
+** 策略：XXXX
+* 最终：XXXXXX
+2、**主题分析**
+【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符（每个"**"行独立成段），禁止自由发挥格式。所有主题名/边际/人话必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现；**本段不使用任何数字指标**，更不得自行计算或补数。注意：该数据块是"主题热度V2.5.1主题雷达"，**不含 Top5 榜单口径**，禁止出现"最强主题/三窗口共振/榜单"等旧表述，也禁止因为找不到 Top5 就输出"数据块未提供"之类的话，直接按下面模板引用雷达分组】
+** 主线：{{照抄"◆ 主题雷达"中 🔥当前主线 行冒号之后的全部内容——已按「边际·人话」合并，禁止拆开、禁止逐只重复人话、禁止补写}}{{若"◆ 当日最强"的主题不在上面这段里，就在结尾追加"、该主题（当日最强）"；若🔥当前主线为"（无）"，则主线只写"该主题（当日最强）"}}
+** 升温梯队：🚀{{照抄 🚀加速升温 行冒号后内容}}｜🔄{{照抄 🔄真正再启动 行冒号后内容}}｜↩️{{照抄 ↩️反弹 行冒号后内容}}｜🌱{{照抄 🌱新出现 行冒号后内容}}（某类在数据块中为"（无）"则写"无"）
+** 高位钝化：{{照抄 ⚠️高位钝化 行冒号后内容；为"（无）"则写"无"}}
+** 正在降温：{{照抄"◆ 正在降温"行冒号后的主题名，只列名、不展开、不加人话}}
+** 看什么（从"◆ 重点主题解读"里挑 1–2 只最重要的主题，每只一行）：{{主题名}}：{{照抄该主题的"支持证据"整句}}
+** 一句话市场总结：{{照抄"◆ 一句话市场总结"整行}}
+（缺值处理：某行显示"（无）"或数据块无该行则写"无"，不得用其它主题填补；主题名/边际/人话一律不得改写或重算。仅当数据块标题为 V2.4 三窗口（theme_heat_v24）时，才改按"◆ 本日/本周/本月热度 Top5"逐组引用。）
+（【禁止啰嗦】"看什么"每只主题只写「主题名：+ 支持证据一句」，**禁止输出"当前状态/确认条件/失效条件"及任何数字指标**；"主线"与"升温梯队"直接照抄数据块里已合并好的分组，**禁止把同一句人话在多个主题上重复展开**。）
+
+3、**【ETF操作建议】**
+{etf_tips_text}
+输出要求：
+- 当前持仓（名称、代码、收益、下次调仓）
+- 操作建议：如数据中有调仓/买入候选则输出1、2、3（代码和名称、动量）；若数据中仅有持仓信息（未到调仓日），明确说明"距下次调仓还有N个交易日，无需操作"，并列出TOP5动量排名
+- 如果建议中有与主线主题一致的ETF，说明共振确认
+- 禁止输出"数据不足"：上方数据区即为全部真实ETF数据，动量排名/持仓信息一字不差引用
+
+4、**【中长线股票池】**（HVT-BULL 引擎当日最高置信买点层级·天量牛股：历史天量+缩量锁筹+二次突破+RS20≥70 四要素同时满足且无硬否决；FE≥70 为A级=四要素×Future Expansion双重确认，B级=结构达标但扩张确认稍弱；宁缺毋滥，数量稀少为常态）：
+{hvt_first_echelon_text}
+（【数据边界】本段只分析上方"【HVT-BULL 第一梯队】"标记中列出的股票；若显示"今日无第一梯队"，必须明确提示"今日无第一梯队，不强行交易"，禁止用其它股池股票填补。）
+【输出要求-第4段】按原列表顺序逐只输出，每只控制在一屏内。**必须用散户看得懂的普通话讲，不许堆砌行业黑话/英文缩略语**（如"锁筹""二次突破分层""扩张空间""FE""RS20"等一律不许直接出现；确实非用不可时，必须紧跟括号用一句大白话解释）。每只股票固定三行：
+① 名称(代码)[A级/B级]
+② **为什么值得看**：一句大白话讲清主力在干什么、现在处在什么阶段（例："前期放历史巨量拉升，之后一路缩量横盘不跌，说明筹码被拿住了、没人急着跑"、"刚放量冲破前期高点，属于二次启动第一天"），禁止只罗列术语
+③ **怎么买卖**：触发价/止损/目标/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改），并翻译成动作——"跌到X.XX元就认错走人"、"到X.XX元先落袋一部分"
+最后整段末尾附一句白话纪律：**放量跌破前期高点(T0_High)、两天都收不回来，就别扛了，直接止损离场**；B级个股必须加注"信号偏弱，仓位从低"。
+
+4B、**【次日执行买点池】**（HVT-BULL 引擎 te_buy_pool·短线执行口径：execution_state=READY_BUY/PULLBACK_BUY，按执行分取 top≤3、已剔除 R1/R2 低胜率形态；**本段只含 next_day_action=BUY——无需再确认、次日可直接执行**，BUY_ON_CONFIRM 已排除；与第4段"中长线股票池"互补——那边看结构质量与右尾潜力，这边看明天能否实际下单，两池无交集为常态，不是矛盾）：
+{hvt_te_buy_text}
+（【数据边界】本段只分析上方"【HVT-BULL 执行买点池】"标记中列出的股票；数据区为空或显示无候选时，必须明确提示"今日无可直接执行的买点，不强行交易"，禁止用其它股池股票填补。）
+【输出要求-第4B段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出：名称(代码) + 类型(HORIZON) + 动作(BUY) + 触发价/买区/失效位/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句话执行理由（引用缩量比/守位/执行分等原文数值）；这些均为可直接执行的信号，但仍须按开盘预案输出纪律：高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销。
+
+5、**【V7 严格拉升回调买点】**（仅适用于主板大市值、20日内放量且至少两涨停、回撤后当日低开阳线承接的窄形态策略）：
+{rally_pullback_v7_text}
+（【数据边界】本段只分析上方"【V7 拉升回调买点池】"标记后列出的股票；若该段落为空则提示"今日无V7严格拉升回调买点信号"。该策略不是当日全市场强势股清单。）
+【输出要求-第5段】按总分从高到低逐只输出，严格引用引擎给出的价位，禁止改判。止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。
+
+6、**【W7 二波·今日执行状态】**（W7 HVT-V3 引擎收盘后输出。已按「实际交易距离 + 触发条件 + 结构是否失效」做**输出层三状态分层**：EXECUTION=已进入执行区 / EXECUTION_WAIT_VOLUME=已进入价格执行区但量能未确认 / TRIGGER_WATCH=距触发≤3%只差一个放量确认 / PULLBACK_WATCH=仍需等待回踩或重新确认。此分层只改展示与状态标签，不改选股、不改评分、不改量能口径；结构失效的候选已移出操作榜）：
+{w7_today_action_text}
+（【数据边界】本段只分析上方"【W7 二波·今日执行状态（输出层三状态分层 V1.0）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第4段第一梯队或任何其它股池股票填补。）
+【输出要求-第6段】严格照抄数据块给出的状态分类与全部数值（状态、现价、触发价、距触发%、MA20、量比、IGE_ADJ、W7总分、结构防线一律不得改动、重算或四舍五入错位），并遵守：
+① 禁止在报告开头（"1、大盘分析"之前）单独输出【W7 状态汇总】小节，也不得把数据块里的"速览"行（EXECUTION 只数 / 今日真正进入执行区 等）搬到报告开头；本段只按下方 EXECUTION / TRIGGER_WATCH / PULLBACK_WATCH 三段输出，不另设汇总小节；
+② 正文按【EXECUTION｜已进入执行区】→【TRIGGER_WATCH｜等待触发】→【PULLBACK_WATCH｜等待回踩/重新确认】三段输出，段内顺序严格照数据块，禁止跨段重排；
+③ 格式极简、面向散户：**每只股票独立成块，固定 4 行，个股之间空一行**——①加粗"序号. 名称(代码)（类型｜状态）"；②一行价格数据（现价/触发价/MA20/量比/IGE_ADJ，照抄数据块）；③一句大白话做法或条件（EXECUTION 写"可按计划买入，单只不超过10%"；EXECUTION_WAIT_VOLUME 写"已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"；TRIGGER_WATCH 写"还没触发，不追价，放量站上XXX才算触发"；PULLBACK_WATCH 写"还在回踩，先观察不动手"）；④"防线：收盘跌破XXX 就出局"。价格保留两位小数，不堆术语、不加多余解释；
+④ 执行状态优先于总分：禁止因为 W7 总分高就把 PULLBACK_WATCH / TRIGGER_WATCH 写成"已进入执行区"；禁止因为 IGE_ADJ 高就升级状态；禁止把已经跌回关键位的票仍标为 EXECUTION；
+⑤ 量能阀门不可绕过：量比<1.2 一律按数据块标为"量能未确认（EXECUTION_WAIT_VOLUME）"，禁止写成"已确认买入""立即买入"，禁止下调量比阈值；
+⑥ 若 EXECUTION（含量能未确认）为 0，必须明确写出"今日 W7 无 EXECUTION 标的。结论：不强行交易。"，禁止人为制造买入信号；
+⑦ 数据块末尾如给出【已失效｜不参与排名】，照抄该行，不得给它排名；禁止把 C池等待票混入本段充当买点；单只仓位不超过10%。
+
+7、**【双底调整到位股池】**（一波大涨后回落成双底、右底缩量不破左底的低吸口径；按双底排名分从高到低排序）：
+{double_bottom_pool_text}
+（【数据边界】本段只分析上方"🔥 双底调整到位股池"数据块中列出的股票；数据块显示"今日无双底调整到位标的（空池）"时必须原样提示，禁止用第4段第一梯队或任何其它股池股票填补。）
+【输出要求-第7段】本段是**低吸买点**口径，不是突破追高，全部结论只能依据数据块给出的「主题」与「双底」几何：
+① 按数据块顺序（排名分从高到低）逐只输出，每只固定 5 行、个股之间空一行：第1行加粗"序号. 名称(代码)（双底低吸）"；第2行"主题：XXX"，**照抄数据块"  主题: ..."行的主题名，一字不差**（形如"元器件（未入当前热点主题）"就原样写，数据块写"未匹配主题"就写"未匹配主题"），该行若还带"主线:xxx(质量N)""趋势分X/情绪分Y"则一并引用；禁止自己编造概念名、行业名或换用同义词；数据块没有主题信息时写"主题：数据块未给出"，不得推测；第3行照抄价格数据（现价/涨跌幅/排名分/双底前波涨幅/左底/颈线/右底/缩量）；第4行一句大白话讲结构——前期大涨了多少、之后回落做成右底、右底缩量且不破左底，所以现在是低吸位；并点明该主题当前是否属于热点主线（数据块主题名带"未入当前热点主题"即为非热点，须明说"主题不在当前热点上，属于纯技术面低吸"）；第5行"防线：收盘跌破左底X.XX 就出局"；
+② 所有价格与比例一律照抄数据块的"  双底: ..."行，价格保留两位小数，禁止改动、重算或四舍五入错位；禁止把"颈线"写成触发买点——
+本段的低吸买点是右底本身，"站上颈线"属于后续转突破的加仓条件，不是本段买入门槛；
+③ 禁止罗列 V10/资金/筹码/YRI 等内部指标，禁止堆砌行业黑话，只用散户看得懂的话讲双底结构；
+④ 数据块为空（空池）时只输出一句"今日无双底调整到位标的"，不得强行编造买点。
+
+8、**【量能放大信号选股】**（VSW 量能爆发+宽幅震荡策略·下蹲买点池：量能爆发/宽幅震荡结构已成立、当日缩量回踩，提前于突破日给出的低吸买点。signal 后缀 (优选)/(扩大) 为形态分支——优选=当日缩量（量比≤1.2）+ 涨幅≤+1%；扩大=回调后小阴/小阳/十字星（小实体K线，实体≤2%）企稳、量比≤1.6、涨幅 -3%~+2.5%，均视为有效下蹲买点；后缀另可能带「·主题效应」= 同一主题在本次下蹲池出现≥2只（落库理由里带「🔗主题效应：主题名（同池N只）」），表示资金在同一方向多点开花，属于加分提示而非新门槛。下跌幅度不设均线/距前高/止损空间等额外门槛，只由「跟踪期间收盘跌破 T0 前一交易日收盘价 → T0 作废」单一口径把关；池内已剔除「缩量过快且持续缩量」者 = 5日量能变化≤-50% 且 连续缩量≥3天）：
+{vsw_squat_text}
+（【数据边界】本段只分析上方"【量能放大信号选股】"数据块中列出的股票；数据块显示"无 VSW 下蹲买点信号（空池）"时必须原样提示"今日无下蹲买点信号，不强行交易"，禁止用第4段第一梯队、第4B段执行买点池、第5/6/7段任何其它股池的股票填补。）
+【输出要求-第8段】按数据块顺序（选股总分从高到低）逐只输出，每只固定 4 行、个股之间空一行：①加粗"序号. 名称(代码)（下蹲买点·优选/扩大）"；②一行数据（收盘/涨跌幅/量能爆发评分/选股总分，一律照抄数据块，价格保留两位小数，禁止改动或重算）；③一句大白话讲下蹲形态——把"下蹲买点…"括号内的信息翻译成散户话（缩量回踩、量比多少、是十字星还是小阴/小阳线），禁止只罗列术语；④"怎么买卖：止损位X.XX元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加"。禁止罗列 V10/资金/筹码/YRI 等内部指标，禁止堆砌行业黑话。
+
+------------------
+以上全局格式要求：
+- 股票分析另起一行，分点说明
+- 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
+- 风格简洁明了，适合手机阅读
+- 返回MD格式，字体大小适合手机阅读
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 6 段 W7 二波·今日执行状态、第 7 段 双底调整到位股池、第 8 段 量能放大信号选股）；**报告开头禁止输出【W7 状态汇总】小节**
+
+"""
+    if not simple_mode:
+        print("\n========== Deepseek AI分析 ==========\n")
+        prompt_file = os.path.join(CACHE_DIR, f"prompt_debug_{TRADE_DATE}.txt")
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write(prompt)
+        print(f"[DEBUG] Prompt已保存: {prompt_file}")
+        #report = deepseek(prompt)
+        report = deepseek(prompt, use_flash=True)
+        
+        print(report)
+
+        try:
+            ds_file = os.path.join(CACHE_DIR, f"Deepseek_Self_{TRADE_DATE}.md")
+            with open(ds_file, "w", encoding="utf-8") as f:
+                f.write(report)
+            print(f"✅ Deepseek报告已保存: {ds_file}")
+        except Exception as e:
+            print(f"⚠️ Deepseek报告保存失败: {e}")
+        
+        # 保存最终报告
+        final_report = report
+
+        # 兜底修复：AI 偶发漏写/谎报 ETF 段（各种"数据不足"变体），定位整段并用真实数据替换
+        if etf_tips_text:
+            _m_etf = re.search(r"(#+\s*3、\s*\**【ETF操作建议】\**[\s\S]*?)(?=\n-{3,}|\n#+\s*4、|\Z)", final_report)
+            if _m_etf:
+                _etf_sec = _m_etf.group(1)
+                _etf_bad = any(k in _etf_sec for k in ("数据不足", "无ETF操作建议数据", "未提供ETF"))
+                if _etf_bad and "20日动量" not in _etf_sec:
+                    print("[兜底] AI漏写ETF动量数据，用源数据整段替换")
+                    _etf_head = _etf_sec.split('\n', 1)[0]
+                    final_report = final_report[:_m_etf.start()] + f"{_etf_head}\n\n{etf_tips_text}\n\n" + final_report[_m_etf.end():]
+
+        # 先发送微信（即使报告保存失败也要发送）
+        send_wechat(final_report, os.getenv("WECHAT_SCKEY"))
+        # PushPlus 推送（支持markdown，增强阅读体验）
+        send_pushplus(final_report, os.getenv("PUSHPLUS"))
+
+        # 邮件推送（正文 HTML + PDF 附件）并行保留，与微信推送互不影响
+        send_agent_mail(final_report)
+
+        # 保存报告（带异常处理）
+        try:
+            report_file = os.path.join(REPORT_DIR, f"Final_Self_{TRADE_DATE}.md")
+            with open(report_file, "w", encoding="utf-8") as f:
+                f.write(final_report)
+            print(f"✅ 报告已保存: {report_file}")
+        except Exception as e:
+            print(f"⚠️ 报告保存失败: {e}")
+
+        try:
+            html_file = os.path.join(REPORT_DIR, f"Final_Self_{TRADE_DATE}.html")
+            markdown_to_html_report(final_report, 
+                                    output_file=html_file, 
+                                    pdf_file=os.path.join(REPORT_DIR, f"Final_Self_{TRADE_DATE}.pdf"), 
+                                    title=f"复盘及精选个股({TRADE_DATE})"
+                                    )
+        except Exception as e:
+            print(f"⚠️ HTML报告生成失败: {e}")
+
+        # 报告 HTML 生成后自动同步到服务器（供网页「复盘报告」页签展示）
+        if os.path.exists(os.path.join(REPORT_DIR, f"Final_Self_{TRADE_DATE}.html")):
+            upload_report_html()
+    else:
+        print(f"\n{'='*60}")
+        print(f"[简易模式] 跳过AI分析和微信发送")
+        print(f"{'='*60}")
+
+    #result = send_wechat_message(report)
+
+# =========================
+# YRI-H 历史辨识度评分（过去252个交易日，约1年）
+# =========================
+def _is_zt_day(pct_chg, ts_code):
+    """判断单日是否涨停（主板9.8%+/双创19.8%+）"""
+    if pct_chg is None:
+        return False
+    IS_CYB_KCB = (ts_code.startswith('3') or ts_code.startswith('688') or ts_code.startswith('689'))
+    zt_threshold = 19.8 if IS_CYB_KCB else 9.8
+    return pct_chg >= zt_threshold
+
+
+def calc_yri_history(ts_code, debug=False):
+    """
+    计算历史辨识度指标 YRI-H（满分100，基于过去252个交易日）
+    
+    返回: dict, 包含各项得分、总分、等级、标签、画像
+    """
+    ts_code = ts_code.strip()
+    
+    # 1. 获取历史日线数据（近1年）
+    df = get_hist_data(ts_code)
+    if df is None or len(df) < 30:
+        return {
+            "错误": f"历史数据不足（仅{len(df) if df is not None else 0}天）",
+            "建议": "请确认股票代码是否正确，或先运行主程序缓存数据"
+        }
+    
+    # 取最近252个交易日
+    df = df.sort_values('trade_date').tail(252).reset_index(drop=True)
+    n_days = len(df)
+    
+    # ========== 1. 计算基础指标 ==========
+    zt_count = 0  # 涨停次数
+    max_consec_zt = 0  # 最大连板
+    current_consec = 0
+    big_up_days = 0  # 大阳线（+5%以上）天次
+    pct_chg_list = []  # 每日涨跌幅
+    
+    for _, row in df.iterrows():
+        pct = row.get('pct_chg', 0)
+        pct_chg_list.append(pct)
+        
+        if _is_zt_day(pct, ts_code):
+            zt_count += 1
+            current_consec += 1
+            max_consec_zt = max(max_consec_zt, current_consec)
+        else:
+            current_consec = 0
+        
+        if pct >= 5:  # 大阳线计数（趋势股重要指标）
+            big_up_days += 1
+    
+    # 计算辅助指标
+    avg_pct_abs = sum([abs(x) for x in pct_chg_list]) / len(pct_chg_list) if pct_chg_list else 0
+    first_close = df['close'].iloc[0]
+    last_close = df['close'].iloc[-1]
+    stock_return = (last_close / first_close - 1) * 100 if first_close > 0 else 0
+    
+    # 年化因子（如果实际交易日不足252天，按比例放大阈值分母）
+    # 这样短周期数据不会因为观察期短就低估辨识度
+    annual_factor = 252 / n_days if n_days > 0 else 1.0
+    
+    # 年化涨停/大阳次数（用于调整评分阈值）
+    zt_count_annual = zt_count * annual_factor
+    big_up_days_annual = big_up_days * annual_factor
+    
+    # 计算近1年最大滚动涨幅（用局部高点法，O(n)复杂度）
+    closes = df['close'].values
+    max_drawup = 0.0
+    min_close_seen = closes[0]
+    for c in closes:
+        if c < min_close_seen:
+            min_close_seen = c
+        drawup = (c / min_close_seen - 1) * 100 if min_close_seen > 0 else 0
+        max_drawup = max(max_drawup, drawup)
+    max_excess = max(max_drawup, stock_return)
+    
+    # 历史新高检查
+    is_new_high = last_close >= df['close'].max() * 0.98
+    
+    # ========== 2. 涨停基因 G（30分） ==========
+    # 趋势股涨停少但大阳线多，组合打分
+    # 使用年化涨停次数评估"涨停基因强度"
+    G_raw = 0
+    if zt_count_annual >= 20:
+        G_raw += 30
+    elif zt_count_annual >= 15:
+        G_raw += 25
+    elif zt_count_annual >= 10:
+        G_raw += 20
+    elif zt_count_annual >= 5:
+        G_raw += 15
+    elif zt_count_annual >= 2:
+        G_raw += 10
+    elif zt_count_annual >= 1:
+        G_raw += 5
+    
+    # 大阳线补偿（趋势股没有涨停但有很多5%+阳线时的补偿，最多+25分）
+    # 每6天出现一次大阳线给3分
+    big_up_bonus = min(int(big_up_days_annual / 6) * 3, 25)
+    
+    # 趋势股"资金关注"特征：平均日波动>2%也说明有资金在操作
+    volatility_bonus = 0
+    if avg_pct_abs >= 3.0:
+        volatility_bonus = 8
+    elif avg_pct_abs >= 2.5:
+        volatility_bonus = 6
+    elif avg_pct_abs >= 2.0:
+        volatility_bonus = 4
+    elif avg_pct_abs >= 1.5:
+        volatility_bonus = 2
+    
+    G_score = min(G_raw + big_up_bonus + volatility_bonus, 30)
+    
+    # ========== 3. 空间记忆 S（25分） ==========
+    S_score = 0
+    # 连板记忆（15分）
+    if max_consec_zt >= 6:
+        S_score += 15
+    elif max_consec_zt >= 5:
+        S_score += 12
+    elif max_consec_zt >= 4:
+        S_score += 10
+    elif max_consec_zt >= 3:
+        S_score += 7
+    elif max_consec_zt >= 2:
+        S_score += 4
+    elif max_consec_zt >= 1:
+        S_score += 2
+    
+    # 趋势空间（10分）- 最大涨幅体现"翻倍空间"
+    trend_space_score = 0
+    if max_excess >= 200:
+        trend_space_score = 10
+    elif max_excess >= 100:
+        trend_space_score = 8
+    elif max_excess >= 60:
+        trend_space_score = 6
+    elif max_excess >= 40:
+        trend_space_score = 4
+    elif max_excess >= 25:
+        trend_space_score = 3
+    elif max_excess >= 15:
+        trend_space_score = 2
+    
+    S_score = min(S_score + trend_space_score, 25)
+    
+    # ========== 4. 历史资金活跃度 A（20分） ==========
+    # 4a. 当日真实换手率（从缓存读取）
+    today_turnover = get_cached_turnover(ts_code)
+    avg_turnover = today_turnover if today_turnover and today_turnover > 0 else 0
+    
+    # 4b. 若有量数据，vol均值/当日vol的比值估算历史换手
+    if 'vol' in df.columns and avg_turnover <= 0:
+        vol_1y_avg = df['vol'].mean()
+        today_vol = df['vol'].iloc[-1]
+        if today_vol > 0:
+            if vol_1y_avg / today_vol > 1.5:
+                avg_turnover = 5.0
+            elif vol_1y_avg / today_vol > 1.0:
+                avg_turnover = 3.0
+            else:
+                avg_turnover = 1.5
+    
+    # 4c. A评分 - 换手率（12分）
+    if avg_turnover >= 15:
+        A_turnover = 12
+    elif avg_turnover >= 10:
+        A_turnover = 11
+    elif avg_turnover >= 8:
+        A_turnover = 10
+    elif avg_turnover >= 6:
+        A_turnover = 8
+    elif avg_turnover >= 5:
+        A_turnover = 7
+    elif avg_turnover >= 3:
+        A_turnover = 5
+    elif avg_turnover >= 2:
+        A_turnover = 3
+    elif avg_turnover >= 1:
+        A_turnover = 2
+    else:
+        A_turnover = 1
+    
+    # 4d. 日均成交额百分位（8分）- 用历史数据估算
+    # 注意：tushare的amount字段单位是"千元"，需乘以1000转为元，再除以10000转为万
+    avg_amount_1y = 0.0
+    if 'amount' in df.columns:
+        avg_amount_1y = df['amount'].mean() * 1000 / 10000  # = amount.mean() / 10
+    elif 'vol' in df.columns and 'close' in df.columns:
+        avg_amount_1y = (df['vol'] * df['close']).mean() / 10000
+    
+    # 成交额分级评分
+    A_percentile_bonus = 0
+    if avg_amount_1y > 50000:  # 50亿+
+        A_percentile_bonus = 8
+    elif avg_amount_1y > 20000:  # 20亿+
+        A_percentile_bonus = 6
+    elif avg_amount_1y > 10000:  # 10亿+
+        A_percentile_bonus = 5
+    elif avg_amount_1y > 5000:  # 5亿+
+        A_percentile_bonus = 4
+    elif avg_amount_1y > 2000:  # 2亿+
+        A_percentile_bonus = 3
+    elif avg_amount_1y > 1000:  # 1亿+
+        A_percentile_bonus = 2
+    else:
+        A_percentile_bonus = 1
+    
+    A_score = min(A_turnover + A_percentile_bonus, 20)
+    
+    # ========== 5. 股性弹性 E（15分） ==========
+    # 用近1年最大涨幅+累计涨幅综合判断
+    E_by_max = 0
+    if max_excess >= 200:
+        E_by_max = 15
+    elif max_excess >= 100:
+        E_by_max = 12
+    elif max_excess >= 60:
+        E_by_max = 10
+    elif max_excess >= 40:
+        E_by_max = 8
+    elif max_excess >= 30:
+        E_by_max = 6
+    elif max_excess >= 20:
+        E_by_max = 4
+    elif max_excess >= 10:
+        E_by_max = 2
+    else:
+        E_by_max = 1
+    
+    # 累计涨幅加分（趋势股累计涨幅大）
+    E_by_return = 0
+    if stock_return >= 100:
+        E_by_return = 5
+    elif stock_return >= 50:
+        E_by_return = 3
+    elif stock_return >= 20:
+        E_by_return = 2
+    elif stock_return >= 0:
+        E_by_return = 1
+    
+    E_score = min(E_by_max + E_by_return, 15)
+    
+    # ========== 6. 关注度持续性 C（10分） ==========
+    # 6a. 热榜天数
+    hot_days = 0
+    try:
+        if os.path.exists(DC_HOT_CACHE_DIR):
+            files = sorted([f for f in os.listdir(DC_HOT_CACHE_DIR) if f.startswith('dc_hot_')])
+            for f in files:
+                try:
+                    fpath = os.path.join(DC_HOT_CACHE_DIR, f)
+                    hdf = pd.read_csv(fpath)
+                    if '代码' in hdf.columns:
+                        if ts_code in hdf['代码'].head(50).values:
+                            hot_days += 1
+                    elif 'ts_code' in hdf.columns:
+                        if ts_code in hdf['ts_code'].head(50).values:
+                            hot_days += 1
+                except:
+                    continue
+    except:
+        pass
+    
+    # 6b. 市场波动关注度 proxy - 平均日波动大说明市场反复关注
+    market_attention_score = 0
+    if avg_pct_abs >= 3.5:
+        market_attention_score = 10
+    elif avg_pct_abs >= 2.8:
+        market_attention_score = 8
+    elif avg_pct_abs >= 2.2:
+        market_attention_score = 6
+    elif avg_pct_abs >= 1.8:
+        market_attention_score = 4
+    elif avg_pct_abs >= 1.4:
+        market_attention_score = 3
+    else:
+        market_attention_score = 2
+    
+    # 6c. 热榜天数评分
+    hot_score = 0
+    if hot_days > 50:
+        hot_score = 10
+    elif hot_days >= 20:
+        hot_score = 8
+    elif hot_days >= 10:
+        hot_score = 6
+    elif hot_days >= 5:
+        hot_score = 4
+    elif hot_days >= 2:
+        hot_score = 2
+    else:
+        hot_score = 1
+    
+    C_score = max(hot_score, market_attention_score)
+    
+    # ========== 7. 总分计算 ==========
+    total_score = G_score + S_score + A_score + E_score + C_score
+    total_score = round(total_score, 1)
+    
+    # 等级判定
+    if total_score >= 80:
+        level = "历史大妖/板块核心中军"
+    elif total_score >= 65:
+        level = "强股性活跃标的/趋势龙头"
+    elif total_score >= 50:
+        level = "中等辨识度"
+    elif total_score >= 30:
+        level = "股性一般/非核心"
+    else:
+        level = "历史冷门/低辨识度"
+    
+    # 核心历史标签
+    tags = []
+    if zt_count >= 10:
+        tags.append("涨停常客")
+    if max_consec_zt >= 3:
+        tags.append("连板记忆")
+    if big_up_days >= 30:
+        tags.append("大阳趋势")
+    if avg_turnover >= 5:
+        tags.append("高换手")
+    elif avg_turnover >= 3:
+        tags.append("中高换手")
+    if avg_amount_1y > 10000:
+        tags.append("资金深度参与")
+    if max_excess >= 100:
+        tags.append("高弹性")
+    elif max_excess >= 50:
+        tags.append("中高弹性")
+    if hot_days >= 10 or market_attention_score >= 4:
+        tags.append("市场关注")
+    if stock_return >= 50:
+        tags.append("趋势上涨")
+    
+    if not tags:
+        tags = ["低辨识度"]
+    
+    # 股性画像
+    if total_score >= 80:
+        portrait = "板块核心中军/历史级大妖，资金深度参与，股性极度活跃，具有强烈市场记忆点"
+    elif total_score >= 65:
+        portrait = "趋势龙头/板块活跃股，资金关注度高，具备良好波段和短线价值"
+    elif total_score >= 50:
+        portrait = "股性中等，有一定表现，主题共振时可参与"
+    elif total_score >= 30:
+        portrait = "股性一般，非核心标的，适合有明确主题催化时谨慎参与"
+    else:
+        portrait = "冷门股/低辨识度，缺乏资金关注，非主线行情不建议参与"
+    
+    result = {
+        "股票代码": ts_code,
+        "分析天数": n_days,
+        "G_涨停基因": {
+            "涨停次数": zt_count,
+            "大阳线天次(+5%)": big_up_days,
+            "涨停得分": G_raw,
+            "大阳补偿": big_up_bonus,
+            "得分": G_score
+        },
+        "S_空间记忆": {
+            "最大连板": max_consec_zt,
+            "最大涨幅(%)": round(max_excess, 1),
+            "连板得分": S_score - trend_space_score,
+            "趋势空间得分": trend_space_score,
+            "得分": S_score
+        },
+        "A_资金活跃度": {
+            "日均换手率(%)": round(avg_turnover, 2),
+            "日均成交额(万元)": round(avg_amount_1y, 0),
+            "换手得分": A_turnover,
+            "成交额百分位": A_percentile_bonus,
+            "得分": A_score
+        },
+        "E_股性弹性": {
+            "近1年最大涨幅(%)": round(max_excess, 1),
+            "近1年累计涨幅(%)": round(stock_return, 1),
+            "得分": E_score
+        },
+        "C_关注度持续性": {
+            "热榜天数": hot_days,
+            "平均日波动(%)": round(avg_pct_abs, 2),
+            "得分": C_score
+        },
+        "YRI历史总分": total_score,
+        "等级": level,
+        "核心历史标签": tags,
+        "股性画像": portrait
+    }
+    
+    if debug:
+        print(f"\n{'='*60}")
+        print(f"  YRI-H 历史辨识度评分 - {ts_code}")
+        print(f"{'='*60}")
+        print(f"  样本: {n_days}天  涨停{zt_count}次  大阳{big_up_days}次  连板{max_consec_zt}天")
+        print(f"  G 涨停基因(30): {G_score}  (涨停{G_raw} + 大阳{big_up_bonus})")
+        print(f"  S 空间记忆(25):  {S_score}  (连板{S_score - trend_space_score} + 趋势空间{trend_space_score})")
+        print(f"  A 资金活跃(20):  {A_score}  (换手{A_turnover} + 成交{A_percentile_bonus})")
+        print(f"  E 股性弹性(15):  {E_score}  (最大涨幅{max_excess:.0f}% + 累计{stock_return:.0f}%)")
+        print(f"  C 关注度(10):   {C_score}  (热榜{hot_days}天/波动{avg_pct_abs:.1f}%)")
+        print(f"  {'-'*60}")
+        print(f"  YRI-H 总分: {total_score}  →【{level}】")
+        print(f"  标签: {', '.join(tags)}")
+        print(f"{'='*60}\n")
+    
+    return result
+
+
+def yri_batch_analysis(codes):
+    """批量分析多只股票YRI-H并排序"""
+    results = []
+    for code in codes:
+        r = calc_yri_history(code, debug=False)
+        if isinstance(r, dict) and "错误" not in r:
+            results.append({
+                "代码": r["股票代码"],
+                "YRI总分": r["YRI历史总分"],
+                "等级": r["等级"],
+                "涨停": r["G_涨停基因"]["涨停次数"],
+                "大阳+5%": r["G_涨停基因"]["大阳线天次(+5%)"],
+                "最大连板": r["S_空间记忆"]["最大连板"],
+                "最大涨幅%": r["S_空间记忆"]["最大涨幅(%)"],
+                "日均换手%": r["A_资金活跃度"]["日均换手率(%)"],
+                "日均成交万": r["A_资金活跃度"]["日均成交额(万元)"],
+                "标签": ", ".join(r["核心历史标签"])
+            })
+    
+    if results:
+        results_df = pd.DataFrame(results).sort_values("YRI总分", ascending=False).reset_index(drop=True)
+        results_df.index = results_df.index + 1
+        pd.set_option('display.width', 200)
+        print(f"\n{'='*120}")
+        print(f"  YRI-H 批量历史辨识度评分（共{len(results)}只，按总分排序）")
+        print(f"{'='*120}")
+        print(results_df.to_string(index=True))
+        print(f"{'='*120}\n")
+        return results_df
+    return None
+
+
+# ═══════════════════════════════════════════════════════════
+# 主题精华报告（V4.3+）
+# ═══════════════════════════════════════════════════════════
+
+def generate_theme_essence_report(trade_date: str = None, prefix: str = None):
+    """
+    生成主题→子主题→个股 精华报告
+
+    从 cache_daily/theme_stock_map_v2_{trade_date}.json 提取
+    主题/子主题/个股的精华内容，输出多格式报告到 report_daily/
+
+    参数:
+      trade_date: 日期 YYYYMMDD（None=自动使用最新）
+      prefix: 文件名前缀（可选）
+
+    用法:
+      from tushare_quant import generate_theme_essence_report
+      generate_theme_essence_report('20260724')
+
+    输出:
+      report_daily/theme_essence_{trade_date}.txt
+      report_daily/theme_essence_{trade_date}.md
+    """
+    from theme_summary_report import generate_theme_essence_report as _gen
+    return _gen(trade_date=trade_date, prefix=prefix)
+
+
+# =========================
+# 启动
+# =========================
+if __name__ == "__main__":
+    import argparse
+    import json
+    
+    parser = argparse.ArgumentParser(description='A股量化选股分析系统')
+    parser.add_argument('-d', '--date', type=str, default=None,
+                        help='指定目标日期，格式: YYYYMMDD（如: 20260601）')
+    parser.add_argument('--no-send', action='store_true',
+                        help='不发送微信消息')
+    parser.add_argument('--simple', action='store_true',
+                        help='简易模式，只输出个股和评分，不进行AI分析、不发送微信')
+    parser.add_argument('--yri', type=str, default=None,
+                        help='历史辨识度分析，输入股票代码(如 002426.SZ 或 002426)，多只用逗号分隔')
+    parser.add_argument('--yri-json', type=str, default=None,
+                        help='同--yri，但仅输出JSON格式结果（便于程序调用）')
+    
+    args = parser.parse_args()
+    
+    # --- YRI-H 历史辨识度分析（独立模式） ---
+    if args.yri_json:
+        codes = [c.strip() for c in args.yri_json.split(',') if c.strip()]
+        results = {}
+        for code in codes:
+            # 自动补全 .SZ/.SH
+            if '.' not in code:
+                if code.startswith(('6', '9')):
+                    code_full = code + '.SH'
+                else:
+                    code_full = code + '.SZ'
+            else:
+                code_full = code
+            r = calc_yri_history(code_full, debug=False)
+            results[code] = r
+        print(json.dumps(results, ensure_ascii=False, indent=2))
+        exit(0)
+    
+    if args.yri:
+        codes = [c.strip() for c in args.yri.split(',') if c.strip()]
+        # 自动补全 .SZ/.SH
+        full_codes = []
+        for code in codes:
+            if '.' not in code:
+                if code.startswith(('6', '9')):
+                    full_codes.append(code + '.SH')
+                else:
+                    full_codes.append(code + '.SZ')
+            else:
+                full_codes.append(code)
+        
+        if len(full_codes) == 1:
+            result = calc_yri_history(full_codes[0], debug=True)
+            if "错误" in result:
+                print(f"\n❌ {result['错误']} - {result['建议']}")
+            else:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            yri_batch_analysis(full_codes)
+        exit(0)
+    
+    # 运行
+    run(target_date=args.date, simple_mode=args.simple)
+
+

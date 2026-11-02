@@ -1,0 +1,202 @@
+{
+  "_comment": "V10.2 市场节点识别 + 状态机 + 动态仓位建议 —— 全部阈值配置化",
+  "_version": "10.5",
+  "_version_history": [
+    {
+      "version": "10.0",
+      "note": "五状态机 S1~S5 + 节点识别；position_advice 只给目标仓位",
+      "date": "2026-10-31"
+    },
+    {
+      "version": "10.1",
+      "note": "新增 S6 强势主升；仓位权限与实际建议仓位分离；满仓授权独立检查；组合风险预算；分级加仓；满仓退出",
+      "date": "2026-10-31"
+    },
+    {
+      "version": "10.2",
+      "note": "修复 2026 全年回放暴露的四个机制性缺陷；状态机改为滑动窗口多数决",
+      "date": "2026-11-01",
+      "changes": [
+        "P0 修复 delta_pp 断链：collect_market_snapshot 原本只在外部传入 prev_snapshot 时才计算，导致实盘与回放路径下 delta_pp 恒为 None，「广度回升」类证据全年一条不命中",
+        "P0 修复核心指数前一日涨跌幅同样断链（prev_core_pct_chg 改为自行查询 index_daily_cache）",
+        "P1 节点判定解耦：状态机改看各节点命中明细，不再依赖互斥的 node_type（原 REPAIR 节点全年 26 天全为孤立单日，连续2日=0天）",
+        "P1 状态机改为滑动窗口多数决（vote_window=7, min_votes=2）+ 恶化方向迟滞；恐慌节点当日立即生效不等待票数",
+        "P1 修复确认广度口径双通道：通道A 水位连续站上+不再恶化；通道B 单日强力反转（识别 2026-03~05 涨跌停跷跷板行情）",
+        "P2 权限阶梯调整：S4 10%→20%、S5 60%→40%，形成 S3(5)→S4(20)→S2(30)→S5(40)→S1(60)→S6(100) 连续梯度",
+        "P2 组合风险预算按状态分档（risk_budget_by_state），解除固定 3% 预算对 60% 以上仓位的硬压制"
+      ],
+      "backtest": "2026 全年 198 个交易日：S3 107→31 天、S4 0→52 天、S5 0→51 天；权限均值 25.4%→31.5%；建议>=60% 天数 10→12 天；切换率 61→71 次"
+    },
+    {
+      "version": "10.5",
+      "date": "2026-11-02",
+      "note": "投票链断链修复 + 自愈",
+      "changes": [
+        "V10.1 save_state 补传 vote_history（原漏传 → 链每天被清空）",
+        "新增 rebuild_vote_history：从历史节点重算投票链，链断时自动自愈",
+        "state_machine.auto_rebuild_votes=true"
+      ]
+    }
+  ],
+  "_note": "这些是初始风控配置，不是经过回测验证的最优参数。任何调整都应重新跑历史检验。",
+  "breadth": {
+    "_note": "breadth_ratio = 上涨家数 / (上涨家数 + 下跌家数)，平盘家数单列不参与分母",
+    "panic_ratio": 0.2,
+    "extreme_percentile": 0.1,
+    "easing_rebound_pp": 8.0,
+    "repair_ratio": 0.55,
+    "repair_delta_pp": 10.0,
+    "drawdown_ratio": 0.35,
+    "normal_lower_ratio": 0.4,
+    "repair_hold_ratio": 0.45,
+    "repair_hold_days": 2,
+    "repair_not_worse_pp": -2.0,
+    "repair_surge_pp": 20.0,
+    "repair_surge_min_ratio": 0.55,
+    "_v102_note": "★ V10.2：repair 的原口径 br>=55 且单日 dpp>=10 是「脉冲式」条件 —— 2026 全年满足 44 天但连续 2 日满足 0 天，导致 S5 全年缺席。改为双通道：通道A(repair_hold_ratio/hold_days/not_worse_pp)=水位连续站上+不再恶化；通道B(repair_surge_pp/surge_min_ratio)=单日强力反转，用于识别 2026-03~05 那种广度 5%↔94% 日间翻转的涨跌停跷跷板行情中的真实修复。"
+  },
+  "limit_down": {
+    "_note": "跌停家数为收盘口径（daily_cache pct_chg 判定，区分主板10%/双创20%）",
+    "panic_increase_ratio": 1.5,
+    "panic_abs_count": 30,
+    "easing_decrease_ratio": 0.7,
+    "easing_abs_decrease": 10,
+    "repair_decrease_ratio": 0.8,
+    "high_percentile": 0.9
+  },
+  "broken_rate": {
+    "_note": "炸板率 = 炸板家数 / (封住家数 + 炸板家数)",
+    "extreme_percentile": 0.85,
+    "easing_max": 0.35,
+    "repair_max": 0.3
+  },
+  "promotion_rate": {
+    "_note": "连板晋级率 = 昨日涨停股中今日继续涨停的比例",
+    "extreme_percentile": 0.2,
+    "repair_min": 0.25
+  },
+  "strong_stock": {
+    "_note": "昨日涨停股今日表现（负反馈强弱）",
+    "extreme_mean_pct": -2.0,
+    "easing_mean_pct": -1.0,
+    "repair_mean_pct": 0.0,
+    "repair_up_ratio": 0.45
+  },
+  "amount": {
+    "_note": "全市场成交额口径 = daily_cache 全市场 amount 求和（千元→亿元）。不使用指数量比替代。",
+    "panic_expand_ratio": 1.15,
+    "easing_shrink_ratio": 0.95,
+    "min_history_days": 20
+  },
+  "index_relative": {
+    "_note": "小盘相对大盘 = 中证2000涨跌幅 - 沪深300涨跌幅",
+    "panic_gap_pct": -1.0,
+    "repair_gap_min": -0.3
+  },
+  "index_trend": {
+    "_note": "主要指数 MA20 / MA60 位置",
+    "ma20_window": 20,
+    "ma60_window": 60,
+    "repair_above_ma20_ratio": 0.5,
+    "drawdown_below_ma20_ratio": 0.5,
+    "near_low_lookback": 60,
+    "near_low_pct": 3.0
+  },
+  "position_percentile": {
+    "_note": "位置分位口径：收盘价在最近 N 个交易日 [最低,最高] 区间中的位置",
+    "close_lookback": 250,
+    "drawdown_lookback": 250,
+    "min_bars": 120
+  },
+  "nodes": {
+    "_note": "节点识别为多指标联合判断，各节点所需最少命中项数",
+    "panic_min_hits": 3,
+    "extreme_min_hits": 2,
+    "easing_min_hits": 2,
+    "repair_min_hits": 3
+  },
+  "state_machine": {
+    "_note": "状态确认与退出条件。confirm_days 为进入某状态所需的连续命中日数。",
+    "confirm_days": {
+      "S2": 1,
+      "S3": 1,
+      "S4": 2,
+      "S5": 2
+    },
+    "exit_days": {
+      "S2": 2,
+      "S3": 3,
+      "S4": 2,
+      "S5": 2
+    },
+    "signal_decay": 1,
+    "_signal_decay_note": "★ V10.2：确认计数的衰减量。命中 +1，未命中 -1（下限 0）。设为 0 则退化为严格的「连续命中」语义。",
+    "vote_window": 7,
+    "min_votes": 2,
+    "_vote_note": "★ V10.2：滑动窗口多数决。每日投一票（S3恐慌/S4衰减/S5修复/空=环境态），取最近 vote_window 日的票数，达到 min_votes 票才切换状态。替代旧的「连续N日确认」—— 后者在广度日均摆动 25~40pp 的高波动市场里几乎无法达成（REPAIR 节点全年 26 天全是孤立单日，连续2日=0天），导致 S4/S5 全年缺席且 3~5 月强势行情整段卡在 S3 恐慌。恶化方向比改善方向多要求 1 票（迟滞），恐慌可快速升级。",
+    "fast_risk_escalation": true,
+    "unknown_confidence": "低",
+    "auto_rebuild_votes": true,
+    "_auto_rebuild_note": "★ V10.5：投票链自愈。prev_votes 为空时从历史重算最近 window 票。起因：V10.1 保存状态时漏传 vote_history → 链每天被清空 → 窗口内永远只有 1 票 → min_votes=2 永不达标 → 状态机冻结（实测 20261102 卡在 S3、权限 5%）。",
+    "_v105_note": "★ V10.5：修复投票链持久化断链 + 增加自愈机制。"
+  },
+  "position_advice": {
+    "_note": "初始风控配置，非回测最优参数",
+    "S1": {
+      "target": null,
+      "action": "按现有策略与个股信号执行",
+      "allow_probe": true
+    },
+    "S2": {
+      "target": 30,
+      "action": "降低交易频率，减少追高，重新评估持仓风险",
+      "allow_probe": false
+    },
+    "S3": {
+      "target": 5,
+      "target_max": 5,
+      "action": "防守为主，不因指数跌幅大而主动抄底",
+      "allow_probe": false
+    },
+    "S4": {
+      "target": 20,
+      "target_max": 20,
+      "action": "观察为主，不自动买入，不降低原有买入标准",
+      "allow_probe": false
+    },
+    "S5": {
+      "target": 40,
+      "_v102_note": "★ V10.2：原为 20，与 S1 的 60% 差距过大且语义倒挂 —— 从恐慌修复回来的市场风险预算应低于「正常市况」，但 20% 又过低。改为 40%，形成 S3(5)→S4(10)→S5(40)→S1(60)→S6(100) 的连续减仓梯度。",
+      "action": "允许逐步提高仓位，但仅在个股信号成立时买入",
+      "allow_probe": true
+    }
+  },
+  "observation": {
+    "_note": "明日观察重点，按状态给出",
+    "S3": [
+      "跌停家数是否见顶回落",
+      "市场广度是否止跌回升",
+      "前期强势股负反馈是否收敛"
+    ],
+    "S4": [
+      "跌停家数是否连续下降",
+      "指数低点是否不再下移",
+      "炸板率是否同步改善"
+    ],
+    "S5": [
+      "修复的持续性（连续第2日广度回升）",
+      "主线板块是否普遍走强",
+      "强势股溢价能否延续"
+    ],
+    "S2": [
+      "跌停家数与广度是否继续恶化",
+      "成交额是放量还是缩量下跌",
+      "强势股是否出现集中补跌"
+    ],
+    "S1": [
+      "广度与跌停结构是否出现变化",
+      "成交额与指数方向是否背离",
+      "主线持续性"
+    ]
+  }
+}

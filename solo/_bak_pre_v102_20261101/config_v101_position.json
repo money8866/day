@@ -1,0 +1,187 @@
+{
+  "_comment": "V10.1 动态仓位管理 —— 强势主升识别(S6) + 仓位权限 + 满仓授权 + 组合风险预算 + 分级加仓 + 满仓退出",
+  "_version": "10.1",
+  "_version_history": [
+    {
+      "version": "10.0",
+      "note": "五状态机 S1~S5 + 节点识别；position_advice 只给目标仓位",
+      "date": "2026-10-31"
+    },
+    {
+      "version": "10.1",
+      "note": "新增 S6 强势主升；仓位权限与实际建议仓位分离；满仓授权独立检查；组合风险预算；分级加仓；满仓退出",
+      "date": "2026-10-31",
+      "changes": [
+        "position_authority: S1/S2/S3/S4/S5/S6 各自最高仓位",
+        "full_position_authorization: 十项必要条件独立检查",
+        "portfolio_risk: 单股/单主题/单行业上限 + 总风险预算 + 现金最低比例",
+        "ladder: 20/40/60/80/100 分级加仓",
+        "strong_uptrend: 指数趋势/市场广度/短线赚钱效应/主线持续性 四模块独立输出"
+      ]
+    }
+  ],
+  "_note": "所有阈值均为初始风控配置，不是经过回测验证的最优参数。任何调整都应重新跑历史检验并更新 _version_history。",
+  "strong_uptrend": {
+    "_note": "S6 强势主升的四模块独立检查。四个模块各自输出 passed/evidence/confidence，不合并成单一总分。",
+    "index_trend": {
+      "_note": "A. 指数趋势。要求多指数共振，不能单指数代表全市场；不能仅凭单日反弹。",
+      "required_above_ma20_ratio": 0.6,
+      "required_above_ma60_ratio": 0.4,
+      "min_ret5": 0.0,
+      "min_ret20": 0.0,
+      "max_recent_drawdown": 0.08,
+      "min_index_count": 4,
+      "smallcap_not_weak_ratio": 0.0,
+      "consistent_new_low": false
+    },
+    "breadth": {
+      "_note": "B. 市场广度。要求持续改善，不能单日 >55% 就进 S6。",
+      "breadth_ratio_min": 0.55,
+      "breadth_ma5_min": 0.5,
+      "breadth_ma20_min": 0.45,
+      "breadth_improve_min_pp": 0.0,
+      "require_2day_above": true,
+      "zt_count_min": 30,
+      "dt_count_max": 30
+    },
+    "money_effect": {
+      "_note": "C. 短线赚钱效应。要求区分'涨停数量增加'与'实际赚钱效应改善'。",
+      "zt_count_min": 40,
+      "dt_count_max": 25,
+      "broken_rate_max": 30.0,
+      "promotion_rate_min": 25.0,
+      "strong_stock_mean_pct_min": 0.0,
+      "strong_stock_up_ratio_min": 0.5,
+      "_unit_note": "strong_stock_up_ratio_min 是 0~1 的比例（如 0.5 表示 50%）；promotion_rate_min / broken_rate_max 是百分数（0~100）"
+    },
+    "mainline": {
+      "_note": "D. 主线持续性。复用 theme_scores.db 的 lifecycle/days_strong/mainline_type。",
+      "min_days_strong": 2,
+      "allowed_lifecycle": [
+        "主升",
+        "启动",
+        "高潮",
+        "加速主升"
+      ],
+      "allowed_mainline_type": [
+        "趋势主线",
+        "情绪+趋势共振"
+      ],
+      "min_theme_trend_score": 55.0,
+      "min_theme_zt_count": 3,
+      "min_theme_up_ratio": 50.0,
+      "min_mainline_count": 1
+    },
+    "require_all_modules": true,
+    "_require_all_note": "require_all_modules=true 时四模块必须全部通过才进 S6；false 时至少通过 min_modules_passed 个"
+  },
+  "min_modules_passed": 4,
+  "position_authority": {
+    "_note": "仓位权限：市场环境允许持有的最高仓位。与实际建议仓位分离 —— 允许100%不等于应该买100%。",
+    "S1": {
+      "max_position": 60,
+      "action": "按现有策略与个股信号执行",
+      "allow_probe": true
+    },
+    "S2": {
+      "max_position": 30,
+      "action": "降低交易频率，减少追高，重新评估持仓风险",
+      "allow_probe": false
+    },
+    "S3": {
+      "max_position": 5,
+      "action": "防守为主，不因指数跌幅大而主动抄底",
+      "allow_probe": false
+    },
+    "S4": {
+      "max_position": 10,
+      "action": "观察为主，不自动买入，不降低原有买入标准",
+      "allow_probe": false
+    },
+    "S5": {
+      "max_position": 60,
+      "action": "允许逐步提高仓位，但仅在个股信号成立时买入",
+      "allow_probe": true
+    },
+    "S6": {
+      "max_position": 100,
+      "action": "强势主升，仓位上限可放开，但仍需满仓授权与组合风险检查",
+      "allow_probe": true
+    }
+  },
+  "full_position_authorization": {
+    "_note": "满仓授权的十项必要条件。任一关键条件不满足即不得授权。数据缺失输出 REVIEW 或 DENIED，不得默认通过。",
+    "min_qualified_stocks": 3,
+    "min_avg_risk_reward": 1.5,
+    "min_risk_reward_per_stock": 1.2,
+    "max_stop_distance": 0.12,
+    "min_account_liquidity_ok": true,
+    "require_all_conditions": true,
+    "_require_all_note": "true=十项全过才 ALLOWED；false=仅关键项全过即可（关键项=状态/指数/广度/赚钱效应/主线/数据完整性）"
+  },
+  "portfolio_risk": {
+    "_note": "组合风险预算。初始值需按账户规模、策略波动率与回测结果调整，不存在适用于所有账户的统一最优值。",
+    "max_single_stock_pct": 15.0,
+    "max_single_theme_pct": 35.0,
+    "max_single_industry_pct": 30.0,
+    "max_total_risk_pct": 3.0,
+    "_max_total_risk_note": "组合总风险 = 各持仓潜在止损损失之和（占账户净值百分比）",
+    "min_cash_pct": 10.0,
+    "include_slippage": true,
+    "slippage_pct": 0.15,
+    "cost_pct": 0.05,
+    "max_correlated_group_pct": 40.0,
+    "min_qualified_for_deployment": 2
+  },
+  "ladder": {
+    "_note": "分级加仓阶梯。不得一次性从低仓位跳到 100%。",
+    "steps": [
+      20,
+      40,
+      60,
+      80,
+      100
+    ],
+    "recheck_before_each_step": true,
+    "max_single_step_pct": 20,
+    "_note_max_step": "单次加仓幅度上限（百分比），防止一步跳太多"
+  },
+  "exit_check": {
+    "_note": "满仓退出检查。环境恶化不等于所有股票同步卖出。",
+    "breadth_drop_pp": 10.0,
+    "dt_increase_ratio": 1.5,
+    "dt_abs_increase": 20,
+    "broken_rate_increase_pp": 15.0,
+    "mainline_broken": true,
+    "core_holdings_risk_count": 3,
+    "risk_budget_overflow": true,
+    "data_missing": true
+  },
+  "qualified_signal_rules": {
+    "_note": "合格买入信号的判定。复用原有个股系统信号定义，不重新设计买卖信号。",
+    "buy_actions": [
+      "BUY",
+      "核心买点",
+      "可开仓·下蹲买点",
+      "放量突破后缩量回踩买点·CONFIRMED",
+      "RIGHT_BOTTOM",
+      "优选",
+      "买点池"
+    ],
+    "observe_actions": [
+      "可开仓·下蹲待确认(半仓)",
+      "观察",
+      "观察池",
+      "早鸟预警·回踩未满窗，观察量能收敛",
+      "跟踪·等待放量再突破",
+      "放量突破后缩量回踩买点·WATCH"
+    ],
+    "exclude_actions": [
+      "WAIT",
+      "NO_CHASE",
+      "MIDLINE_HOLD"
+    ],
+    "exclude_horizon_mid": true,
+    "_exclude_horizon_note": "horizon=mid 的中线仓（如 rb_trend）与短线仓分开统计，不计入短线可部署仓位"
+  }
+}

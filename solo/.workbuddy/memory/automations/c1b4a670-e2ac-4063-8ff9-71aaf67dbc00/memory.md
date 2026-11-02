@@ -1,0 +1,20 @@
+# Automation Memory — 盘后市场分析微信推送
+
+## 用途
+仅记录**执行状态**（是否成功、报错要点、踩坑），**不记录报告正文/行情结论**。
+股市定时任务的内容不得进入 `journal/` 与 `.workbuddy/memory/` 记忆体系，
+否则会被 22:00「工作日志汇总」邮件误当作「今日记录」推给用户。
+
+## 执行记录
+
+### 2026-11-02 (周一)
+- 首次执行（此前无 memory 文件，自动化为新建）。
+- 执行命令：`cd /d/mystock/solo && "C:/Users/kongx/AppData/Local/Python/bin/python" _daily_push_wechat.py`
+- 结果：market_analysis.py 运行成功 → token 自检通过（缓存约 6.0 天，未达 7 天刷新阈值）→ 微信推送 HTTP 200 成功。
+- 产物落在 `cache_backbone_tushare/`：`market_regime_v10_20261102.txt`、`market_regime_v101_20261102.txt`、`market_analysis_20261102.txt`、`position_engine_v9_20261102.txt`。
+- 注意：`market_regime_v10_*.txt` 是脚本 `resolve_trade_date()` 的日期锚点文件，新增报告后勿删。
+
+## 运维要点
+- 脚本自带交易日判断、重试与失败降级告警；**单次失败不要手工重跑**，避免同一交易日重复推送。
+- 推送失败且报 token 相关错误时，调用 `mcp__wechat-clawbot-push__resync_credentials` 自愈后重试一次。
+- 校验推送正文用 `--dry-run --no-run --date YYYYMMDD`（只打印，不推送、不重跑分析）。

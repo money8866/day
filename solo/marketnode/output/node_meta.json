@@ -2427,5 +2427,12 @@
     "confirmed_date":"20261027",
     "invalidated_date":null,
     "trigger_reason":"ZT_DEEP_LOW;DT_SURGE;PROMO_WEAK"
+  },
+  {
+    "node_type":"N5",
+    "first_detected":"20261102",
+    "confirmed_date":"20261102",
+    "invalidated_date":null,
+    "trigger_reason":"ZT_EXTREME;ACCELERATE"
   }
 ]

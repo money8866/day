@@ -1,0 +1,96 @@
+{
+ "date": "20261102",
+ "snapshot": "2026-11-02 15:40:00",
+ "rows": [
+  {
+   "rank": 20,
+   "name": "TMT",
+   "symbol": "pt02GN2369",
+   "zdf": 4.21,
+   "rankdelta": -2,
+   "members": 1219,
+   "zt": 59,
+   "zt_names": [
+    "遥望科技",
+    "捷邦科技",
+    "新经典",
+    "南威软件"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 22,
+   "name": "短剧/互动游戏",
+   "symbol": "pt02GN2269",
+   "zdf": 8.25,
+   "rankdelta": 1,
+   "members": 98,
+   "zt": 28,
+   "zt_names": [
+    "粤 传 媒",
+    "德才股份",
+    "因赛集团",
+    "中广天择"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 27,
+   "name": "证券IT",
+   "symbol": "pt02GN2346",
+   "zdf": 10.04,
+   "rankdelta": 1,
+   "members": 14,
+   "zt": 3,
+   "zt_names": [
+    "赢时胜",
+    "恒生电子",
+    "顶点软件"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 33,
+   "name": "券商",
+   "symbol": "pt02003711",
+   "zdf": 4.63,
+   "rankdelta": -1,
+   "members": 51,
+   "zt": 2,
+   "zt_names": [
+    "国金证券",
+    "太平洋"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 41,
+   "name": "物理AI",
+   "symbol": "pt02GN2442",
+   "zdf": 5.25,
+   "rankdelta": 0,
+   "members": 12,
+   "zt": 1,
+   "zt_names": [
+    "汉王科技"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 50,
+   "name": "人形机器人",
+   "symbol": "pt02GN2238",
+   "zdf": 2.07,
+   "rankdelta": -1,
+   "members": 468,
+   "zt": 7,
+   "zt_names": [
+    "徕木股份",
+    "富春染织",
+    "维宏股份",
+    "华是科技"
+   ],
+   "max_lbc": 1
+  }
+ ]
+}

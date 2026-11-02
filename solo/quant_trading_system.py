@@ -355,7 +355,7 @@ class MarketRegimeJudge:
 
             # 市场趋势总评分
             trend_score, index_trend, theme_trend = ma.calculate_market_trend_score(
-                results, theme_top3_scores, trade_date)
+                results, theme_top3_scores)
 
             prev_position = ma._get_prev_position(trade_date)
             prev_trend_score = ma._get_prev_trend_score(trade_date)
@@ -375,7 +375,7 @@ class MarketRegimeJudge:
             position, filter_reasons = ma._apply_position_filters(
                 position, trend_score, market_regime,
                 prev_trend_score, recent_scores,
-                ma20_slope, ma20_down, results
+                ma20_slope, ma20_down
             )
 
             # 如果仓位被过滤器压低，同步更新市场状态

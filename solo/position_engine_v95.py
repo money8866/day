@@ -7,15 +7,11 @@ A股短线动态仓位引擎 V9.9
 市场决定仓位，主线决定方向，量价决定资金环境，D日决定节奏，风险决定底线。
 """
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Dict
 
 from position_engine_v9 import (
     PositionEngineV9,
-    MarketDataBundle,
     EngineV9Result,
-    LayerScore,
-    build_test_bundle,
-    _clip,
 )
 
 # ============================================================
@@ -101,6 +97,9 @@ MONEY_EFFECT_ADJ = {"强": +5, "中": 0, "弱": -5, "低": -10, "极差": -15}
 MAINLINE_ADJ     = {"强": +5, "中": 0, "弱": -5, "无": -10}
 RISK_ADJ         = {"正常风险": 0, "高风险": -10}
 # 量价环境调整（最大影响 ±5%，与赚钱效应去重：只使用相对量能+涨跌方向，不重复用上涨比例）
+# ★ 口径说明：这里的"量能"来自 V9.0 L6 流动性层的**指数成交量比**
+#   （5日/20日成交量比，am��_ratio_5_20），**不是全市场成交额变化**。
+#   全市场成交额口径在 V10.0 的 market_regime_v10.py 中单独计算，两者不混用。
 LIQ_ADJ = {
     "放量上涨": +5,
     "温和放量上涨": +2,
@@ -150,6 +149,18 @@ class PositionV99Result:
     bomb_ratio: float = 0.2
     weak_veto: bool = False
 
+    # ★ P1：市场状态（普涨/震荡/普跌）—— 闸门阈值按状态自适应
+    market_state: str = "震荡日"
+    breadth_veto_threshold: float = 0.35
+    # 普跌日否决时保留试探仓（而非清仓）
+    bear_trial_floor: int = 10
+
+    # ★ P2：位置 / 波动率择时风控
+    pos_pct: float = 50.0          # 收盘在 60 日区间中的分位
+    vol_pct: float = 50.0          # 20 日波动率在自身 120 日历史中的分位
+    timing_risk_factor: float = 1.0
+    timing_risk_note: str = ""
+
     # ★ 跌破日线级别关键低点（未收复）→ 强制空仓闸门
     breakdown_active: bool = False
     breakdown_key_low: Optional[float] = None
@@ -165,7 +176,6 @@ class PositionV99Result:
     position_normal_min: int = 15
     position_normal_max: int = 30
     position_confirm_cap: int = 35
-    add_room: int = 0
 
     one_sentence: str = ""
     action: str = "维持"
@@ -214,16 +224,160 @@ def _judge_risk(v9):
             return "高风险"
     return "高风险" if (r >= 50 or brake in ("LEVEL2","LEVEL3","LEVEL4")) else "正常风险"
 
-def _is_weak_veto(up_ratio, prev_up_ratio=None):
-    """广度一票否决判定（★ 修 C：含「钝化解除」）。
+# ============================================================
+# 二·二、市场状态识别与广度阈值（★ P1：闸门方向性修正）
+# ============================================================
+# 审计发现：三道闸门中有两道方向是反的 —— 广度否决在普跌日底部误杀、
+# 炸板率在普涨日误杀。以下阈值全部由 198 个交易日全样本实证标定。
 
-    入场：当日上涨占比 < 35% → 一票否决。
-    出场钝化：昨日仍在否决区(<35%)时，今日须 ≥55% 才直接解除；
-             仅"勉强过线"(35%~55%)视为未确认，继续防守。
+MARKET_STATE_RISE = "普涨日"
+MARKET_STATE_FLAT = "震荡日"
+MARKET_STATE_FALL = "普跌日"
+
+# 广度否决阈值（按市场状态自适应）
+#   普跌日 30%：普跌日 91% 的日子广度<30%，广度低是常态；实证 35% 以下 fwd1 为正
+#   其他日 35%：非普跌日广度低才是真异常
+BREADTH_VETO_THRESHOLD = {
+    MARKET_STATE_FALL: 0.30,
+    MARKET_STATE_FLAT: 0.35,
+    MARKET_STATE_RISE: 0.35,
+}
+
+# 钝化解除阈值（仅非普跌日适用）
+#   65%：实证解除组 fwd1 -0.12% vs 维持组 -1.77%；45%~55% 区间是全样本最差，
+#        切勿下调到 45%（会放进最差的那一段）
+BREADTH_RELEASE_THRESHOLD = 0.65
+
+# 普跌日否决时的试探仓下限（普跌日广度低=底部特征，清仓会踏空反弹）
+BEAR_TRIAL_POSITION_FLOOR = 10
+
+# ============================================================
+# 二·三、位置 / 波动率风控（P2：接入全样本唯二有显著预测力的维度）
+# ============================================================
+# 数据依据（2026-01~10 全样本 168 个交易日，中证2000）：
+#   位置分位（收盘在 60 日区间中的分位）：
+#       0-20   N=26  fwd5 -0.80%  胜率 46.2%
+#       20-40  N=25  fwd5 +0.44%  胜率 60.0%   ← 最好
+#       40-60  N=56  fwd5 -0.09%  胜率 48.2%
+#       60-80  N=38  fwd5 -1.35%  胜率 34.2%
+#       80-100 N=23  fwd5 -1.86%  胜率 30.4%   ← 最差
+#       ρ(pos60, fwd5) = -0.206 (p=0.008)
+#   波动率分位（20 日标准差在自身 120 日历史中的分位）：
+#       0-30   N=33  fwd5 -2.12%  胜率 24.2%   ← 最差
+#       85-100 N=28  fwd5 +2.99%  胜率 78.6%   ← 最好
+#       ρ(std20, fwd5) = +0.352 (p<0.001)
+#
+# 两个维度都是"越高越危险"或"越低越危险"的单边风控，
+# 因此只做**上限折扣**，不做加仓信号（避免在弱市里反向加码）。
+
+HIGH_POSITION_THRESHOLD = 80      # 位置分位 ≥80 → 高位均值回归风险
+HIGH_POSITION_FACTOR = 0.7        # 仓位上限打 7 折
+
+LOW_VOL_THRESHOLD = 30            # 波动率分位 ≤30 → 低波（上涨末期）
+LOW_VOL_FACTOR = 0.8              # 仓位上限打 8 折
+
+
+def _calc_position_vol_regime(index_data, pos_lookback=60, vol_lookback=120):
+    """计算多指数的位置分位与波动率分位（取中证2000 优先，其次上证指数）。
+
+    与 market_analysis.calc_position_vol_regime 同口径，但接受 {名称: DataFrame} 字典，
+    便于在 V9.9 内部直接使用 index_data。
     """
-    if up_ratio < 0.35:
+    res = {'pos_pct': 50.0, 'vol_pct': 50.0}
+    idx = index_data or {}
+    df = None
+    for name in ("中证2000", "上证指数"):
+        cand = idx.get(name)
+        if cand is None or len(cand) < 25:
+            continue
+        df = cand
+        break
+    if df is None:
+        return res
+    try:
+        d = df.reset_index(drop=True)
+        w = d['close'].tail(pos_lookback)
+        if len(w) >= 20:
+            lo, hi = float(w.min()), float(w.max())
+            if hi > lo:
+                res['pos_pct'] = (float(d['close'].iloc[-1]) - lo) / (hi - lo) * 100
+        if 'pct_chg' in d.columns:
+            std_series = d['pct_chg'].rolling(20).std().dropna()
+            if len(std_series) >= 20:
+                hist = std_series.tail(vol_lookback)
+                cur = float(std_series.iloc[-1])
+                res['vol_pct'] = float((hist < cur).mean() * 100)
+    except Exception:
+        pass
+    return res
+
+
+def _judge_market_state(index_data):
+    """判定当日市场状态（普涨 / 震荡 / 普跌）。
+
+    口径：中证2000 与 上证指数 当日涨跌幅的均值（短线小盘代表 + 大盘代表）。
+    ±0.5% 为分界，与 P1 实证分析中的分层口径保持一致。
+
+    ★ P1：闸门必须区分市场状态，否则会在两个方向上同时出错 ——
+      普跌日把底部当异常来否决，普涨日把活跃当退潮来减仓。
+    """
+    rets = []
+    idx = index_data or {}
+    for name in ("中证2000", "上证指数"):
+        df = idx.get(name)
+        if df is None or len(df) < 2:
+            continue
+        try:
+            r = float(df['pct_chg'].iloc[-1])
+            if r == r:  # 非 NaN
+                rets.append(r)
+        except Exception:
+            continue
+    if not rets:
+        return MARKET_STATE_FLAT
+    avg = sum(rets) / len(rets)
+    if avg > 0.5:
+        return MARKET_STATE_RISE
+    if avg < -0.5:
+        return MARKET_STATE_FALL
+    return MARKET_STATE_FLAT
+
+
+def _is_weak_veto(up_ratio, prev_up_ratio=None, market_state=MARKET_STATE_FLAT):
+    """广度一票否决判定（★ P1：阈值按市场状态自适应 + 解除阈值上调）。
+
+    ── 数据依据（全样本 198 个交易日，中证2000，fwd = 后续N日收益）──
+
+    普跌日按广度分层的 fwd5 / 胜率：
+        up<15%    N=18  fwd5 +0.11%  胜率 62.5%
+        15-25%    N=21  fwd5 -0.25%  胜率 45.0%
+        25-35%    N=21  fwd5 +0.12%  胜率 52.4%   ← fwd1 +0.57%（最好）
+        35-50%    N=10  fwd5 -0.79%  胜率 44.4%
+        50-65%    N= 1  fwd5 -10.66% 胜率  0.0%
+    → 普跌日 35% 是分界：35% 以下 fwd1 基本为正，35% 以上转负。
+      而普跌日本身就有 91% 的日子广度<30%（广度低是普跌日的常态，不是异常），
+      所以普跌日把阈值压到 35% 属于**误杀底部**。
+
+    钝化解除阈值（昨日<35% 的日子，今日广度达到多少才解除）：
+        T=45%  解除组 N=39  fwd1 -0.44%   维持组 N= 8  fwd1 -0.63%
+        T=55%  解除组 N=33  fwd1 -0.46%   维持组 N=14  fwd1 -2.07%
+        T=65%  解除组 N=24  fwd1 -0.12%   维持组 N=23  fwd1 -1.77%
+    → 解除阈值**上调**到 65% 明显更优（解除日 fwd1 从 -0.46% 改善到 -0.12%）。
+      ★ 注意：45%~55% 区间是全样本最差（fwd5 -3.98%，胜率 33.3%），
+      所以不能下调到 45%。
+
+    普跌日特殊处理：普跌日 up>=65% 无样本（普涨日才有），若沿用 65% 解除阈值，
+    普跌日一旦进入钝化将永远无法解除 → 长期锁死空仓。
+    因此**普跌日只做"上限约束"，不进入钝化状态**。
+    """
+    thr = BREADTH_VETO_THRESHOLD.get(market_state, 0.35)
+    if market_state == MARKET_STATE_FALL:
+        # 普跌日：广度低是常态，只做上限约束，不设"钝化"标记
+        return up_ratio < thr
+    if up_ratio < thr:
         return True
-    if prev_up_ratio is not None and prev_up_ratio < 0.35 and up_ratio < 0.55:
+    # 出场钝化：昨日仍在否决区时，今日须达到释放阈值才解除
+    if prev_up_ratio is not None and prev_up_ratio < thr and up_ratio < BREADTH_RELEASE_THRESHOLD:
         return True
     return False
 
@@ -251,6 +405,26 @@ def _judge_liquidity_env(v9):
     else:
         env = "缩量上涨" if is_up else "缩量下跌"
     return env, LIQ_ADJ.get(env, 0), round(ratio, 2)
+
+# ★ D1~D7 的含义（重要，避免误读为"连续N天"）：
+#   D2 确认期   —— 动量处于"修复"、情绪中性/温和
+#   D3 首分窗口 —— 动量正常 + 情绪温和/高涨（默认兜底档）
+#   D4 趋势延续 —— 动量加速 + 情绪高涨
+#   D5 高位     —— 动量钝化 + 情绪中性（涨幅停滞）
+#   D6 下跌防守 —— 动量衰退或急杀
+#   D7 冰点     —— 情绪冰点或退潮
+#   这些是「动量状态 × 情绪状态」的**组合标签**，**不是连续天数**。
+#   例如 D6 表示"动量正在衰退/急杀"，与"连续下跌6天"无关。
+#   D1 不存在（_judge_dday 永不返回 1）。
+D_DAY_MEANING = {
+    2: "确认期（动量修复+情绪中性/温和）",
+    3: "首分窗口（动量正常+情绪温和/高涨）",
+    4: "趋势延续（动量加速+情绪高涨）",
+    5: "高位（动量钝化+情绪中性）",
+    6: "下跌防守（动量衰退或急杀）",
+    7: "冰点（情绪冰点或退潮）",
+}
+
 
 def _judge_dday(v9):
     mom = v9.l3_momentum.details.get('mom_state', '')
@@ -329,8 +503,13 @@ def _check_level2_add(v9):
         count += 1
     return count >= 3
 
-def _check_level1_reduce(v9):
-    """一级减仓：至少满足2项"""
+def _check_level1_reduce(v9, market_state=MARKET_STATE_FLAT):
+    """一级减仓：至少满足2项
+
+    ★ P1：普涨日不计「炸板率高」这一项 —— 实证普涨日炸板>35% 组 fwd5 为正
+    （>45% 组 N=2 fwd5 +9.83%，而 ≤25% 组 N=25 fwd5 -1.41%），
+    普涨日炸板率高是打板资金活跃的表现，不应作为减分项。
+    """
     up = v9.l2_breadth.details.get('up_ratio', 50)
     zb = v9.l4_sentiment.details.get('broken_rate', 0)
     dt = v9.l4_sentiment.details.get('dt_count', 0)
@@ -338,7 +517,7 @@ def _check_level1_reduce(v9):
     count = 0
     if up < 40:
         count += 1
-    if zb > 35:
+    if zb > 35 and market_state != MARKET_STATE_RISE:
         count += 1
     if dt > 10:
         count += 1
@@ -358,7 +537,12 @@ def _check_level2_reduce(v9):
 # 七、文本生成
 # ============================================================
 
-def _one_sentence(regime_cn, trend, money, mainline, risk, liq_env="正常量能"):
+def _one_sentence(
+    regime_cn,
+    mainline,
+    risk,
+    liq_env = '正常量能'
+):
     if regime_cn == "情绪冰点/退潮":
         return "情绪退潮，一票否决防守，等待上涨家数回暖再恢复。"
     if risk == "高风险":
@@ -385,7 +569,12 @@ def _one_sentence(regime_cn, trend, money, mainline, risk, liq_env="正常量能
         return "冰点修复初期，小仓位试错，确认后再加仓。"
     return "市场中性，保持谨慎。"
 
-def _final_grade(regime_cn, money, mainline, target, liq_env="正常量能"):
+def _final_grade(
+    regime_cn,
+    money,
+    mainline,
+    liq_env = '正常量能'
+):
     """星级严格对应市场状态+赚钱+主线+量价+仓位"""
     if regime_cn == "强趋势" and money == "强" and mainline == "强" and liq_env in ("放量上涨", "温和放量上涨"):
         return "★★★★★ 全面进攻"
@@ -411,19 +600,6 @@ def _final_grade(regime_cn, money, mainline, target, liq_env="正常量能"):
 # ============================================================
 # 八、仓位滞回
 # ============================================================
-
-def _apply_hysteresis(target, prev, emergency, action):
-    if prev is None:
-        return target
-    diff = target - prev
-    if diff < 0:
-        if emergency or "减仓" in action:
-            return target
-        return prev - min(abs(diff), 10)
-    if diff > 0:
-        return prev + min(diff, 8)
-    return target
-
 
 # ============================================================
 # 八·二、日线级别关键低点跌破检测（强制空仓闸门）
@@ -711,9 +887,31 @@ class PositionEngineV99:
         r.bomb_ratio = bomb_ratio
         prev_up_ratio = getattr(data, 'prev_up_ratio', None)
         r.prev_up_ratio = (None if prev_up_ratio is None else float(prev_up_ratio) / 100.0)
-        # ★ 修 C 广度钝化：入场 35% 悬崖，出场需"连续2日 ≥35%"（钝化一票否决的解除）
-        weak_veto = _is_weak_veto(up_ratio, r.prev_up_ratio)
+
+        # ★ P1：先判定市场状态，闸门阈值按状态自适应
+        r.market_state = _judge_market_state(getattr(data, 'index_data', {}) or {})
+        r.breadth_veto_threshold = BREADTH_VETO_THRESHOLD.get(r.market_state, 0.35)
+
+        # ★ P2：位置 / 波动率风控（高位均值回归风险 + 低波上涨末期）
+        regime = _calc_position_vol_regime(getattr(data, 'index_data', {}) or {})
+        r.pos_pct = regime['pos_pct']
+        r.vol_pct = regime['vol_pct']
+        r.timing_risk_factor = 1.0
+        r.timing_risk_note = ""
+        if r.pos_pct >= HIGH_POSITION_THRESHOLD:
+            r.timing_risk_factor *= HIGH_POSITION_FACTOR
+            r.timing_risk_note = "高位(位置分位%.0f%%)均值回归风险" % r.pos_pct
+        if r.vol_pct <= LOW_VOL_THRESHOLD:
+            r.timing_risk_factor *= LOW_VOL_FACTOR
+            r.timing_risk_note = (r.timing_risk_note + " " if r.timing_risk_note else "") + \
+                                 "低波(波动分位%.0f%%)上涨末期" % r.vol_pct
+
+        # ★ P1 广度钝化：阈值按市场状态自适应（普跌日 30%），解除阈值上调至 65%
+        weak_veto = _is_weak_veto(up_ratio, r.prev_up_ratio, r.market_state)
         r.weak_veto = weak_veto
+        # 普跌日否决 ≠ 情绪退潮：广度低是普跌日的常态（91% 的日子广度<30%），
+        # 实证普跌日广度<35% 组 fwd1 为正、胜率 53%，硬清仓会踏空底部反弹
+        is_bear_veto = weak_veto and r.market_state == MARKET_STATE_FALL
         # 一票否决时赚钱效应降级为"低"（上涨占比仅30%的盘面，不能再标"中"）
         if weak_veto:
             r.money_effect = "低"
@@ -727,9 +925,10 @@ class PositionEngineV99:
         normal_max = info["normal_max"]
         r.position_confirm_cap = info["confirm_cap"]
 
-        # 极弱风控一票否决：上涨家数<35% → 情绪冰点/退潮，无论其他因素，上限强制封死15%
+        # 极弱风控一票否决：上涨家数低于阈值 → 上限强制封死15%
         if weak_veto:
-            r.market_regime = "情绪冰点/退潮"
+            if not is_bear_veto:
+                r.market_regime = "情绪冰点/退潮"
             r.position_confirm_cap = min(r.position_confirm_cap, 15)
             normal_max = min(normal_max, 15)
             if normal_min > normal_max:
@@ -768,16 +967,38 @@ class PositionEngineV99:
             normal_min = 0
             normal_max = 10
 
+        # ★ P2：位置/波动率择时风控 → 仓位上限折扣
+        #   高位（位置分位≥80）均值回归风险 ρ(fwd5)=-0.206 (p=0.008)
+        #   低波（波动分位≤30）上涨末期     ρ(fwd5)=-2.12%/胜率24.2%（最差档）
+        #   两个维度都只做上限折扣，不做加仓信号，避免在弱市反向加码。
+        if r.timing_risk_factor < 1.0:
+            base_target = int(round(base_target * r.timing_risk_factor))
+            potential_target = int(round(potential_target * r.timing_risk_factor))
+            target = int(round(target * r.timing_risk_factor))
+            r.position_confirm_cap = max(0, int(round(r.position_confirm_cap * r.timing_risk_factor)))
+            if normal_max > r.position_confirm_cap:
+                normal_max = r.position_confirm_cap
+            if normal_min > normal_max:
+                normal_min = normal_max
+
         # 动作判断（严格：条件不满足绝不输出"加仓"）
-        # 一票否决：上涨家数<35% → 减仓/防守（优先于一切）
+        # 一票否决：上涨家数低于阈值 → 减仓/防守（优先于一切）
         if weak_veto:
-            r.action = "减仓/防守"
-            if up_ratio < 0.35:
-                r.action_detail = "极弱风控（上涨%.0f%%＜35%%）" % (up_ratio * 100)
+            if is_bear_veto:
+                # ★ P1：普跌日广度低是底部特征 → 控仓保留试探仓，不做清仓式防守
+                r.action = "减仓/控仓"
+                r.action_detail = "普跌日广度%.0f%%＜%.0f%%（底部特征，保留试探仓）" % (
+                    up_ratio * 100, r.breadth_veto_threshold * 100)
             else:
-                # 广度刚刚翻上 35% 但前一日仍在否决区 → 钝化，需连续2日 ≥35%
-                r.action_detail = "广度未确认（昨%.0f%%→今%.0f%%，需连续≥35%%）" % (
-                    (r.prev_up_ratio or 0.0) * 100, up_ratio * 100)
+                r.action = "减仓/防守"
+                if up_ratio < r.breadth_veto_threshold:
+                    r.action_detail = "极弱风控（上涨%.0f%%＜%.0f%%）" % (
+                        up_ratio * 100, r.breadth_veto_threshold * 100)
+                else:
+                    # 广度翻过阈值但前一日仍在否决区 → 钝化，需达到释放阈值(65%)才确认
+                    r.action_detail = "广度未确认（昨%.0f%%→今%.0f%%，需≥%.0f%%）" % (
+                        (r.prev_up_ratio or 0.0) * 100, up_ratio * 100,
+                        BREADTH_RELEASE_THRESHOLD * 100)
         elif up_ratio > 0.55 and bomb_ratio < 0.20:
             # 加仓必须赚钱效应确认：上涨>55% 且 炸板率<20%（修复"弱势却加仓"BUG）
             if _check_level2_add(v9):
@@ -791,15 +1012,19 @@ class PositionEngineV99:
             else:
                 r.action = "维持"
                 r.action_detail = ""
-        elif up_ratio < 0.40 or bomb_ratio > 0.30 or r.d_day >= 6:
+        elif up_ratio < 0.40 or (bomb_ratio > 0.30 and r.market_state != MARKET_STATE_RISE) or r.d_day >= 6:
             # 弱势/高炸板/下跌防守 → 减仓控仓
+            # ★ P1：普涨日不因高炸板率减仓 —— 实证普涨日炸板>35% 组 fwd5 为正
+            #   （>45% 组 N=2 fwd5 +9.83%，≤25% 组 N=25 fwd5 -1.41%），
+            #   普涨日炸板率高是打板资金活跃的表现，不是见顶信号。
             r.action = "减仓/控仓"
-            r.action_detail = "弱势环境（涨%.0f%%/炸板%.0f%%/D%d）" % (up_ratio * 100, bomb_ratio * 100, r.d_day)
+            r.action_detail = "弱势环境（涨%.0f%%/炸板%.0f%%/D%d）" % (
+                up_ratio * 100, bomb_ratio * 100, r.d_day)
         elif _check_level2_reduce(v9):
             r.action = "快速减仓"
             r.action_detail = "10～20%"
             target = max(0, target - 15)
-        elif _check_level1_reduce(v9):
+        elif _check_level1_reduce(v9, r.market_state):
             r.action = "减仓"
             r.action_detail = "5～10%"
             target = max(0, target - 8)
@@ -819,8 +1044,14 @@ class PositionEngineV99:
         elif r.action in ("减仓/防守", "减仓/控仓"):
             # 防守/控仓：在当前仓位上减 10%，且不超过风控上限（一票否决15%/普通确认上限）
             cap = r.position_confirm_cap
-            target = (max(0, min(prev_pos - 10, cap))
-                      if prev_pos is not None else min(base_target, cap))
+            if is_bear_veto:
+                # ★ P1：普跌日保留试探仓下限 —— 广度低是底部特征，
+                #   清仓式防守会踏空反弹（普跌日广度<35% 组 fwd1 为正、胜率 53%）
+                base = (prev_pos - 10) if prev_pos is not None else base_target
+                target = max(BEAR_TRIAL_POSITION_FLOOR, min(base, cap))
+            else:
+                target = (max(0, min(prev_pos - 10, cap))
+                          if prev_pos is not None else min(base_target, cap))
         else:  # 维持
             target = base_target
 
@@ -859,17 +1090,14 @@ class PositionEngineV99:
         r.position_normal_min = normal_min
         r.position_normal_max = normal_max
 
-        # 可加仓空间
-        r.add_room = r.position_confirm_cap - r.position_target
-
         # 一句话
         if r.breakdown_active:
             r.one_sentence = "跌破日线级别关键低点%.2f（%s）后未收复，空仓等待，直到底分型或右侧买入信号。" % (
                 r.breakdown_key_low, r.breakdown_key_low_date)
         else:
             r.one_sentence = _one_sentence(
-                r.market_regime, r.market_trend, r.money_effect,
-                r.mainline_strength, r.risk_state, r.liquidity_env
+                r.market_regime, r.mainline_strength,
+                r.risk_state, r.liquidity_env
             )
 
         # 加减仓条件
@@ -883,7 +1111,7 @@ class PositionEngineV99:
         if r.breakdown_active or r.weak_veto:
             r.final_grade = "★ 防守为主"
         else:
-            r.final_grade = _final_grade(r.market_regime, r.money_effect, r.mainline_strength, r.position_target, r.liquidity_env)
+            r.final_grade = _final_grade(r.market_regime, r.money_effect, r.mainline_strength, r.liquidity_env)
 
         # 置信度
         r.confidence = int(v9.regime.confidence * 100)
@@ -980,12 +1208,22 @@ class PositionEngineV99:
         liq_line = "量价：%s" % r.liquidity_env
         if r.amount_ratio > 0:
             liq_line += "（量比%.2f）" % r.amount_ratio
-        L.append("%s | 风险：%s | 节奏：%s" % (liq_line, r.risk_state, r.d_day_desc))
+        # 节奏标签用完整含义说明（d_day_desc 是简称，避免"下跌防守（下跌防守…）"式重复）
+        L.append("%s | 风险：%s | 节奏：D%d %s" % (
+            liq_line, r.risk_state, r.d_day,
+            D_DAY_MEANING.get(r.d_day, "中性")))
+        # ★ P1：输出市场状态与生效的广度阈值，便于核对闸门口径
+        L.append("市场状态：%s（广度否决阈值 %.0f%%）" % (
+            r.market_state, r.breadth_veto_threshold * 100))
+        # ★ P2：输出位置/波动率择时维度
+        L.append("择时维度：位置分位 %.0f%% | 波动分位 %.0f%%%s" % (
+            r.pos_pct, r.vol_pct,
+            ("  ⚠ " + r.timing_risk_note) if r.timing_risk_note else ""))
         if r.breakdown_active:
             L.append("⚠ 关键低点：%s已跌破且未收复（%s）" % (
                 r.breakdown_key_low, r.breakdown_key_low_date))
         L.append("")
-        L.append("当前目标：%d%%   可加仓空间：%d%%" % (r.position_target, r.add_room))
+        L.append("当前目标：%d%%" % r.position_target)
         L.append("正常区间：%d%%～%d%%   确认上限：%d%%" % (r.position_normal_min, r.position_normal_max, r.position_confirm_cap))
         L.append("")
         L.append("一句话：%s" % r.one_sentence)
@@ -1033,20 +1271,3 @@ def _circled_num(n):
 # ============================================================
 # 十二、便捷接口
 # ============================================================
-
-def run_v99(data, prev_pos=None):
-    return PositionEngineV99().analyze(data, prev_pos)
-
-def run_v99_report(data, prev_pos=None):
-    e = PositionEngineV99()
-    r = e.analyze(data, prev_pos)
-    return e.generate_report(r), r
-
-
-# 兼容旧名
-PositionEngineV98 = PositionEngineV99
-PositionV98Result = PositionV99Result
-PositionEngineV97 = PositionEngineV99
-PositionV97Result = PositionV99Result
-PositionEngineV96 = PositionEngineV99
-PositionV96Result = PositionV99Result
