@@ -205,3 +205,71 @@ class TestIntradayPostCloseConsistency(unittest.TestCase):
                             '20261102 应脱离 S3（广度 85% 的极端反转日）')
         self.assertEqual(r.state, 'S4')
         self.assertEqual(r.authority.max_position, 20)
+
+
+class TestIndexDataFreshness(unittest.TestCase):
+    """★ V10.6：指数数据不得静默沿用旧值
+
+    起因（2026-11-03 真实事故）：
+      盘后报告写「上证指数 3638.03 +1.08%、中证2000 2681.29 +2.47%」
+      —— 那是 **11-02** 的数据；11-03 真实为 上证 3608.10 **-0.82%**、
+      中证2000 2623.84 **-2.14%**、创业板指 -2.73%、科创50 -3.81%（全线下跌）。
+      报告据此写「量价形态：放量上涨」，**完全颠倒了当日方向**。
+
+    根因：`_query_index_hist` 只查 index_daily_cache，该表缺当日时
+    返回的序列末行是上一交易日，下游直接取末行当「当日」。
+    """
+
+    def test_query_index_hist_rejects_stale_data(self):
+        """★ 返回的序列末行必须等于目标交易日，否则返回 None"""
+        import inspect
+        import market_regime_v10 as V10
+        src = inspect.getsource(V10._query_index_hist)
+        self.assertIn('last_dt != str(end_date)', src,
+                      "必须校验序列末行等于目标交易日")
+        self.assertIn('_INDEX_STALE_FLAGS', src,
+                      "过期必须记录标记，不能静默")
+
+    def test_stale_index_flagged_in_quality_flags(self):
+        """★ 指数数据过期必须出现在快照 quality_flags 里"""
+        import inspect
+        import market_regime_v10 as V10
+        src = inspect.getsource(V10.collect_market_snapshot)
+        self.assertIn('_INDEX_STALE_FLAGS', src,
+                      "过期指数必须写入 quality_flags")
+
+    def test_index_backfill_tool_exists(self):
+        """必须有指数补数据工具，且盘后流程会调用"""
+        import io
+        import os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            '_index_backfill.py')
+        self.assertTrue(os.path.exists(path), "缺少 _index_backfill.py")
+        src = io.open(path, encoding='utf-8').read()
+        self.assertIn('def backfill', src)
+        self.assertIn('def missing_index_dates', src)
+
+    def test_post_close_updates_index_cache(self):
+        """★ 盘后流程必须在 V10.0/V10.1 分析前补齐指数数据"""
+        import io
+        import os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'market_analysis.py')
+        src = io.open(path, encoding='utf-8').read()
+        self.assertIn('_index_backfill', src,
+                      "盘后流程必须调用指数补数据")
+        i_idx = src.find('_index_backfill')
+        i_v10 = src.find('analyze_trade_date as v10_analyze')
+        i_v101 = src.find('analyze_trade_date_v101 as v101_analyze')
+        self.assertLess(i_idx, i_v10,
+                        "指数补齐必须在 V10.0 分析之前")
+        self.assertLess(i_idx, i_v101,
+                        "指数补齐必须在 V10.1 分析之前")
+
+    def test_index_cache_no_recent_gaps(self):
+        """index_daily_cache 最近不应有缺口"""
+        from _index_backfill import missing_index_dates
+        gaps = missing_index_dates()
+        self.assertEqual(gaps, [],
+                         f"指数缓存存在缺口 {gaps}，报告会沿用旧数据。"
+                         f"运行 `python _index_backfill.py` 补齐")

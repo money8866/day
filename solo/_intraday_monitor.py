@@ -91,7 +91,7 @@ def _state_via_v10(trade_date, mkt, etf, snap, ratio, zt, dt_, promo,
       3. 跑 V10.0 的 detect_market_nodes + decide_state（与盘后完全同一套）
       4. 用 V10.1 的 position_authority 取该状态的仓位权限
 
-    返回 (state, cap, reasons)
+    返回 (state, cap, reasons, decision)
     """
     import copy
     import market_regime_v10 as v10
@@ -148,6 +148,7 @@ def _state_via_v10(trade_date, mkt, etf, snap, ratio, zt, dt_, promo,
         lim.strong_stock_up_ratio = strong_up / 100.0
 
     # ---- 4) 跑真实状态机 ----
+    dec = None
     try:
         node = v10.detect_market_nodes(s2, v10cfg)
         prev = v10.load_prev_state(trade_date)
@@ -156,7 +157,7 @@ def _state_via_v10(trade_date, mkt, etf, snap, ratio, zt, dt_, promo,
         reasons = list(dec.reasons or [])
     except Exception as e:
         reasons = [f"状态机盘中计算失败：{e}"]
-        state, dec = 'S3', None
+        state = 'S3'
 
     # ---- 5) 权限表 ----
     try:
@@ -164,7 +165,67 @@ def _state_via_v10(trade_date, mkt, etf, snap, ratio, zt, dt_, promo,
         cap = int(pa.max_position)
     except Exception:
         cap = 5
-    return state, cap, reasons
+    return state, cap, reasons, dec
+
+
+def _v107_intraday(trade_date, mkt, up, dn, zt, dt_, amt_est, idx_proxy,
+                    ml, det, base_state, dec):
+    """★ V10.7：盘中三层确认 + 状态门控（与盘后同一套判定）。
+
+    口径说明：
+      · 成交额用**按已过交易时段折算的预估全日值**（盘中未定稿）
+      · 指数涨跌幅用**全市场等权平均涨跌幅**作为中证2000 的盘中代理
+        （新浪不提供 932000.CSI 实时；等权平均与小盘高度相关）
+      · 历史序列取收盘口径的 market_micro 面板，再追加盘中合成行
+    """
+    try:
+        import market_regime_v107 as v107
+        import market_micro as micro
+    except Exception as e:
+        return None
+    try:
+        v107cfg = v107.load_config()
+        # ★ 历史序列必须**排除当天**（盘后已跑过的话当天已入库），
+        #   否则会把「今天」算两次。
+        hist = [r for r in micro.load_series(trade_date, 12)
+                if str(r['trade_date']) != str(trade_date)]
+        synth = {
+            'trade_date': trade_date, 'up_count': up, 'down_count': dn,
+            'flat_count': 0, 'total': up + dn,
+            'zt_count': zt, 'dt_count': dt_, 'amount_yi': amt_est,
+            'index_chg': idx_proxy,
+            'up_ratio': (up / (up + dn)) if (up + dn) else None,
+        }
+        series = list(hist) + [synth]
+
+        amt = v107.amount_verdict(trade_date, v107cfg, series=series)
+        easing = v107.check_easing_confirmation(trade_date, v107cfg,
+                                                 micro_series=series)
+        # 主线模块（盘中用 ETF 实时结果构造）
+        ml_mod = None
+        if ml:
+            ml_mod = type('ML', (), {})()
+            cands = []
+            for ind in ml[:3]:
+                d = det.get(ind) or {}
+                cands.append({
+                    'industry': ind,
+                    'days_strong': d.get('days_strong', 1),
+                    'excess20': d.get('excess20'),
+                })
+            ml_mod.details = {'industries': list(ml), 'candidates': cands}
+        rebound = v107.check_rebound_confirmation(trade_date, v107cfg,
+                                                  mainline_module=ml_mod,
+                                                  micro_series=series,
+                                                  amount=amt)
+        gate = v107.apply_state_gates(base_state, dec, easing, rebound,
+                                       trade_date, v107cfg,
+                                       micro_series=series)
+        return {'amount': amt, 'easing': easing, 'rebound': rebound,
+                'gate': gate, 'effective_state': gate.effective_state,
+                'synth': synth}
+    except Exception as e:
+        return {'error': str(e)}
 
 
 def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
@@ -289,9 +350,34 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
     #   实测 2026-11-02：盘中给 20%（启发式），盘后给 5%（状态机卡在 S3）。
     #   现改为：构造盘中快照 → 跑 V10.0 状态机 → 取 V10.1 权限表，
     #   保证**盘中与盘后同一套判定**，差异只来自数据本身的时效性。
-    state_guess, cap, state_reasons = _state_via_v10(
+    state_guess, cap, state_reasons, dec = _state_via_v10(
         trade_date, mkt, etf, snap, ratio, zt, dt_, promo,
         strong_mean, strong_up, ma5, ma20, hist)
+
+    # ---- V10.7：盘中三层确认 + 状态门控 ----
+    #   指数涨跌幅用「全市场等权平均涨跌幅」作为中证2000 的盘中代理
+    #   （新浪无 932000.CSI 实时行情；等权平均对小盘高度相关）
+    idx_proxy = None
+    try:
+        if mkt is not None and len(mkt):
+            idx_proxy = round(float(mkt.pct_chg.mean()), 3)
+    except Exception:
+        idx_proxy = None
+    v107 = _v107_intraday(trade_date, mkt, up, dn, zt, dt_, amt_est,
+                           idx_proxy, ml.get('industries') or [], det,
+                           state_guess, dec)
+    if v107 and not v107.get('error') and v107.get('gate'):
+        eff_state = v107['effective_state']
+        if eff_state != state_guess:
+            # 门控生效 → 按门控后状态取权限（且不得放大）
+            try:
+                from market_regime_v101 import position_authority as _pa
+                base_cap = int(_pa(state_guess, cfg).max_position)
+                new_cap = int(_pa(eff_state, cfg).max_position)
+                cap = min(cap, new_cap, base_cap)
+                state_guess = eff_state
+            except Exception:
+                pass
 
     # 时点置信折扣：早盘读数不可信 → 但仓位建议本身取整到 5%，
     # 避免出现 19%、28% 这种伪精确数字（真实档位只有 5/20/30/40/60/100）
@@ -321,6 +407,7 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
         'prev_broken': v10r.get('broken_rate'),
         'prev_promo': v10r.get('promotion_rate'),
         'prev_target_pos': v10r.get('target_position'),
+        'v107': v107,
     }
 
 
@@ -366,6 +453,28 @@ def render(r):
     L.append("【仓位建议】")
     L.append(f"上一交易日状态：{r['prev_state']}（持续 {r['prev_days']} 日）")
     L.append(f"当前推断：{r['state_guess']}")
+    # ---- V10.7 三项确认（盘中）----
+    v7 = r.get('v107') or {}
+    if v7 and not v7.get('error') and v7.get('easing'):
+        L.append("")
+        L.append("【V10.7 三项确认】")
+        L.append(f"卖压衰减确认：{v7['easing'].verdict}　"
+                 f"反弹确认：{v7['rebound'].verdict}")
+        amt = v7.get('amount')
+        if amt is not None:
+            L.append(f"量价：{amt.pattern}｜环比 "
+                     + (f"{amt.chg_vs_prev:+.1f}%" if amt.chg_vs_prev is not None else "UNKNOWN")
+                     + "｜相对5日均 "
+                     + (f"{amt.chg_vs_ma5:+.1f}%" if amt.chg_vs_ma5 is not None else "UNKNOWN")
+                     + f"｜指数(等权代理) {amt.index_chg:+.2f}%"
+                     if amt.index_chg is not None else
+                     "量价：数据不足")
+        g = v7.get('gate')
+        if g:
+            for b in (g.blocked or []):
+                L.append(f"  ⚠ {b}")
+            for a in (g.applied or []):
+                L.append(f"  ✓ {a}")
     if r['weight'] >= 0.5:
         L.append(f"建议仓位：{r['cap']}%")
         if r['weight'] < 0.9:

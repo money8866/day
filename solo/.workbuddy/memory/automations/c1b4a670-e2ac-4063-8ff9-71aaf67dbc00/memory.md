@@ -7,6 +7,11 @@
 
 ## 执行记录
 
+### 2026-11-03 (周二)
+- 执行命令同上，单次执行成功：分析成功 → token 自检通过（已缓存约 0.9 天）→ 微信推送 HTTP 200 成功。
+- 产物落在 `cache_backbone_tushare/`：`market_regime_v10_20261103.txt`、`market_regime_v101_20261103.txt`、`market_analysis_20261103.txt`、`market_analysis_20261103.csv`、`position_engine_v9_20261103.txt`。
+- 脚本一次通过，无需重跑。
+
 ### 2026-11-02 (周一)
 - 首次执行（此前无 memory 文件，自动化为新建）。
 - 执行命令：`cd /d/mystock/solo && "C:/Users/kongx/AppData/Local/Python/bin/python" _daily_push_wechat.py`

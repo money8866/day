@@ -332,8 +332,29 @@ def _count_limit(df: pd.DataFrame) -> Dict[str, Any]:
     return {"zt_count": zt, "dt_count": dt}
 
 
+# ★ V10.6：指数数据过期标记（代码 → 说明）。用于在快照 quality_flags 中暴露。
+_INDEX_STALE_FLAGS = {}
+
+
 def _query_index_hist(conn, code: str, end_date: str, lookback_days: int = 420) -> Optional[pd.DataFrame]:
-    """取指数历史序列（复用 index_daily_cache）。每个指数独立取，不互相替代。"""
+    """取指数历史序列（复用 index_daily_cache）。每个指数独立取，不互相替代。
+
+    ★ V10.6：**禁止静默沿用旧数据**。
+      原实现只查 index_daily_cache，若该表缺目标交易日（如 tushare
+      当日 15:00 后才就绪、缓存尚未补入），返回的序列末行是**上一交易日**，
+      而下游 `_compute_index_metrics` 直接取末行当作「当日」——
+      结果：报告里显示的是昨天的收盘价与昨天的涨幅，却标成今天的。
+
+      实测 2026-11-03 事故：
+        报告写「上证指数 3638.03 +1.08%、中证2000 2681.29 +2.47%」
+        实际那是 11-02 的数据；11-03 真实为 上证 3608.10 -0.82%、
+        中证2000 2623.84 -2.14%、创业板指 -2.73%、科创50 -3.81%（全线下跌）。
+        报告据此写「放量上涨」，完全颠倒了当日方向。
+
+      现改为：返回的序列末行**必须等于** end_date，否则返回 None
+      （让上层明确知道「该指数当日不可用」），
+      并在 quality_flags 里标注，绝不静默沿用旧值。
+    """
     if conn is None:
         return None
     try:
@@ -344,7 +365,16 @@ def _query_index_hist(conn, code: str, end_date: str, lookback_days: int = 420) 
             "FROM index_daily_cache WHERE ts_code = ? AND trade_date >= ? AND trade_date <= ? "
             "ORDER BY trade_date",
             conn, params=(code, start, str(end_date)))
-        return df if not df.empty else None
+        if df.empty:
+            return None
+        # ★ 关键校验：末行必须是目标交易日，否则是过期数据
+        last_dt = str(df.iloc[-1]['trade_date'])
+        if last_dt != str(end_date):
+            _INDEX_STALE_FLAGS[code] = (
+                f"{code} 指数数据过期：缓存末行 {last_dt} ≠ 目标 {end_date}"
+                f"（该指数当日数据不可用）")
+            return None
+        return df
     except Exception:
         return None
 
@@ -632,9 +662,13 @@ def collect_market_snapshot(trade_date: str, cfg: dict,
                     am.chg_vs_ma20 = (am.total_amount / ma20 - 1) * 100
 
         # ---------- 指数 ----------
+        _INDEX_STALE_FLAGS.clear()
         for nm, code in INDEX_LIST:
             h = _query_index_hist(conn, code, trade_date, 420)
             snap.indexes[nm] = _compute_index_metrics(h, nm, code, cfg)
+        # ★ V10.6：指数数据过期必须显式暴露，不能静默沿用旧值
+        for _code, _msg in _INDEX_STALE_FLAGS.items():
+            snap.quality_flags.append(f"⚠ {_msg}")
 
         core = snap.indexes.get(CORE_INDEX)
         bench = snap.indexes.get(BENCH_INDEX)

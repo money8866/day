@@ -1,0 +1,117 @@
+{
+  "_comment": "V10.7 增量优化配置 —— 量价口径 / S4卖压衰减确认 / S5反弹确认 / 结构性机会例外 / 仓位语义分离",
+  "_version": "10.7",
+  "_version_history": [
+    {
+      "version": "10.7",
+      "date": "2026-11-03",
+      "note": "在 V10.0/V10.1 之上做增量优化，不改动原有模块",
+      "changes": [
+        "量价判定：同时输出环比成交额变化率、相对5日均变化率、指数涨跌幅、上涨股票占比；禁止仅凭成交额高于5日均量判定放量上涨",
+        "S4 卖压衰减确认：跌停家数/下跌家数/上涨占比的连续变化 + 涨停跌停比 + 成交额变化，五项独立判定，缺一即 FAIL",
+        "S5 反弹确认：上涨占比持续改善 + 跌停明显下降 + 涨停跌停比改善 + 成交额与指数方向匹配 + 主线持续性赚钱效应，单日普涨不认定",
+        "新增 STRUCTURAL_ALPHA_EXCEPTION：S3/S4/S6 允许识别结构性强势行业（连续≥15日强势 + 20日超额≥10% + 60日趋势未恶化 + 成分股广度 + 排除单权重股拉升），四项复核后才成立，且不突破市场仓位权限",
+        "仓位语义分离：目标仓位 / 建议区间 / 仓位硬上限 / 主动加仓权限 / 满仓授权 五者分列；目标仓位不视为必须持仓",
+        "状态门控：S4 进入与 S5 升级必须通过对应确认（UNKNOWN 不算通过）"
+      ]
+    }
+  ],
+  "_note": "所有阈值均为风控配置，不是经回测验证的最优参数。任何调整都应重跑历史检验并更新 _version_history。",
+  "amount_volume": {
+    "_note": "量价四要素口径。放量/缩量以「相对前5日均额」判定（不含当日，避免当日污染均值）。",
+    "ma_window": 5,
+    "expand_threshold_pct": 2.0,
+    "shrink_threshold_pct": -2.0,
+    "breadth_sync_min": 0.5,
+    "index_up_threshold_pct": 0.0,
+    "require_fresh_index": true,
+    "_v107_note": "★ 禁止「仅凭成交额高于5日均量就判放量上涨」：放量上涨必须同时满足 ①相对5日均额 > +2% ②核心指数收涨 ③上涨股票占比 ≥ 50%。指数涨但广度差 → 标记为「放量滞涨（个股分化）」，不计入放量上涨。"
+  },
+  "easing_confirmation": {
+    "_note": "S4 卖压衰减确认。五项独立判定，全部通过才 PASS；数据不足 → UNKNOWN。",
+    "lookback": 4,
+    "dt_consecutive_decrease": 2,
+    "down_consecutive_decrease": 2,
+    "breadth_consecutive_improve": 2,
+    "zt_dt_ratio_min": 1.0,
+    "zt_dt_ratio_improve_required": true,
+    "local_risk_dt_spike_ratio": 2.0,
+    "local_risk_breadth_drop_pp": 15.0,
+    "local_risk_amount_expand_down": true,
+    "min_history_days": 3,
+    "dt_decrease_mode": "decay",
+    "breadth_improve_mode": "decay",
+    "_mode_note": "★ dt_decrease_mode / breadth_improve_mode：decay=今日相对昨日改善且相对前日也改善（衰减口径，能识别暴跌后的 V 形修复日）；strict=要求连续 N 日同向变化。两者都在测试中覆盖。"
+  },
+  "rebound_confirmation": {
+    "_note": "S5 反弹确认。必须证明买盘开始形成持续优势，单日普涨不算。",
+    "lookback": 4,
+    "breadth_consecutive_improve": 2,
+    "breadth_level_min": 0.45,
+    "dt_decrease_ratio": 0.7,
+    "zt_dt_ratio_min": 2.0,
+    "amount_index_match_required": true,
+    "mainline_days_strong_min": 3,
+    "mainline_excess20_min": 0.0,
+    "min_history_days": 3,
+    "breadth_improve_mode": "decay",
+    "_mode_note": "★ 反弹确认的广度口径。decay 模式下仍要求「当前水平 ≥breadth_level_min」，单日低位脉冲无法通过。"
+  },
+  "structural_alpha": {
+    "_note": "STRUCTURAL_ALPHA_EXCEPTION —— 弱市/过渡期中的结构性行业机会。只在市场仓位上限内申请授权，不得突破状态权限。",
+    "allowed_states": [
+      "S3",
+      "S4",
+      "S6"
+    ],
+    "min_days_strong": 15,
+    "min_excess20": 10.0,
+    "trend60_min_ret": 0.0,
+    "trend60_near_high_pct": -8.0,
+    "max_dd60": -18.0,
+    "ma20_window": 20,
+    "ma60_window": 60,
+    "max_drawdown_from_high_pct": -12.0,
+    "min_constituents": 20,
+    "breadth_up_ratio_min": 0.5,
+    "breadth_up20_ratio_min": 0.55,
+    "breadth_today_min": 0.4,
+    "ex_best_breadth_min": 0.5,
+    "top_weight_max": 0.2,
+    "ex_top1_ret_min": 0.0,
+    "leader_above_ma20": true,
+    "fundamental_min_coverage": 0.5,
+    "fundamental_netprofit_yoy_min": 0.0,
+    "fundamental_roe_min": 0.0,
+    "amt_ratio_min": 1.0,
+    "max_position_in_state": true,
+    "_v107_note": "★ 结构性机会只允许在原有市场仓位上限内申请授权：不得突破状态权限（如 S4 仍是 20%），只是把「是否值得建仓」的判断从「市场整体」细化到「这个行业」。",
+    "_breadth_note": "★ 入池广度用 20 日口径（结构性机会是过去 15 日以上的持续走强，单日普跌不应否定）；当日广度放在复核项，并要求不低于大盘当日上涨占比。"
+  },
+  "position_semantics": {
+    "_note": "仓位语义分离。目标仓位是环境层面的参考值，不是必须达到的持仓比例。",
+    "allow_below_target": true,
+    "cash_when_no_qualified_signal": true,
+    "range_low_with_signal": 0.5,
+    "range_high_ratio": 1.0,
+    "active_add_requires": [
+      "state_allows_probe",
+      "target_above_current",
+      "portfolio_ok"
+    ]
+  },
+  "gates": {
+    "_note": "状态门控：确认不通过时不得升级到更高仓位权限的状态。UNKNOWN 不算通过。",
+    "require_easing_for_s4_entry": true,
+    "require_rebound_for_s5_entry": true,
+    "unknown_does_not_pass": true
+  },
+  "switch_conditions": {
+    "_note": "切换关键条件的显式阈值（用于报告中的「切换关键条件」字段）。",
+    "s3_to_s4": "①跌停家数连续2日下降 ②上涨占比连续2日改善 ③涨停/跌停比≥1.0且不恶化 ④无局部风险恶化（跌停未激增、广度未塌陷）",
+    "s4_to_s5": "①上涨占比连续2日改善且≥45% ②跌停家数≤前日70% ③涨停/跌停比≥2.0且高于前日 ④成交额与指数方向匹配 ⑤主线行业持续性赚钱效应成立（连续强态≥3日且超额20日>0）",
+    "s5_to_s6": "①指数趋势：站上MA20占比≥站上MA60占比且近5日正占比≥近20日 ②广度：5日均≥20日均且≥45% ③短线赚钱效应：跌停≤35、炸板率≤30%、晋级率≤35%、强股上涨比≥50% ④主线持续性成立",
+    "s4_to_s3": "①跌停家数较前日放大≥2倍或≥95只 ②广度跌破25% ③核心指数下跌且成交额较20日均放大 ④小盘显著弱于大盘",
+    "any_to_s6_exit": "连续2日不满足S6四模块 → 回到S5"
+  }
+}

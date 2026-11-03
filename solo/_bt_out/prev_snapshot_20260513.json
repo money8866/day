@@ -1,6 +1,6 @@
 {
  "trade_date": "20260513",
- "built_at": "2026-11-02T17:18:26",
+ "built_at": "2026-11-03T17:49:25",
  "v10": {
   "breadth_ratio": 60.1,
   "zt_count": 112,
@@ -66,12 +66,6 @@
   "v101_path": "D:\\mystock\\solo\\cache_backbone_tushare\\market_regime_v101_20260513.txt"
  },
  "breadth_series": [
-  {
-   "d": "20260921",
-   "ratio": 82.89473684210526,
-   "up": 4536,
-   "down": 936
-  },
   {
    "d": "20260922",
    "ratio": 43.93042190969652,
@@ -215,6 +209,12 @@
    "ratio": 85.12456810329151,
    "up": 4681,
    "down": 818
+  },
+  {
+   "d": "20261103",
+   "ratio": 38.914528336717744,
+   "up": 2108,
+   "down": 3309
   }
  ],
  "limit_up_list": [

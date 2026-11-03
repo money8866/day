@@ -1601,6 +1601,24 @@ def analyze_market(trade_date=None):
             print(f"{'='*80}")
             print(v99_report)
 
+            # ===== 指数日线补齐（V10.6：防止静默沿用旧指数数据）=====
+            # ★ 必须在 V10.0/V10.1 分析**之前**：
+            #   index_daily_cache 若缺当日（tushare 15:00 后才就绪），
+            #   _query_index_hist 返回的序列末行是上一交易日 →
+            #   报告会把昨天的收盘价/涨幅标成今天的（实测 20261103 事故：
+            #   报告写上证 +1.08%，实际 -0.82%，据此写「放量上涨」完全颠倒）。
+            try:
+                from _index_backfill import backfill as _idx_backfill
+                from _index_backfill import missing_index_dates as _idx_missing
+                _idx_gaps = _idx_missing()
+                if _idx_gaps:
+                    _n = _idx_backfill(_idx_gaps)
+                    print(f"[Index] 补入 {_n} 行（缺口: {_idx_gaps}）")
+                else:
+                    print("[Index] 指数缓存完整")
+            except Exception as idx_error:
+                print(f"[Index] 指数补齐异常（可能沿用旧数据）: {idx_error}")
+
             # ===== V10.0 市场环境判断（节点日识别 + 五状态机 + 动态仓位建议）=====
             # 与 V9.9 的关系：V10.0 只输出「环境状态 + 仓位空间」，
             # 不替代 V9.9 的仓位建议，也不介入任何个股买卖信号。
@@ -1625,6 +1643,30 @@ def analyze_market(trade_date=None):
                 import traceback
                 traceback.print_exc()
 
+            # ===== ETF 行情面板更新（主线判定的数据基础）=====
+            # ★ 必须放在 V10.1 分析**之前**：主线模块用 etf_daily.db 的
+            #   行业 nav 序列做相对强度/趋势判定。面板若有缺口，
+            #   ret20/excess20 的实际跨度就不是 20 天，days_strong 回溯也会被打断。
+            #   实测 2026-11-03：面板最新只到 10-30，缺 11-02，
+            #   当日实时价接在 10-30 之后 → 少算了 11-02 一整天的涨跌。
+            try:
+                from _etf_backfill import backfill as _etf_backfill
+                import etf_mainline as _etf_mod
+                _etf_panel = _etf_mod.load_etf_panel()
+                _etf_gaps = []
+                try:
+                    from _etf_backfill import missing_dates as _etf_missing
+                    _etf_gaps = _etf_missing(_etf_panel)
+                except Exception:
+                    pass
+                if _etf_gaps:
+                    _n = _etf_backfill(_etf_gaps, _etf_panel)
+                    print(f"[ETF] 补入 {_n} 行（缺口: {_etf_gaps}）")
+                else:
+                    print(f"[ETF] 面板完整（最新 {_etf_panel.trade_date.max()}）")
+            except Exception as etf_error:
+                print(f"[ETF] 面板更新异常（不影响主线既有判定）: {etf_error}")
+
             # ===== V10.1 动态仓位管理（S6强势主升 + 仓位权限 + 满仓授权 + 组合风险）=====
             # 与 V10.0 的关系：V10.1 在 V10.0 五状态机上叠加 S6，
             # 并把「市场状态 / 仓位权限 / 实际建议仓位」三件事彻底分开。
@@ -1647,6 +1689,47 @@ def analyze_market(trade_date=None):
                     print(f"[V10.1] 报告保存失败: {e}")
             except Exception as v101_error:
                 print(f"[V10.1] 运行异常（不影响 V9.9/V10.0 结果）: {v101_error}")
+                import traceback
+                traceback.print_exc()
+
+            # ===== V10.7 增量优化（量价口径 / S4卖压衰减确认 / S5反弹确认 / 结构性机会 / 仓位语义分离）=====
+            # ★ 纯增量：内部完整复用 V10.0 + V10.1 的决策链路，
+            #   只在其上叠加三层确认与状态门控，并保留 V10.1 原决策记录以便新旧对比。
+            #   任何异常都不影响上面的 V9.9 / V10.0 / V10.1 结果。
+            try:
+                from market_regime_v107 import (
+                    analyze_trade_date_v107 as v107_analyze,
+                    render_v107_report as v107_render,
+                    render_v107_summary as v107_summary,
+                    load_config as v107_load_cfg)
+                v107_cfg = v107_load_cfg()
+                v107_res = v107_analyze(trade_date, cfg=v107_cfg, persist=False)
+                v107_text = v107_render(v107_res, v107_cfg)
+                print(f"\n{v107_text}")
+                v107_file = os.path.join(safe_cache_dir, f"market_regime_v107_{trade_date}.txt")
+                try:
+                    with open(v107_file, 'w', encoding='utf-8') as f:
+                        f.write(v107_text)
+                    print(f"[V10.7] 报告已保存: {v107_file}")
+                except Exception as e:
+                    print(f"[V10.7] 报告保存失败: {e}")
+                # 关键字段摘要（供日报/推送直接引用）
+                try:
+                    v107_sum = v107_summary(v107_res)
+                    print("[V10.7] 关键结论：" + json.dumps(
+                        {k: v107_sum[k] for k in (
+                            "市场状态", "卖压衰减确认", "反弹确认", "结构性机会",
+                            "最强行业", "行业持续性", "行业内部广度",
+                            "主动试探权限", "建议仓位", "仓位硬上限", "满仓授权")},
+                        ensure_ascii=False))
+                    with open(os.path.join(safe_cache_dir,
+                                           f"market_regime_v107_summary_{trade_date}.json"),
+                              'w', encoding='utf-8') as f:
+                        json.dump(v107_sum, f, ensure_ascii=False, indent=2)
+                except Exception as e:
+                    print(f"[V10.7] 摘要生成失败: {e}")
+            except Exception as v107_error:
+                print(f"[V10.7] 运行异常（不影响 V9.9/V10.0/V10.1 结果）: {v107_error}")
                 import traceback
                 traceback.print_exc()
 

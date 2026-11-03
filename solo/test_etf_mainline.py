@@ -281,3 +281,52 @@ class TestV103RelativeTrendCriteria(unittest.TestCase):
                 n_hit += 1
         self.assertGreaterEqual(n_hit, 150,
                                 f"有主线天数应 ≥150（旧口径 104），实得 {n_hit}")
+
+
+class TestEtfPanelContinuity(unittest.TestCase):
+    """★ ETF 行情面板必须连续 —— 主线判定的数据基础。
+
+    起因（2026-11-03 实测）：面板最新只到 10-30，缺 11-02，
+    导致当日实时价接在 10-30 之后 → 少算了 11-02 一整天的涨跌，
+    主线判定的 ret20/excess20 实际跨度不是 20 天。
+    根因：盘后流程**从不更新** etf_daily.db，只靠手动 `--fetch`。
+    """
+
+    def test_panel_has_no_recent_gaps(self):
+        """面板最近不应有缺口（相对于 daily_cache 的交易日历）"""
+        import etf_mainline as em
+        from _etf_backfill import missing_dates
+        panel = em.load_etf_panel()
+        if panel is None or panel.empty:
+            self.skipTest("ETF 面板不可用")
+        gaps = missing_dates(panel)
+        self.assertEqual(gaps, [],
+                         f"ETF 面板存在缺口 {gaps}，主线判定会失真。"
+                         f"运行 `python _etf_backfill.py` 补齐")
+
+    def test_backfill_module_exists(self):
+        """必须有补数据的工具，且盘后流程会调用它"""
+        import os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            '_etf_backfill.py')
+        self.assertTrue(os.path.exists(path), "缺少 _etf_backfill.py")
+        import io
+        src = io.open(path, encoding='utf-8').read()
+        self.assertIn('def backfill', src)
+        self.assertIn('def missing_dates', src)
+
+    def test_post_close_updates_etf_panel(self):
+        """★ 盘后流程必须在 V10.1 分析前更新 ETF 面板"""
+        import io
+        import os
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'market_analysis.py')
+        src = io.open(path, encoding='utf-8').read()
+        self.assertIn('_etf_backfill', src,
+                      "盘后流程必须调用 ETF 面板补数据")
+        # 顺序：ETF 更新必须在 V10.1 分析之前
+        i_etf = src.find('_etf_backfill')
+        i_v101 = src.find('v101_analyze')
+        self.assertLess(i_etf, i_v101,
+                        "ETF 面板更新必须在 V10.1 分析之前"
+                        "（否则主线判定用的是过期数据）")
