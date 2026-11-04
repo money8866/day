@@ -83,9 +83,11 @@
         "仓位语义分离：目标仓位 / 建议区间 / 仓位硬上限 / 主动加仓权限 / 满仓授权 五者分列",
         "状态门控：S4 进入与 S5 升级必须通过对应确认（UNKNOWN 不算通过）；门控只收紧不放宽仓位",
         "全年回放（200 个交易日）：卖压衰减确认 PASS 39 天、反弹确认 PASS 38 天、结构性机会 PASS 11 天（电子 7 天，命中 2026 上半年半导体行情）；门控改变状态 11 天，仓位均值 33.6%→32.7%，无任何一天因门控放大仓位",
-        "盘后 market_analysis.py 与盘中 _intraday_monitor.py 均已接入，盘中盘后判定一致"
-      ]
-    }
+    "盘后 market_analysis.py 与盘中 _intraday_monitor.py 均已接入，盘中盘后判定一致",
+    "2026-11-04：tushare 衍生缓存同步接入 market_analysis.py V10.7 块（market_micro.ensure(end_date=...) + industry_constituents.sync_if_stale 守卫式 7 天刷新），避免次日 daily_cache 已刷新而 micro 库停在旧日导致量价判定 UNKNOWN",
+    "2026-11-04：tushare_quant.py 大盘分析段落接入【大盘环境 V10.7】第三数据块（函数直取优先 / 盘后 summary+txt 降级 / fail-soft），微信推送模板同步新增三项确认、量价四要素、结构性机会、仓位硬约束照抄行；三块独立互补，不得互相替代"
+  ]
+}
   ],
   "_note": "所有阈值均为初始风控配置，不是经过回测验证的最优参数。任何调整都应重新跑历史检验并更新 _version_history。",
   "strong_uptrend": {
@@ -122,6 +124,16 @@
       "promotion_rate_max": 35.0,
       "strong_stock_mean_pct_min": 0.0,
       "strong_stock_up_ratio_min": 0.5,
+      "strong_up_continuity": {
+        "_note": "V10.8：第四项（强股上涨比）从单一 50% 阈值升级为「当日 + 连续性」分级。★ 目前是信号层，只输出标签，不改变 money_pass 布尔判定与仓位；待回测验证后再决定是否接入。历史序列由 strong_up_history.py 从 daily_cache 重算。",
+        "repair_days": 2,
+        "repair_min": 50.0,
+        "boost_days": 3,
+        "boost_min": 55.0,
+        "alert_below": 35.0,
+        "_semantics": "当日 ≥50%（沿用 strong_stock_up_ratio_min）→ 通过；含当日连续 2 日 ≥50% → 确认修复；含当日连续 3 日 ≥55% → 确认短线赚钱效应增强；当日 <35% → 强势股负反馈警报（优先级最高）",
+        "_unit_note": "repair_min / boost_min / alert_below 均为百分数 0~100"
+      },
       "_unit_note": "strong_stock_up_ratio_min 是 0~1 的比例（如 0.5 表示 50%）；promotion_rate_min / broken_rate_max / promotion_rate_max 是百分数（0~100）",
       "_v104_note": "★ V10.4：晋级率由「正向门槛 ≥25%」改为「反向闸门 ≤35%」。实测晋级率越高未来越差（0~10%档正样本率25%/加速率38%；30~40%档 0%/12%）—— 情绪高潮即短期顶部。原设计等于「必须市场情绪高潮才敢满仓」，逻辑倒挂，且在 10 格中 8 格为负。移除「涨停≥40」（与广度模块重复，8/10 格为负）。dt_count_max 由 25 放宽至 35。"
     },

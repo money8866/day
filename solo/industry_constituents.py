@@ -670,6 +670,53 @@ def prefetch_all(trade_date: str, industries: List[str] = None,
     return fetch_holdings(codes, progress=progress)
 
 
+def sync_if_stale(trade_date: str, max_age_days: int = 7,
+                  progress: bool = False) -> bool:
+    """守卫式同步行业缓存（SW 成分 + ETF 持仓）。
+
+    ★ 为什么需要：V10.7 的结构性机会判定读取 industry_holdings.db，
+      该库由 tushare 衍生（index_member / fund_portfolio）。主流程
+      market_analysis.py 用 tushare 刷新 daily_cache 时，本库不会自动
+      跟着刷——若不同步，结构性判定会长期停留在陈旧持仓/成分上。
+
+    ★ 调用约定：
+      - 仅在『缓存缺失』或『距上次刷新 > max_age_days』时才真正调 tushare，
+        避免每日重复抓取触发限流（429）。
+      - 返回 True = 实际刷新；False = 仍在窗口内，跳过。
+      - 任何 tushare 异常都就地吞掉（打印告警），由调用方外层 try 再兜一层，
+        绝不影响主流程。
+    """
+    marker = os.path.join(os.path.dirname(IND_DB), ".last_fetch")
+    need = True
+    if os.path.exists(marker):
+        try:
+            d = datetime.date.fromisoformat(
+                open(marker, encoding="utf-8").read().strip())
+            need = (datetime.date.today() - d).days > max_age_days
+        except Exception:
+            need = True
+    if not need:
+        return False
+
+    # ---- 真正刷新（会调 tushare）----
+    try:
+        fetch_sw_industries(progress=progress)  # 申万 L1 成分（慢变量，顺带刷新）
+    except Exception as e:
+        print(f"[industry] SW 成分刷新失败（沿用旧数据）: {e}")
+    try:
+        prefetch_all(trade_date, progress=progress)  # ETF 持仓 + 权重
+    except Exception as e:
+        print(f"[industry] ETF 持仓刷新失败（沿用旧数据）: {e}")
+        return False
+    try:
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write(datetime.date.today().isoformat())
+    except Exception:
+        pass
+    return True
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="行业成分股与基本面")

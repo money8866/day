@@ -838,6 +838,180 @@ def _load_v10_regime_block(trade_date):
         return ""
 
 
+def _load_v107_block(trade_date):
+    """V10.7 增量优化结论 -> 【大盘环境 V10.7】数据块（fail-soft，失败返回空串）。
+
+    ★ 与 MarketNode / V10.0 块的关系：三者**独立且互补** ——
+      MarketNode 看短线情绪节点轨迹，V10.0 看五状态机风险档位，
+      V10.7 看「量价四要素 / S4卖压衰减确认 / S5反弹确认 /
+      结构性机会 / 仓位语义分离」。不互相替代，都要同时呈现。
+
+    ★ 数据来源：优先**函数直取**（与 _load_market_data_direct 同哲学，
+      当场计算、不依赖中间文件）；直取失败时降级读 market_analysis.py
+      落盘的 market_regime_v107_{date}.txt / summary_{date}.json。
+    ★ tushare 缓存同步：先刷 micro / industry 两个 tushare 衍生缓存，
+      否则会读到陈旧微结构序列导致量价判定 UNKNOWN（与 market_analysis.py
+      的 V10.7 块口径一致）。同步失败只告警、不中断。
+    ★ 缺失指标一律标记 UNKNOWN，绝不默认通过。
+    """
+    td = str(trade_date)
+    try:
+        # ---------- 0) tushare 衍生缓存同步（与主流程同口径）----------
+        try:
+            import market_micro as _micro
+            _micro.ensure(end_date=td)
+        except Exception as e:
+            print(f"[V10.7] micro 缓存同步失败（沿用旧缓存）: {e}")
+        try:
+            import industry_constituents as _ic
+            _did = _ic.sync_if_stale(td, max_age_days=7)
+            print(f"[V10.7] industry 缓存{'已刷新' if _did else '在窗口内，跳过'}")
+        except Exception as e:
+            print(f"[V10.7] industry 缓存同步跳过（沿用旧缓存）: {e}")
+
+        # ---------- 1) 函数直取 ----------
+        r, summary = None, None
+        try:
+            import market_regime_v107 as _v107
+            r = _v107.analyze_trade_date_v107(
+                td, cfg=_v107.load_config(), persist=False)
+            summary = _v107.render_v107_summary(r)
+        except Exception as e:
+            print(f"[V10.7] 直取失败，尝试读盘后产物: {e}")
+
+        # ---------- 2) 降级：读盘后落盘的 summary / txt ----------
+        _dirs = (os.path.join(BASE_DIR, 'cache_backbone_tushare'),
+                 os.path.join(BASE_DIR, '..', 'report_daily'))
+        if summary is None:
+            for d in _dirs:
+                p = os.path.join(d, f"market_regime_v107_summary_{td}.json")
+                if os.path.exists(p):
+                    try:
+                        with open(p, 'r', encoding='utf-8') as f:
+                            summary = json.load(f)
+                        print(f"[V10.7] 降级读取盘后摘要: {p}")
+                        break
+                    except Exception:
+                        pass
+        txt = ''
+        for d in _dirs:
+            p = os.path.join(d, f"market_regime_v107_{td}.txt")
+            if os.path.exists(p):
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        txt = f.read()
+                    break
+                except Exception:
+                    pass
+        if not summary:
+            print(f"[V10.7] 无 {td} 的 V10.7 结论，跳过（先跑 market_analysis.py）")
+            return ""
+
+        def _gtxt(label):
+            for ln in txt.splitlines():
+                s2 = ln.strip()
+                if s2.startswith(label):
+                    return s2[len(label):].strip()
+            return ''
+
+        def _f(x, bool_cn=False):
+            """缺失一律 UNKNOWN，绝不默认通过。"""
+            if x is None or x == '':
+                return 'UNKNOWN'
+            if isinstance(x, bool):
+                return ('允许' if x else '不允许') if bool_cn else str(x)
+            return str(x)
+
+        def g(k):
+            return summary.get(k)
+
+        lines = [
+            "【大盘环境 V10.7】(增量优化 · 三项确认 / 结构性机会 / 仓位语义分离)",
+            f"交易日: {td} | 市场状态: {_f(g('市场状态'))}",
+            f"三项确认: 卖压衰减 {_f(g('卖压衰减确认'))} | "
+            f"反弹 {_f(g('反弹确认'))} | 结构性机会 {_f(g('结构性机会'))}",
+        ]
+
+        # 原始状态（V10.1）—— 保留原决策记录，确保新旧版本可对比
+        if r is not None and r.gate and r.gate.base_state != r.state:
+            lines.append(f"原始状态(V10.1): {r.gate.base_state} → 门控后 {r.state}"
+                         f"（门控只收紧不放宽）")
+        else:
+            _base = _gtxt('原始状态（V10.1）：')
+            if _base:
+                lines.append(f"原始状态(V10.1): {_base}")
+
+        # 量价四要素（直取优先，降级从盘后 txt 抽）
+        a = getattr(r, 'amount', None) if r is not None else None
+        if a is not None:
+            def _p(x):
+                return f"{x:+.2f}%" if x is not None else 'UNKNOWN'
+            up = f"{a.up_ratio*100:.2f}%" if a.up_ratio is not None else 'UNKNOWN'
+            lines.append(
+                f"量价: 环比 {_p(a.chg_vs_prev)} | 相对5日均 {_p(a.chg_vs_ma5)} "
+                f"| 指数 {_p(a.index_chg)} | 上涨占比 {up} "
+                f"| 形态 {_f(getattr(a, 'pattern', None))}")
+        else:
+            seg = [
+                f"环比 {_gtxt('环比成交额变化率：') or 'UNKNOWN'}",
+                f"相对5日均 {_gtxt('相对5日均成交额变化率：') or 'UNKNOWN'}",
+                f"指数 {_gtxt('指数涨跌幅：') or 'UNKNOWN'}",
+                f"上涨占比 {_gtxt('上涨股票占比：') or 'UNKNOWN'}",
+            ]
+            # 报告里「形态」行尾带括号说明，截掉以与直取口径一致
+            pat = _gtxt('形态：').split('　')[0].strip()
+            lines.append("量价: " + " | ".join(seg)
+                         + (f" | 形态 {pat}" if pat else ""))
+
+        # 结构性机会（只在原状态权限内授权）
+        if _f(g('结构性机会')) == 'PASS' or g('最强行业'):
+            lines.append(
+                f"结构性机会: {_f(g('最强行业'))} | 持续 {_f(g('行业持续性'))} "
+                f"| 内部广度 {_f(g('行业内部广度'))}"
+                "（只在本状态硬上限内授权，不突破市场状态权限）")
+
+        # 仓位五要素（语义分离）
+        p = getattr(r, 'plan', None) if r is not None else None
+        target = (f"{p.target_position}%" if p is not None
+                  else (_gtxt('目标仓位：').split('　')[0] or 'UNKNOWN'))
+        cap = g('仓位硬上限')
+        cap_s = f"{cap}%" if cap is not None else 'UNKNOWN'
+        lines.append(
+            f"仓位: 目标 {target} | 建议区间 {_f(g('建议仓位'))} "
+            f"| 硬上限 {cap_s} "
+            f"| 主动试探 {_f(g('主动试探权限'), bool_cn=True)} "
+            f"| 满仓授权 {_f(g('满仓授权'))}")
+
+        hint = getattr(p, 'actual_hint', None) if p is not None else None
+        if hint is None:
+            hint = _gtxt('实际仓位参考：') or None
+        hint_s = ''
+        if hint is not None and str(hint) != '':
+            hs = str(hint)
+            hint_s = f" | 实际仓位参考 {hs if hs.endswith('%') else hs + '%'}"
+        lines.append(
+            "仓位语义: 目标仓位为环境参考值，不是必须达到的持仓比例；"
+            "无合格标的时可低于目标甚至保持现金" + hint_s)
+
+        # 切换关键条件
+        sc = g('切换关键条件') or {}
+        if isinstance(sc, dict):
+            for k in ('upgrade', 'downgrade', 's6_exit'):
+                if sc.get(k):
+                    lines.append(f"切换关键-{k}: {sc[k]}")
+        else:
+            lines.append(f"切换关键: {sc}")
+
+        lines.append("注: 三项确认任一 UNKNOWN 不算通过；结构性机会不得突破市场状态仓位权限。")
+
+        print(f"[V10.7] {_f(g('市场状态'))} | 卖压衰减 {_f(g('卖压衰减确认'))} "
+              f"| 反弹 {_f(g('反弹确认'))} | 结构性 {_f(g('结构性机会'))}")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[V10.7] 计算失败（fail-soft，跳过 V10.7 块）: {e}")
+        return ""
+
+
 STOCK_DATA_DIR = r"d:\mystock"
 CACHE_DIR = os.path.join(STOCK_DATA_DIR, "cache_daily")
 REPORT_DIR = os.path.join(STOCK_DATA_DIR, "report_daily")   
@@ -9265,6 +9439,13 @@ def run(target_date=None, simple_mode=False):
     if _v10_block:
         emotion_text = f"{emotion_text}\n\n{_v10_block}"
 
+    # 追加 V10.7 增量优化结论（三项确认 / 结构性机会 / 仓位语义分离）
+    # ★ 纯增量：与前两块独立互补，不改动 V9.9/V10.0/V10.1 的任何结果；
+    #   fail-soft，取不到结论时返回空串，不影响原有大盘段落。
+    _v107_block = _load_v107_block(TRADE_DATE)
+    if _v107_block:
+        emotion_text = f"{emotion_text}\n\n{_v107_block}"
+
     print(emotion_text)
 
     result = []
@@ -10530,7 +10711,7 @@ def run(target_date=None, simple_mode=False):
 标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分，输出中也显示序号1、2、3、4、....段落名称及换行)：
 1、**大盘分析**：严格按照上述“大盘分析”给定的内容进行分析，【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
-（"大盘节点"来自 MarketNode 引擎，看短线情绪冷热与节点轨迹；"大盘环境 V10"来自 V10.0 五状态机，看市场环境风险档位与对应目标仓位。两者是独立且互补的判断，都要照抄，不得互相替代、不得合并成一句话、不得只挑一个写）
+（"大盘节点"来自 MarketNode 引擎，看短线情绪冷热与节点轨迹；"大盘环境 V10"来自 V10.0 五状态机，看市场环境风险档位与对应目标仓位；"大盘环境 V10.7"来自 V10.7 增量层，看三项确认、量价四要素、结构性机会与仓位硬约束，并保留 V10.1 原决策记录供新旧对比。三者是独立且互补的判断，都要照抄，不得互相替代、不得合并成一句话、不得只挑一个写）
 ** 市场分析
 * 节点：{{照抄"大盘节点"数据块的「当前节点」，并保留"是否新节点"里的"新节点"字样（若为"是"则在节点后加"（新节点）"）；数据块显示"无新节点"则写"无新节点"}} | 状态：{{照抄「市场状态」}} | 情绪：{{照抄「情绪子状态」}} | 强度：{{照抄「节点强度」}} | 置信度：{{照抄「置信度」}}
 * 节点动态：{{照抄"大盘节点"数据块的「节点动态」冒号后的全部内容（含轨迹与今日节点·第N日）；数据块无此行则写"无"}}
@@ -10539,10 +10720,14 @@ def run(target_date=None, simple_mode=False):
 * 风险：XXXXXX | 节奏：XXXXXX
 * 节点风险：{{照抄"大盘节点"数据块的「失效条件」；数据块无此行则写"无"}}
 * 环境状态：{{照抄"大盘环境 V10"数据块的「当前状态」与「节点类型」（如"S3 恐慌加速｜恐慌加速"）；数据块无此行则写"无"}}
+* V10.7确认：{{照抄"大盘环境 V10.7"数据块的「三项确认」行，PASS/FAIL/UNKNOWN 一字不差，并带上「市场状态」；数据块无此行则写"无"}}
+* 量价：{{照抄"大盘环境 V10.7"数据块的「量价」行（环比/相对5日均/指数/上涨占比/形态），一字不差；数据块无此行则写"无"}}
+* 结构性：{{照抄"大盘环境 V10.7"数据块的「结构性机会」行（最强行业/持续性/内部广度）；数据块无此行则写"无"}}
 ** 仓位建议
 * 当前目标：xx%
 * 环境目标：{{照抄"大盘环境 V10"数据块的「环境目标仓位」；数据块无此行则写"无"}}
 * 正常区间：xx%～xx%   确认上限：xx%
+* V10.7仓位约束：{{照抄"大盘环境 V10.7"数据块的「仓位」行（目标/建议区间/硬上限/主动试探/满仓授权）与「仓位语义」行，一字不差；硬上限不得突破，目标仓位不是必须持仓比例；数据块无此行则写"无"}}
 * 触发原因：{{仅当"大盘分析"数据块出现「⚠ 关键低点：X已跌破且未收复（日期）」时输出这一行，数值与日期一字不差照抄，写成"跌破关键低点X（日期）未收复 → 强制0仓，等底分型或右侧信号"；数据块无此行时写"无强制闸门"，禁止自行编造原因}}
 * 一句话：XXXXX。
 ** 策略：XXXX

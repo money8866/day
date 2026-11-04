@@ -7,6 +7,11 @@
 
 ## 执行记录
 
+### 2026-11-04 (周三)
+- 用户手动触发「重试」（本日 memory 此前无记录）。单次执行同一条命令即成功：分析成功 → token 自检通过 → 微信推送 HTTP 200「发送成功 / 已主动推送」。
+- 未重复执行、未额外补推。另用 `--dry-run --no-run --date 20261104` 只读校验推送正文以确认结论，不产生推送。
+- ⚠️ 推送返回附带提示：本 token 已下行 10 条、接近配额上限，建议换新 token（在手机给 bot 发任意消息后调 acquire_token / --acquire 刷新）。本次推送未受影响，但后续几日需留意。
+
 ### 2026-11-03 (周二)
 - 执行命令同上，单次执行成功：分析成功 → token 自检通过（已缓存约 0.9 天）→ 微信推送 HTTP 200 成功。
 - 产物落在 `cache_backbone_tushare/`：`market_regime_v10_20261103.txt`、`market_regime_v101_20261103.txt`、`market_analysis_20261103.txt`、`market_analysis_20261103.csv`、`position_engine_v9_20261103.txt`。

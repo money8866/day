@@ -39,6 +39,11 @@ import etf_mainline as em
 import _realtime_snapshot as rt
 import _prev_snapshot as pvs
 
+try:
+    import strong_up_history as suh   # V10.8 第四项连续性分级
+except Exception:
+    suh = None
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # ★ 关键时点表：名称 -> (时刻, 决策权重, 说明)
@@ -51,6 +56,46 @@ SLOTS = {
     '1430': ('14:30', 0.95, '★ 主决策点（读数基本等同收盘）'),
     '1450': ('14:50', 1.00, '★ 最终确认点（尾盘决策窗口）'),
 }
+
+
+# ── 全市场成交额日内占比曲线（U 型），用于按"已过时段占比"外推全日成交额 ──
+# 校准自 realtime_theme_monitor.py：22 个交易日(2026-08-21~09-21)沪深两市
+# 5 分钟 K 线累计成交额占比均值。A 股日内呈 U 型（早盘抢筹、午后清淡、尾盘放量），
+# 不能用"已过交易分钟/240"线性外推（会严重高估：9/21 13:00 线性预测 3.09 万亿
+# vs 实际 2.03 万亿，高估 +52%）。正确做法：预估全日 = 当前累计 ÷ 该时点累计占比。
+# 键 = 开盘后已交易分钟数（跳过 11:30~13:00 午休，全天 240 分钟），值 = 累计占比。
+MARKET_AMOUNT_PROGRESS = (
+    (0, 0.020), (5, 0.108), (10, 0.171), (15, 0.221), (20, 0.263),
+    (30, 0.335), (45, 0.417), (60, 0.479), (75, 0.535),
+    (90, 0.578), (105, 0.614), (120, 0.648),
+    (135, 0.697), (150, 0.738), (165, 0.776), (180, 0.811),
+    (195, 0.847), (210, 0.883), (225, 0.930), (240, 1.000),
+)
+
+
+def elapsed_trade_minutes_from_time(h, m):
+    """给定开盘后时刻(HH,MM)，返回已完成的交易分钟数(0~240)，午休不计入"""
+    t = h * 60 + m
+    if t <= 9 * 60 + 30:
+        return 0.0
+    if t <= 11 * 60 + 30:
+        return t - (9 * 60 + 30)
+    if t <= 13 * 60:
+        return 120.0
+    if t <= 15 * 60:
+        return 120.0 + (t - 13 * 60)
+    return 240.0
+
+
+def intraday_amount_progress(minutes):
+    """按 U 型经验曲线线性插值出该时点的累计成交额占比(0~1)"""
+    pts = MARKET_AMOUNT_PROGRESS
+    if minutes <= pts[0][0]:
+        return pts[0][1]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if minutes <= x1:
+            return y1 if x1 == x0 else y0 + (y1 - y0) * (minutes - x0) / (x1 - x0)
+    return pts[-1][1]
 
 
 def now_slot():
@@ -173,7 +218,7 @@ def _v107_intraday(trade_date, mkt, up, dn, zt, dt_, amt_est, idx_proxy,
     """★ V10.7：盘中三层确认 + 状态门控（与盘后同一套判定）。
 
     口径说明：
-      · 成交额用**按已过交易时段折算的预估全日值**（盘中未定稿）
+      · 成交额用**按日内累计占比 U 型曲线外推的预估全日值**（盘中未定稿）
       · 指数涨跌幅用**全市场等权平均涨跌幅**作为中证2000 的盘中代理
         （新浪不提供 932000.CSI 实时；等权平均与小盘高度相关）
       · 历史序列取收盘口径的 market_micro 面板，再追加盘中合成行
@@ -251,16 +296,15 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
     zt = int(((mkt.pct_chg >= thr * 0.99) & (mkt.pct_chg < thr + 0.1)).sum())
     dt_ = int(((mkt.pct_chg <= -thr * 0.99) & (mkt.pct_chg > -thr - 0.1)).sum())
     amt_so_far = mkt.amount.sum() / 1e8
-    # 按已过交易时段比例折算成预估全日成交额
-    # A股：09:30-11:30 (120min) + 13:00-15:00 (120min) = 240min
-    _now = datetime.datetime.now()
-    _hm = _now.hour * 60 + _now.minute
-    if _hm <= 690:      # 11:30 之前
-        _elapsed = max(1, _hm - 570)
-    else:               # 13:00 之后
-        _elapsed = 120 + max(1, _hm - 780)
-    _elapsed = min(_elapsed, 240)
-    amt_est = amt_so_far * 240 / _elapsed if _elapsed else amt_so_far
+    # ★ 预估全日成交额：按"日内累计占比 U 型曲线"外推（对齐 realtime_theme_monitor.py）
+    #   预估全日 = 当前累计成交额 ÷ 该时点累计占比（不能用 240/已过分钟 线性外推，
+    #   否则 A 股 U 型量能分布会让早盘/午盘严重高估，9/21 13:00 曾高估 +52%）。
+    #   用 slot 名义时刻（而非 datetime.now()）保证定时任务在时点附近波动时口径稳定，
+    #   且午休 11:30~13:00 期间已交易分钟数固定为 120，不会误判为午后。
+    _sh, _sm = (int(x) for x in slot_time.split(':'))
+    _minutes = elapsed_trade_minutes_from_time(_sh, _sm)
+    _progress = 1.0 if _minutes >= 240 else intraday_amount_progress(_minutes)
+    amt_est = amt_so_far / _progress if _progress > 0 else amt_so_far
     amt_half = amt_est      # 变量名沿用，实际存的是「预估全日」
 
     hist = _broadth_history(snap)
@@ -326,6 +370,7 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
     promo = None
     strong_mean = None
     strong_up = None
+    strong_up_cnt = None
     if zt_list and mkt is not None:
         sub = mkt[mkt.ts_code.isin(zt_list)]
         if len(sub):
@@ -334,8 +379,22 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
             pcts = sub.pct_chg.values
             strong_mean = float(pcts.mean())
             strong_up = float((pcts > 0).mean() * 100)
+            strong_up_cnt = int((pcts > 0).sum())
             cont = int(((pcts >= thr.values*0.99) & (pcts < thr.values+0.1)).sum())
             promo = cont / len(zt_list) * 100
+
+    # ---- V10.8：第四项「强股上涨比」的连续性分级（信号层，不改 money_pass）----
+    #   历史序列由 daily_cache 日线重算（口径与盘中一致），当日值取实时。
+    #   分级：ALERT / BOOST / REPAIR / PASS / FAIL，详见 strong_up_history.py。
+    su_grade = None
+    if strong_up is not None and suh is not None:
+        try:
+            suh.sync(trade_date, strong_up)
+            su_grade = suh.classify(trade_date, strong_up, cfg)
+        except Exception as e:
+            su_grade = {'grade': 'NA', 'label': f'连续性数据不可用（{e}）',
+                        'alert': False, 'recent': [], 'recent_str': '—',
+                        'streak_repair': 0, 'streak_boost': 0, 'thresholds': {}}
 
     # ---- 短线赚钱效应判定（跌停/炸板率需收盘，晋级率与强股表现盘中可算）----
     c_money_dt = dt_ <= m['dt_count_max']
@@ -398,6 +457,9 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
         'prev_days': prev_days, 'prev_pending': prev_pending,
         'prev_votes': prev_votes,
         'promo': promo, 'strong_mean': strong_mean, 'strong_up': strong_up,
+        'strong_up_cnt': strong_up_cnt,
+        'strong_up_min': m['strong_stock_up_ratio_min'] * 100,
+        'strong_up_grade': su_grade,
         'zt_list_count': len(zt_list),
         'prev_date': snap.get('trade_date'),
         'prev_v10': v10r, 'prev_v101': snap.get('v101') or {},
@@ -434,8 +496,27 @@ def render(r):
                  f"{'✓' if r['promo'] <= 35 else '✗'}")
     if r['strong_mean'] is not None:
         L.append(f"　昨日涨停股今日均值 {r['strong_mean']:+.2f}%"
-                 f"（要求 ≥0%）{'✓' if r['strong_mean'] >= 0 else '✗'}"
-                 f"　上涨比 {r['strong_up']:.1f}%")
+                 f"（要求 ≥0%）{'✓' if r['strong_mean'] >= 0 else '✗'}")
+        # 口径提示：这里的「上涨比」分母是**昨日涨停名单**，不是全市场，
+        # 与【实时读数】的「上涨占比」（全市场 up/(up+dn)）是两个不同指标。
+        # 显式写出分子/分母与阈值，避免微信文案里两个数并列造成误读。
+        _su_min = r.get('strong_up_min') or 50
+        _su_cnt = r.get('strong_up_cnt')
+        _cnt = (f"{_su_cnt}/{r['zt_list_count']} 只" if _su_cnt is not None
+                else f"共 {r['zt_list_count']} 只")
+        L.append(f"　昨涨停股上涨比 {r['strong_up']:.1f}%（{_cnt}，要求 ≥{_su_min:.0f}%）"
+                 f"{'✓' if r['strong_up'] >= _su_min else '✗'}")
+        # V10.8：连续性分级（信号层，不改变上面的 ✓/✗ 与 money_pass）
+        _g = r.get('strong_up_grade') or {}
+        if _g.get('grade') and _g['grade'] != 'NA':
+            _th = _g.get('thresholds') or {}
+            _mark = ('⚠' if _g.get('alert') else
+                     ('✓' if _g['grade'] in ('PASS', 'REPAIR', 'BOOST') else '✗'))
+            L.append(f"　└ 连续性：{_mark}{_g['label']}｜近3日 {_g.get('recent_str','—')}"
+                     f"｜≥{_th.get('repair_min',50):.0f}%连续 {_g.get('streak_repair',0)} 日"
+                     f"、≥{_th.get('boost_min',55):.0f}%连续 {_g.get('streak_boost',0)} 日")
+        elif _g.get('grade') == 'NA':
+            L.append(f"　└ 连续性：{_g.get('label','不可用')}")
     if r['mainlines']:
         for ind in r['mainlines'][:2]:
             x = r['ml_details'][ind]

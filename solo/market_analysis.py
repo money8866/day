@@ -1702,6 +1702,22 @@ def analyze_market(trade_date=None):
                     render_v107_report as v107_render,
                     render_v107_summary as v107_summary,
                     load_config as v107_load_cfg)
+                # ★ tushare 衍生缓存同步：主流程已用 tushare 刷新 daily_cache，
+                #   此处把 V10.7 依赖的 micro / industry 两个衍生缓存同步刷新，
+                #   否则 V10.7 会读到陈旧数据（micro 缺当日行 → 量价判定 UNKNOWN）。
+                #   两段各自 try/except，任何异常都不影响 V9.9/V10.0/V10.1。
+                try:
+                    from market_micro import ensure as micro_ensure
+                    micro_ensure(end_date=trade_date)   # 纯本地重建，无 tushare 调用
+                    print(f"[V10.7] micro 缓存已同步至 {trade_date}")
+                except Exception as e:
+                    print(f"[V10.7] micro 缓存同步失败（沿用旧缓存）: {e}")
+                try:
+                    import industry_constituents as _ic
+                    did = _ic.sync_if_stale(trade_date, max_age_days=7)
+                    print(f"[V10.7] industry 缓存{'已刷新' if did else '在窗口内，跳过'}（tushare 守卫式）")
+                except Exception as e:
+                    print(f"[V10.7] industry 缓存同步跳过（沿用旧缓存）: {e}")
                 v107_cfg = v107_load_cfg()
                 v107_res = v107_analyze(trade_date, cfg=v107_cfg, persist=False)
                 v107_text = v107_render(v107_res, v107_cfg)

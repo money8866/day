@@ -31,6 +31,7 @@
 """
 import os
 import sys
+import time
 import sqlite3
 import datetime
 from typing import Optional, List, Dict, Any
@@ -213,8 +214,13 @@ def ensure(start_date: str = None, end_date: str = None) -> bool:
     """确保序列覆盖到 end_date（缺口自动补齐）。返回是否补齐成功。"""
     end_date = str(end_date or datetime.date.today().strftime('%Y%m%d'))
     build(start_date, end_date)
-    row = get_row(end_date)
-    return row is not None
+    # build 提交后，RO 连接偶发瞬时不可见（同进程写锁竞态），小重试吸收，
+    # 避免误报「未就绪」导致上层判定 UNKNOWN。
+    for _ in range(3):
+        if get_row(end_date) is not None:
+            return True
+        time.sleep(0.1)
+    return False
 
 
 # ============================================================
