@@ -1,0 +1,58 @@
+{
+  "trade_date": "20261103",
+  "市场状态": "S4 卖压衰减",
+  "卖压衰减确认": "FAIL",
+  "反弹确认": "FAIL",
+  "结构性机会": "PASS",
+  "最强行业": "食品饮料",
+  "行业持续性": "25 日",
+  "行业内部广度": "当日 64.8% / 20日 55.7%",
+  "主动试探权限": false,
+  "建议仓位": "10%~20%",
+  "仓位硬上限": 20,
+  "满仓授权": "FULL_DENIED",
+  "切换关键条件": {
+    "upgrade": "①上涨占比连续2日改善且≥45% ②跌停家数≤前日70% ③涨停/跌停比≥2.0且高于前日 ④成交额与指数方向匹配 ⑤主线行业持续性赚钱效应成立（连续强态≥3日且超额20日>0）",
+    "downgrade": "①跌停家数较前日放大≥2倍或≥95只 ②广度跌破25% ③核心指数下跌且成交额较20日均放大 ④小盘显著弱于大盘",
+    "s6_exit": "连续2日不满足S6四模块 → 回到S5"
+  },
+  "P0风险口径修复": {
+    "enabled": true,
+    "original": {
+      "total_risk_pct": 1.817,
+      "risk_budget_pct": 1.5,
+      "budget_usage": 1.212,
+      "ok": false,
+      "used_proxy": false,
+      "basis": "holdings_per_stock",
+      "proxy_stop_distance": null,
+      "violations": [
+        "组合总风险 1.82% 超出预算 1.50%"
+      ]
+    },
+    "consistent": {
+      "position_pct": 20.0,
+      "state": "S4",
+      "stop_distance": 0.0306,
+      "cost_extra": 0.002,
+      "total_risk_pct": 0.652,
+      "risk_budget_pct": 1.5,
+      "budget_usage": 0.435,
+      "risk_cap": 46,
+      "ok": true,
+      "basis": "proxy_total_position"
+    },
+    "suggested_before": 20,
+    "suggested_after": 20,
+    "hard_cap_before": 20,
+    "hard_cap_after": 20,
+    "risk_cap": 46,
+    "changed": false,
+    "consistency_ok": true,
+    "missing": [],
+    "notes": [
+      "决策依据与报告展示已指向同一个 portfolio 对象",
+      "统一口径敞口 0.652% / 预算 1.50% (ok=True)；V10.1 原展示 1.817% 保留在【V10.1 原决策记录】中"
+    ]
+  }
+}

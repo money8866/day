@@ -1692,10 +1692,15 @@ def analyze_market(trade_date=None):
                 import traceback
                 traceback.print_exc()
 
-            # ===== V10.7 增量优化（量价口径 / S4卖压衰减确认 / S5反弹确认 / 结构性机会 / 仓位语义分离）=====
+            # ===== V10.7 增量优化（量价口径 / S4卖压衰减确认 / S5反弹确认 / 结构性机会 / 仓位语义分离 / P0风险口径 / P1P2仓位优化 / V10.7.3波段闸门 / V10.7.4主升段锁存）=====
+            #   ※ V10.7.5「日内盘中仓位桥接」不在此盘后链路，见 _intraday_monitor.py +
+            #     intraday_position_anchor.py（只读 <当日 的盘后摘要，纯收紧）。
             # ★ 纯增量：内部完整复用 V10.0 + V10.1 的决策链路，
             #   只在其上叠加三层确认与状态门控，并保留 V10.1 原决策记录以便新旧对比。
             #   任何异常都不影响上面的 V9.9 / V10.0 / V10.1 结果。
+            # ★ persist=False 时 P1 平滑器、10.7.3 波段闸门、10.7.4 主升段锁存
+            #   各自写独立历史表（position_optimizer_state / swing_gate_state /
+            #   bull_latch_state），不触碰 V10.0/V10.1 状态表。
             try:
                 from market_regime_v107 import (
                     analyze_trade_date_v107 as v107_analyze,

@@ -1,0 +1,46 @@
+{
+  "off": {
+    "days": 443,
+    "mean_target": 35.12,
+    "ge20pp_days": 105,
+    "max_jump_pp": 85.0,
+    "three_day_roundtrip": 56,
+    "cap_eq_target_days": 443,
+    "ge60_days": 110,
+    "mean_hard_cap": 35.12,
+    "active_add_days": 0,
+    "smoother": {},
+    "vol_status": {},
+    "extra_cap_days": 0,
+    "deny_active_days": 0
+  },
+  "on": {
+    "days": 443,
+    "mean_target": 28.0,
+    "ge20pp_days": 80,
+    "max_jump_pp": 85.0,
+    "three_day_roundtrip": 41,
+    "cap_eq_target_days": 335,
+    "ge60_days": 63,
+    "mean_hard_cap": 32.64,
+    "active_add_days": 0,
+    "smoother": {
+      "COLD_START": 1,
+      "DOWN": 55,
+      "HOLD": 186,
+      "UP_LIMITED": 168,
+      "UP_BLOCKED": 18,
+      "UP_COOLDOWN": 15
+    },
+    "vol_status": {
+      "OK": 389,
+      "TIGHTEN": 54
+    },
+    "extra_cap_days": 55,
+    "deny_active_days": 365
+  },
+  "range": [
+    "20250101",
+    "20261103"
+  ]
+}

@@ -14,6 +14,86 @@
         "仓位语义分离：目标仓位 / 建议区间 / 仓位硬上限 / 主动加仓权限 / 满仓授权 五者分列；目标仓位不视为必须持仓",
         "状态门控：S4 进入与 S5 升级必须通过对应确认（UNKNOWN 不算通过）"
       ]
+    },
+    {
+      "version": "10.7.1",
+      "date": "2026-11-04",
+      "note": "P0 修复：组合风险口径统一 + 决策/报告一致性。纯增量，v10/v101 源码一行未改。",
+      "changes": [
+        "缺陷① 风险敞口与仓位脱钩：V10.1 fallback 用 min(15%单股上限, 仓位)×sd，仓位≥20% 后被封死，风险闸门全年 0 次收紧。改为统一口径「总仓位×(平均止损距离+成本)」",
+        "缺陷② 决策与报告两个 portfolio 对象：calculate_target_position 的 tp.portfolio 指向原对象、deepcopy 重算只改局部变量；主流程第9步覆盖展示却不回代 suggested。V10.7 层 deepcopy 一个权威对象同时挂到 r.portfolio 与 r.target.portfolio",
+        "由风险预算反解 risk_cap = budget/(sd+extra)，纳入 build_position_plan 的 hard_cap；超预算时回代 target.suggested 并写入 limited_by",
+        "止损距离缺失 → UNKNOWN，portfolio.ok=False、关闭主动加仓权限，不默认通过；V10.1 原决策记录（r.base）用 deepcopy 保护，一字不改",
+        "报告新增【P0 风险口径修复】段、summary 新增 P0风险口径修复 对比字段；p0_fixes.enabled=false 可 A/B 对照",
+        "实测 sd=3.06% 时各状态 risk_cap 为 S3 30/S4 46/S2 61/S5 100/S1 100/S6 100，均≥权限 → 全年 200 日不改变任何历史仓位结论（纯修复）",
+        "tushare_quant.py 大盘数据块新增「组合风险(P0)」行（直取优先，旧盘后产物无该键时静默跳过）"
+      ]
+    },
+    {
+      "version": "10.7.2",
+      "date": "2026-11-04",
+      "note": "P1/P2 修复：仓位可执行性 + 语义边界。纯增量，v10/v101 源码一行未改。",
+      "changes": [
+        "P1-③ 仓位平滑器：升仓 ≤10pp/日（确认通过的状态升级 20pp）、降仓立即执行、降仓后升仓冷却 2 日、状态升级复用 easing/rebound 连续确认；只平滑 suggested，hard_cap 仍由状态权限决定",
+        "P1-④ 三项确认进入仓位约束：卖压衰减非 PASS 关闭主动加仓；反弹非 PASS 且状态 S5 时硬上限回落到 S4 权限（继续保持观察）；UNKNOWN 不默认通过",
+        "P2 现金地板与满仓授权矛盾：明确 10% 为结算备付金并在授权文案写清（默认不改数值，waive_for_s6 可选豁免默认关闭）",
+        "P2 阶梯 off-by-one：steps 前补 0 并重算 current_step/next_step，消除当前 10% 给出 next_step=30% 却写「阶梯 20→40」的错位",
+        "P2 c5「主线未发生变化 = True」恒真占位符改为主线真实判定 + 前一日未恶化；模块/历史缺失 → UNKNOWN，不默认通过",
+        "P2 风险预算增加独立信息量：核心指数 20 日已实现波动率相对 60 日滚动基准显著升高时收紧预算（波动翻倍、预算/仓位减半），因子 clamp [0.5,1.0]，只收紧不放宽",
+        "P2 建议区间 lo_ratio 由硬编码 0.5 改为与确认强度/波动率联动并 clamp [0.3,0.7]",
+        "历史链独立表 position_optimizer_state，严格只取 trade_date < 当日；波动率序列按当日截断、基准中位数不含当日 → 无未来数据",
+        "报告新增【P1/P2 仓位优化】段、summary 新增 P1P2仓位优化 对比字段（原 12 字段契约不变）；position_optimizer.enabled=false 可 A/B 对照",
+        "盘后/微信链路用 persist=False，新增 persist_history_without_state 开关让平滑器写独立历史表 position_optimizer_state（不触碰 V10.0/V10.1 状态表），避免每天冷启动",
+        "全年 200 日 A/B 回放（solo/_bt_opt_replay_{off,on}.csv + _bt_opt_probe_metrics.json）：单日≥20pp 49→35（其中降仓 20 天为风险优先故意保留，升仓严格>20pp 20→0 天）、3日往返 25→16、硬上限==目标 200→140、≥60% 天数 47→27、目标均值 32.7%→25.9%；确认门控回落硬上限 21 天、波动率收紧 34 天。四组参数探针后保留最保守的默认档（详见 smoother._tuning_note）",
+        "tushare_quant.py 大盘数据块新增「仓位优化(P1/P2)」与「仓位优化-UNKNOWN」行（旧产物无该键静默跳过），微信模板的 V10.7仓位约束 条目同步要求照抄并以平滑后目标/门控后硬上限为准"
+      ]
+    },
+    {
+      "version": "10.7.3",
+      "date": "2026-11-05",
+      "note": "落地 swing_gate 波段闸门（纯收紧型 overlay）。基于 2025-2026 两年 443 日样本外检验，默认只开 S2/S5 状态过滤；MA20 闸门与回撤刹车留作可选熊市档。纯增量，v10/v101 源码一行未改。",
+      "changes": [
+        "新增 solo/swing_gate.py：w_eff=min(w_base, w_base×Πf, hard_cap)，三层（S2/S5 状态过滤 / MA20 趋势闸门 / 60日回撤刹车）各自独立开关、连乘、只收紧不放宽",
+        "默认 profile=default 只启用 S2/S5 ×0.3 —— 两年实测唯一 2025/2026 波段 alpha 双正的一层；profile=swing3 启用三层组合、ma_only 只开趋势闸门、off 全关",
+        "指数信号只读 index_daily_cache 中 trade_date<=当日 的收盘价，严格无未来数据；样本不足 → 该层 UNKNOWN、不宣称通过并关闭主动加仓",
+        "降仓立即执行，闸门放开导致有效仓位跳升时沿用 P1 的 10pp/日升仓限速；独立历史表 swing_gate_state 严格只取 trade_date<当日，不污染 P1 平滑器链",
+        "V10.7 第 7d 步施加：仅当闸门真正收紧时重建 plan；未收紧 / enabled=false 时 plan 完全不动，A/B 与 10.7.2 逐字节一致",
+        "报告新增【波段闸门 swing_gate】段、summary 新增「波段闸门」对比字段（原 12 字段契约不变）；tushare_quant.py 数据块新增「波段闸门」行与微信模板条目",
+        "两年实测（_bt_swing_optimizer_metrics.json）：S2/S5 过滤 2025 alpha +1.36pp / 2026 +0.98pp、两年 +4.67%；三层组合两年 +5.64% / 回撤 -2.76%；MA20 闸门 2025 alpha -1.73pp、回撤刹车 -2.59pp 故默认关闭",
+        "落地验收（solo/_bt_swing_gate_replay.py / _bt_swing_gate_replay_metrics.json）：443 日逐日有效仓位与实验脚本 factor_for 的 state_s2s5 / combo_ma20_s2s5_dd 误差均为 0.0pp；两年收益 baseline 0.83%→默认档 4.67%（+10pp 限速 2.33%）→三层档 5.64%，与实验脚本四项指标完全一致；硬上限突破 0 天、有效目标高于基准 0 天、V10.7 全套回归 122 passed / 2 skipped、v10/v101 SHA256 锁定未改"
+      ]
+    },
+    {
+      "version": "10.7.4",
+      "date": "2026-11-05",
+      "note": "落地 bull_latch 主升段锁存（recommended 档：满仓无杠杆 + 4% 跟踪止损 + 50pp 锁存期提速），默认关闭做 A/B。纯增量，v10/v101 源码一行未改；突破 hard_cap 必须走 P0 风险预算重算 + 满仓授权显式授权。",
+      "changes": [
+        "研究结论：1.5 倍杠杆档两年 +17.54% 但 2021-2026 长历史全期 -4.43%，exit=none 在 2021 年 -15.16%，均判定为样本内过拟合，不落地；采用 recommended 档（s_trend + trail 4% + 锁存10日 + 满仓100% + 锁存期50pp/日），两年 +10.87%、长历史同形态 +10.18%",
+        "新增 solo/bull_latch.py：入场信号 close>MA20 且 MA20>MA20(5日前) 且 5日均 up_ratio>0.58；up_ratio 取 micro_daily.up_count/total 原列，与实验逐行同口径；锁存状态机、4% 峰值跟踪止损、50pp/10pp 升仓限速、降仓立即均逐日复刻 _bt_bull_aggressive.aggressive_lock / aggressive_weight",
+        "★ 与 swing_gate 分开成独立模块：swing_gate 是纯收紧 overlay，bull_latch 会申请高于状态权限的仓位，两者契约相反；独立模块 + 独立历史表 bull_latch_state + 独立配置段/报告段，挂在 V10.7 第 7e 步，A/B 可完全关闭",
+        "★ 突破 hard_cap 不是 overlay：需同时满足 break_hard_cap=true、authorization.result==FULL_ALLOWED、portfolio.ok、P0 统一口径重算 risk_cap>=目标且目标仓位下总风险不超预算、信号非 UNKNOWN；授权只放宽「状态权限」这一项，现金地板/风险预算/确认门控/满仓授权否决仍逐项取 min",
+        "★ 权重强制 clamp 到 [0,100]，不提供杠杆；现金地板豁免开关 waive_cash_floor_on_latch 默认 false，故落地目标上限通常受 cash_floor_max 约束（约 90%），与实验 100% 的差额作为执行折扣明示",
+        "指数/微结构序列严格 trade_date<=当日；MA/5日广度均为含当日的向后窗口；历史链严格 trade_date<当日；UNKNOWN 不默认通过 → 不入场、不升仓、关闭主动加仓",
+        "报告新增【主升段锁存 bull_latch】段、summary 新增「主升段锁存」字段（原 12 字段契约不变）；tushare_quant.py 数据块新增「主升段锁存」行与微信模板照抄要求；旧盘后产物无该键时静默跳过",
+        "默认 enabled=false：7e 步直接返回，行为与 V10.7.3 逐字节一致；打开需显式置 enabled=true（并按需设置 break_hard_cap）",
+        "落地验收（solo/_bt_bull_latch_replay.py / _bt_bull_latch_replay_metrics.json）：443 日逐日公式与实验 s_trend|trail|cap1.0|h10 最大/平均绝对误差 0.0pp、信号判定不一致 0 天、锁存天数 151/151 一致；诊断档两年 10.86% 与实验脚本 10.86% 完全一致；A/B 关闭档逐日=基准 0 差异、授权申请 0 次；生产链路授权通过 97 天、被风险预算拒绝 54 天、UNKNOWN 0 天、有效目标>100%（杠杆）0 天",
+        "全套回归 219 passed / 2 skipped（V10.0 24/24、V10.1 40/40、V10.7 122+新增 33），v10/v101 SHA256 锁定未改；真实链路 20261103 冒烟：S4 / 目标 20% / 硬上限 20% 不变，报告段与 summary 新键均在，tushare_quant 数据块输出「主升段锁存: 已关闭（A/B 对照）」",
+        "顺带修复既有 --json 链路在 structural.checks 遇 numpy 标量时的序列化异常（新增 _json_default 兜底，只影响 JSON 输出，不改任何决策值）"
+      ]
+    },
+    {
+      "version": "10.7.5",
+      "date": "2026-11-05",
+      "note": "日内盘中 ↔ 盘后仓位口径桥接（纯收紧）。补齐 V10.7.4 落地时未同步的 _intraday_monitor.py；v10/v101 源码一行未改。",
+      "changes": [
+        "问题：盘后已演进到 P0风险 / P1P2优化 / 波段闸门 / 主升段锁存，盘中仍停在 V10.0状态机 → V10.1权限表 → V10.7状态门控 → 时点折扣，两者互不知晓；盘中可能给出高于盘后最终有效目标的建议",
+        "新增 solo/intraday_position_anchor.py：只读严格早于当日的 report_daily/market_regime_v107_summary_YYYYMMDD.json，按末层优先解析有效目标（bull_latch > swing_gate > P1P2 > 建议仓位上界）与状态硬上限，做一次 min()",
+        "★ 只收紧不放大：cap_after <= cap_before 且 <= 盘后有效目标；档位取整到 5% 且不允许 round 越过锚点；时点折扣同样加 clamp 防止四舍五入放大",
+        "★ 无未来数据：当日盘后摘要即使已存在（回补/复跑）也禁止用于盘中；max_age_days=7 拒绝陈旧锚点；缺失/过期/损坏/字段不全一律 fail-soft 退回原口径并输出审计行",
+        "★ 不跨日继承满仓授权与 authorized_hard_cap（authority / P0 风险预算每日盘后重算）；盘中不重算 MA20/广度、不重新触发主升段锁存、不申请升仓、不写 bull_latch_state",
+        "_intraday_monitor.py 最小侵入：新增 cap_before_anchor / cap_after_anchor / position_anchor 三个结果字段与【盘后仓位基准】报告段；import 与调用均 try/except 包裹，模块缺失时行为与 10.7.4 一致",
+        "intraday_bridge.enabled=false 可一键回退到 10.7.4 盘中口径做 A/B；默认 true（纯收紧，无放大风险）"
+      ]
     }
   ],
   "_note": "所有阈值均为风控配置，不是经回测验证的最优参数。任何调整都应重跑历史检验并更新 _version_history。",
@@ -99,6 +179,162 @@
       "target_above_current",
       "portfolio_ok"
     ]
+  },
+  "p0_fixes": {
+    "_note": "★ 2026-11-04 P0 修复（纯增量，v10/v101 源码一行不动）：①组合风险敞口由「min(15%单股上限, 仓位)×sd」改为「总仓位×平均止损距离」，不再被单股上限封死；②决策与报告指向同一个 portfolio 对象；③由风险预算反解 risk_cap 并纳入仓位硬上限。实测当前 sd=3.06% 时 200/200 天不收紧，不改变任何历史仓位结论。",
+    "enabled": true,
+    "max_risk_cap": 100,
+    "_basis_note": "等权分散假设：Σw_i·sd_i ≈ 总仓位×平均止损距离。止损距离取 ETF 波动率代理；缺失时标记 UNKNOWN 并关闭主动加仓，不得默认通过。",
+    "_ab_note": "置 enabled=false 可做 A/B 对照：此时不修改任何字段，行为与修复前完全一致。"
+  },
+  "position_optimizer": {
+    "_note": "★ 2026-11-04 P1/P2 修复（纯增量，v10/v101 源码一行不动）：P1 仓位平滑器 + 三项确认进入仓位约束；P2 现金地板语义 / 阶梯 off-by-one / c5 恒真占位符 / 波动率驱动的独立风险预算 / 动态建议区间。",
+    "enabled": true,
+    "persist_history_without_state": true,
+    "_persist_note": "盘后 market_analysis.py 与微信 tushare_quant.py 都用 persist=False；此开关让平滑器仍写自己的独立历史表 position_optimizer_state（不触碰 V10.0/V10.1 状态表），否则每天都冷启动。回放传内存链时不写表。",
+    "_ab_note": "置 enabled=false 可做 A/B 对照：P1/P2 全部不施加，行为与 10.7.1 完全一致（P0 仍生效）。",
+    "smoother": {
+      "_note": "只平滑 suggested（目标仓位），hard_cap 仍由状态权限决定；降仓立即执行（风险优先）。",
+      "up_step_pct": 10,
+      "up_step_on_confirmed_upgrade_pct": 20,
+      "down_immediate": true,
+      "cooldown_days_after_down": 2,
+      "max_gap_days": 5,
+      "state_upgrade_requires_confirm": true,
+      "_confirm_note": "状态升级需复用门控的 easing/rebound 确认：门控已否决、S4 缺卖压衰减 PASS、S5 缺反弹 PASS 时不升仓；UNKNOWN 不默认通过。",
+      "_tuning_note": "★ 2026 全年 200 日 A/B 探针（solo/_bt_opt_probe_metrics.json）：默认档 10/20/2 在「升仓>20pp 跳变 20→0 天、最大升仓 55→20pp、3日往返 25→16、硬上限==目标 200→140 天」四项全面最优；代价是 ≥60% 目标仓位天数 47→27（限速的必然结果，且目标仓位不是必须持仓、建议区间下限已动态化）。若要恢复高仓位天数，可把 up_step_on_confirmed_upgrade_pct 调到 30~40 且 cooldown_days_after_down 调到 1（≥60% 回到 45 天），但升仓>20pp 跳变会回到 22 天、往返回到 26~27、硬上限==目标回到 178~179 天 —— 等于把平滑器削弱。**诊断时给的「≥20pp 降到 <10」与「降仓立即执行」本身冲突：默认档 35 天里 20 天是降仓（风险优先，故意不平滑）、15 天是恰好 20pp 的确认升级日。** 未擅自放宽。"
+    },
+    "confirm_gates": {
+      "_note": "确认结果进入仓位约束，补上「条件不完整则继续保持观察」的原意。",
+      "easing_not_pass_deny_active_add": true,
+      "rebound_not_pass_s5_cap_to_s4": true,
+      "unknown_does_not_pass": true
+    },
+    "volatility_budget": {
+      "_note": "独立信息量：用核心指数已实现波动率（micro_daily.index_chg）驱动风险预算，与状态权限/ETF 代理止损不同源。只在波动显著高于滚动基准时收紧，clamp [0.5,1.0]，只收紧不放宽。样本不足 → UNKNOWN、因子 1.0。",
+      "enabled": true,
+      "window": 20,
+      "baseline_window": 60,
+      "min_baseline_samples": 20,
+      "activate_ratio": 1.5,
+      "factor_min": 0.5,
+      "factor_max": 1.0
+    },
+    "range_ratio": {
+      "_note": "建议区间下限比例与确认强度、波动率联动，替代硬编码 0.5。",
+      "base": 0.5,
+      "confirm_bonus": 0.05,
+      "confirm_penalty": 0.05,
+      "high_vol_penalty": 0.1,
+      "low_vol_bonus": 0.05,
+      "min": 0.3,
+      "max": 0.7
+    },
+    "ladder_patch": {
+      "_note": "不修改 v101.plan_ladder_add：在 V10.7 层 deepcopy 后修正。V10.1 原决策记录一字不改。",
+      "enabled": true,
+      "prepend_zero_step": true,
+      "c5_requires_mainline": true,
+      "mainline_no_deterioration": true,
+      "_c5_note": "c5 原为恒 True 占位符；改为主线模块真实 passed + 前一日未恶化，模块或历史缺失 → UNKNOWN，不默认通过。"
+    },
+    "cash_floor": {
+      "_note": "明确「满仓授权」与「现金最低保留」是两个维度：授权管能不能，现金地板管留多少。默认只写清文案、不改数值。",
+      "enabled": true,
+      "waive_for_s6": false,
+      "_waive_note": "置 true 时，S6 + 满仓授权 ALLOWED + 组合风险合格 + 三项确认全 PASS 才豁免现金地板（会改变历史结论，默认关闭）。"
+    }
+  },
+  "swing_gate": {
+    "_note": "★ 2026-11-05 V10.7.3 波段闸门：在 P1/P2 目标仓位之上叠加纯收紧型 overlay，w_eff=min(w_base, w_base×Πf, hard_cap)。两年（2025-2026，443日）样本外检验后，默认只启用 S2/S5 状态过滤；MA20 闸门与回撤刹车在 2025 牛市为负 alpha，留作熊市可选档。v10/v101 源码一行不动。",
+    "enabled": true,
+    "profile": "default",
+    "benchmark": "000300.SH",
+    "_data_note": "MA / 60日回撤信号只读 cache_daily/stock_data.db :: index_daily_cache 中 trade_date<=当日 的收盘价，与 _bt_swing_optimizer.py 同口径；读不到 → 该层 UNKNOWN、不默认通过、关闭主动加仓。默认档不依赖指数数据。",
+    "_ab_note": "置 enabled=false 可做 A/B 对照：完全不施加闸门，行为与 10.7.2 逐字节一致。切换 profile=swing3 可启用三层组合（趋势+状态+回撤），profile=ma_only 只开趋势闸门。",
+    "profiles": {
+      "default": {"state_filter": true, "ma_gate": false, "drawdown_brake": false},
+      "swing3": {"state_filter": true, "ma_gate": true, "drawdown_brake": true},
+      "ma_only": {"state_filter": false, "ma_gate": true, "drawdown_brake": false},
+      "off": {"state_filter": false, "ma_gate": false, "drawdown_brake": false}
+    },
+    "_tuning_note": "★ 两年实测（solo/_bt_swing_optimizer_metrics.json）：S2/S5 过滤是唯一 2025/2026 两年波段 alpha 均为正的一层（+1.36pp / +0.98pp，两年收益 +4.67%、alpha +2.76pp）；MA20 闸门 2025 alpha -1.73pp、回撤刹车 -2.59pp，均为熊市左尾截断器而非全天候增强。三层组合两年 +5.64%、回撤 -2.76%、alpha +4.30pp，绝对收益最高但含两层负 alpha，仅作可选档。所有 overlay 归一化回同等平均仓位后 alpha 转负或近零 → 优势主要来自低仓位与状态识别，不是精准择时。",
+    "layers": {
+      "state_filter": {
+        "_note": "系统自身状态机，非对指数均线做曲线拟合；S2 市场退潮 / S5 修复确认时把有效目标 ×0.3。",
+        "enabled": true,
+        "states": ["S2", "S5"],
+        "factor": 0.3
+      },
+      "ma_gate": {
+        "_note": "收盘 <= MA20 时收紧。三层组合实验口径为 ×0.25；若要复现单独「MA20 跌破即空仓」实验，把 factor 设为 0.0。",
+        "enabled": false,
+        "window": 20,
+        "factor": 0.25
+      },
+      "drawdown_brake": {
+        "_note": "相对近 60 日最高收盘回撤 <= -5% 时收紧，本质是风控层不是 alpha 来源。",
+        "enabled": false,
+        "window": 60,
+        "threshold_pct": -5.0,
+        "factor": 0.3
+      }
+    },
+    "execution": {
+      "_note": "降仓立即执行（风险优先），闸门放开导致有效仓位跳升时沿用 P1 的 10pp/日升仓限速；独立历史表 swing_gate_state，严格只取 trade_date < 当日，不污染 P1 平滑器链。★ 两年 443 日落地验收（solo/_bt_swing_gate_replay_metrics.json）：无限速默认档 +4.67%，加 10pp 限速后 +2.33%（与实验脚本「含 P1 升仓限速」列逐分一致）；限速触发 99 天、平均有效仓位 21.01%→16.67%，收益回撤比 0.77→0.41。这是可执行性换来的确定性折扣，不是口径错误：若认为 P1 平滑器已足够，可把 up_step_pct 设为 0 恢复 +4.67%，但需自行承担闸门放开日的单日仓位跳升。默认保留限速（保守）。",
+      "up_step_pct": 10,
+      "max_gap_days": 5
+    },
+    "persist_history_without_state": true,
+    "_persist_note": "盘后/微信链路 persist=False 时仍写闸门自己的独立历史表，否则每天冷启动、升仓限速形同虚设。回放传内存链时不写表。",
+    "unknown_deny_active_add": true
+  },
+  "bull_latch": {
+    "_note": "★ 2026-11-05 V10.7.4 主升段锁存：recommended 档（满仓 100% 不碰杠杆 + 4% 跟踪止损 + 锁存10日 + 锁存期50pp/日升仓）。研究来源 solo/_bt_bull_aggressive_metrics.json：两年 +10.87% / 回撤 -8.05%，长历史同形态全期 +10.18%；1.5倍杠杆档两年 +17.54% 但长历史全期 -4.43%，不采用。★ 默认关闭做 A/B，打开后仍须逐日通过 P0 风险预算重算 + 满仓授权才可能突破 hard_cap。",
+    "enabled": false,
+    "profile": "recommended",
+    "benchmark": "000300.SH",
+    "break_hard_cap": true,
+    "waive_cash_floor_on_latch": false,
+    "_ab_note": "置 enabled=false（默认）→ 第 7e 步完全不施加，行为与 V10.7.3 逐字节一致。置 true 才生效；若 break_hard_cap=false，锁存期只在原 hard_cap 内补足（退化为不破上限档，两年天花板 +5.39%）。两档都强制 clamp 到 100%，不提供杠杆。",
+    "_authority_note": "★ 突破 hard_cap 的四个必要条件（缺一即回落到原上限）：①配置 break_hard_cap=true ②V10.7 authorization.result==FULL_ALLOWED ③portfolio.ok is True ④用 P0 统一口径 compute_consistent_risk 在目标仓位重算，risk_cap>=目标 且总风险<=预算。授权通过也只放宽「状态权限」一项，现金地板 / 风险预算 / 确认门控 / 满仓授权否决继续逐项取 min。waive_cash_floor_on_latch 默认 false（10% 结算备付金不豁免），故实盘目标通常 <= cash_floor_max。",
+    "profiles": {
+      "recommended": {
+        "_note": "我建议的激进档：MA20 上行 + 广度 >0.58，跟踪止损 4%，满仓无杠杆，50pp 提速。两年 +10.87% / 长历史同形态 +10.18%。",
+        "signal": {"ma_window": 20, "ma_lookback": 5, "breadth_window": 5, "breadth_threshold": 0.58},
+        "exit": {"mode": "trail", "trail_pct": 0.04, "hold_days": 10, "cooldown_days": 0},
+        "position": {"target_pct": 100, "max_pct": 100, "up_step_latch_pct": 50, "up_step_normal_pct": 10}
+      },
+      "steady": {
+        "_note": "长历史稳健档：MA10 上行 + 广度 >0.60 + 跌破 MA10 退出。六年 +20.42% / 最差年 -4.52%，但 2025 牛市大幅踏空，仅在优先控回撤时切换。",
+        "signal": {"ma_window": 10, "ma_lookback": 5, "breadth_window": 5, "breadth_threshold": 0.60},
+        "exit": {"mode": "ma10", "trail_pct": 0.04, "hold_days": 10, "cooldown_days": 0},
+        "position": {"target_pct": 100, "max_pct": 100, "up_step_latch_pct": 50, "up_step_normal_pct": 10}
+      }
+    },
+    "_data_note": "入场信号严格只用 trade_date<=当日：指数收盘取 cache_daily/stock_data.db::index_daily_cache(000300.SH)，广度取 cache_micro/micro_daily.db::micro_daily 的 up_count/total（不是 up/(up+down)），按指数交易日左连接后做 5 日均；MA(win).shift(lookback) 为含当日向后窗口。样本不足或近 5 日广度缺失 → UNKNOWN。",
+    "execution": {
+      "max_gap_days": 5,
+      "_note": "历史链 bull_latch_state 严格只取 trade_date<当日；过期（>5 个交易日）视为冷启动。降仓立即执行，升仓锁存期 <=50pp/日、其余 <=10pp/日。注意生产 7c/7d 已各自带 10pp 限速，本层非锁存期的 10pp 是叠加的可执行性约束，只会更保守。"
+    },
+    "authorization": {
+      "require_full_allowed": true,
+      "require_p0_recompute": true,
+      "require_portfolio_ok": true
+    },
+    "persist_history_without_state": true,
+    "_persist_note": "盘后/微信链路 persist=False 时仍写独立历史表 bull_latch_state，否则每天冷启动、锁存状态机与限速形同虚设；回放传内存链时不写表。",
+    "unknown_deny_active_add": true
+  },
+  "intraday_bridge": {
+    "_note": "★ 2026-11-05 V10.7.5：把盘后 V10.7.4 的最终仓位口径桥接到日内盘中，只作上限锚点（min），不重算、不放宽。实现见 solo/intraday_position_anchor.py。",
+    "enabled": true,
+    "max_age_days": 7,
+    "_strict_date_note": "只认 trade_date < 当日 的盘后摘要；当日盘后报告收盘后才产出，盘中读它属于未来数据（与 _prev_snapshot.build(before_date=...) 同约定）。",
+    "_authority_note": "不跨日继承 authorization.result / authorized_hard_cap / P0 risk_cap；盘中无权沿用昨日的 hard_cap 突破授权，升仓以盘后决策为准。",
+    "_recalc_note": "盘中不重算 MA20 / 5日广度，不重新触发 bull_latch 锁存，不写 bull_latch_state；锁存期目标仅作为已被盘后确认的上限。",
+    "_ab_note": "置 enabled=false → _intraday_monitor 完全不施加锚点，行为与 V10.7.4 盘中口径一致，便于 A/B 对照。默认 true 是纯收紧修复（cap 只可能下降）。",
+    "_report_dir_note": "默认读仓库根目录 report_daily/；可用 report_dir 覆盖（测试/部署）。"
   },
   "gates": {
     "_note": "状态门控：确认不通过时不得升级到更高仓位权限的状态。UNKNOWN 不算通过。",

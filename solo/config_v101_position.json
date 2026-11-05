@@ -85,7 +85,9 @@
         "全年回放（200 个交易日）：卖压衰减确认 PASS 39 天、反弹确认 PASS 38 天、结构性机会 PASS 11 天（电子 7 天，命中 2026 上半年半导体行情）；门控改变状态 11 天，仓位均值 33.6%→32.7%，无任何一天因门控放大仓位",
     "盘后 market_analysis.py 与盘中 _intraday_monitor.py 均已接入，盘中盘后判定一致",
     "2026-11-04：tushare 衍生缓存同步接入 market_analysis.py V10.7 块（market_micro.ensure(end_date=...) + industry_constituents.sync_if_stale 守卫式 7 天刷新），避免次日 daily_cache 已刷新而 micro 库停在旧日导致量价判定 UNKNOWN",
-    "2026-11-04：tushare_quant.py 大盘分析段落接入【大盘环境 V10.7】第三数据块（函数直取优先 / 盘后 summary+txt 降级 / fail-soft），微信推送模板同步新增三项确认、量价四要素、结构性机会、仓位硬约束照抄行；三块独立互补，不得互相替代"
+    "2026-11-04：tushare_quant.py 大盘分析段落接入【大盘环境 V10.7】第三数据块（函数直取优先 / 盘后 summary+txt 降级 / fail-soft），微信推送模板同步新增三项确认、量价四要素、结构性机会、仓位硬约束照抄行；三块独立互补，不得互相替代",
+    "2026-11-04 P0 修复（V10.7 增量层 position_p0_fix.py，v10/v101 源码 SHA256 锁定未改）：组合风险敞口由「min(15%单股上限,仓位)×sd」改为「总仓位×平均止损距离」使风险闸门通电；r.portfolio 与 r.target.portfolio 指向同一 deepcopy 对象消除决策/报告口径分裂；由预算反解 risk_cap 纳入 hard_cap；UNKNOWN 不默认通过。当前波动率下全年 200 日 0 天收紧，不改变历史结论",
+    "2026-11-04 P1/P2 修复（V10.7 增量层 position_optimizer.py + config_v107_refine.json 的 position_optimizer 段，v10/v101 源码 SHA256 锁定未改）：P1 仓位平滑器（升仓限速/降仓立即/升级复用确认/降仓冷却）与三项确认进入硬上限；P2 现金地板与满仓授权语义澄清、阶梯 off-by-one、c5 恒真占位符改 UNKNOWN、波动率驱动的独立风险预算、动态建议区间。本文件所有仓位数值与阈值均未改动；enabled=false 可 A/B 对照"
   ]
 }
   ],

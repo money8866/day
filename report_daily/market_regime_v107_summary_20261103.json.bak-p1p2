@@ -1,0 +1,154 @@
+{
+  "trade_date": "20261103",
+  "市场状态": "S4 卖压衰减",
+  "卖压衰减确认": "FAIL",
+  "反弹确认": "FAIL",
+  "结构性机会": "PASS",
+  "最强行业": "食品饮料",
+  "行业持续性": "25 日",
+  "行业内部广度": "当日 64.8% / 20日 55.7%",
+  "主动试探权限": false,
+  "建议仓位": "8%~20%",
+  "仓位硬上限": 20,
+  "满仓授权": "FULL_DENIED",
+  "切换关键条件": {
+    "upgrade": "①上涨占比连续2日改善且≥45% ②跌停家数≤前日70% ③涨停/跌停比≥2.0且高于前日 ④成交额与指数方向匹配 ⑤主线行业持续性赚钱效应成立（连续强态≥3日且超额20日>0）",
+    "downgrade": "①跌停家数较前日放大≥2倍或≥95只 ②广度跌破25% ③核心指数下跌且成交额较20日均放大 ④小盘显著弱于大盘",
+    "s6_exit": "连续2日不满足S6四模块 → 回到S5"
+  },
+  "P0风险口径修复": {
+    "enabled": true,
+    "original": {
+      "total_risk_pct": 1.817,
+      "risk_budget_pct": 1.5,
+      "budget_usage": 1.212,
+      "ok": false,
+      "used_proxy": false,
+      "basis": "holdings_per_stock",
+      "proxy_stop_distance": null,
+      "violations": [
+        "组合总风险 1.82% 超出预算 1.50%"
+      ]
+    },
+    "consistent": {
+      "position_pct": 20.0,
+      "state": "S4",
+      "stop_distance": 0.0306,
+      "cost_extra": 0.002,
+      "total_risk_pct": 0.652,
+      "risk_budget_pct": 1.5,
+      "budget_usage": 0.435,
+      "risk_cap": 46,
+      "ok": true,
+      "basis": "proxy_total_position"
+    },
+    "suggested_before": 20,
+    "suggested_after": 20,
+    "hard_cap_before": 20,
+    "hard_cap_after": 20,
+    "risk_cap": 46,
+    "changed": false,
+    "consistency_ok": true,
+    "missing": [],
+    "notes": [
+      "决策依据与报告展示已指向同一个 portfolio 对象",
+      "统一口径敞口 0.652% / 预算 1.50% (ok=True)；V10.1 原展示 1.817% 保留在【V10.1 原决策记录】中"
+    ]
+  },
+  "P1P2仓位优化": {
+    "enabled": true,
+    "target_before": 20,
+    "target_after": 20,
+    "hard_cap_before": 20,
+    "hard_cap_after": 20,
+    "smoother": {
+      "raw": 20,
+      "prev": null,
+      "smoothed": 20,
+      "action": "COLD_START",
+      "step": null,
+      "cooldown_left": 0,
+      "state_upgrade": false,
+      "confirm_ok": null,
+      "reasons": [
+        "无有效历史链 → 冷启动，不平滑首日目标"
+      ],
+      "smoothed_final": 20
+    },
+    "confirm_gates": {
+      "easing": "FAIL",
+      "rebound": "FAIL",
+      "deny_active_add": true,
+      "extra_cap": null,
+      "unknown_does_not_pass": true,
+      "reasons": [
+        "卖压衰减确认 FAIL（非 PASS）→ 关闭主动试探/加仓权限"
+      ]
+    },
+    "volatility": {
+      "status": "OK",
+      "factor": 1.0,
+      "vol_today": 2.0204,
+      "baseline_vol": 1.7524,
+      "samples": 70,
+      "window": 20,
+      "note": "当日 vol20=2.020% ≤ 基准 1.752%×1.50 → 未触发收紧"
+    },
+    "range_ratio": {
+      "base": 0.5,
+      "adjustments": [
+        "卖压衰减 FAIL: -0.05",
+        "反弹 FAIL: -0.05"
+      ],
+      "final": 0.4,
+      "clamp": [
+        0.3,
+        0.7
+      ]
+    },
+    "ladder": {
+      "enabled": true,
+      "applied": true,
+      "next_step_before": null,
+      "next_step_after": null,
+      "c5": "UNKNOWN",
+      "checks": {
+        "主线未发生变化": "UNKNOWN"
+      },
+      "reasons": [
+        "当前仓位缺失 → 阶梯 UNKNOWN，不默认通过",
+        "主线持续性模块或前一日记录缺失 → c5 UNKNOWN"
+      ],
+      "steps_before": [
+        20,
+        40,
+        60,
+        80,
+        100
+      ],
+      "steps_after": [
+        0,
+        20,
+        40,
+        60,
+        80,
+        100
+      ],
+      "can_add": false
+    },
+    "cash_floor": {
+      "min_cash_pct": 10.0,
+      "state": "S4",
+      "full_authorization": "FULL_DENIED",
+      "hard_cap": 20,
+      "waived": false,
+      "note": ""
+    },
+    "missing": [
+      "主线持续性/前一日主线状态（c5 UNKNOWN）"
+    ],
+    "notes": [
+      "历史链不存在或已过期 → 首日不平滑（不使用未来数据）"
+    ]
+  }
+}

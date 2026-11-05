@@ -1,0 +1,130 @@
+### INDUSTRY tables
+[etf_holdings] n=7527 cols=['ts_code', 'ann_date', 'end_date', 'con_code', 'weight']
+[sw_industry] n=31 cols=['index_code', 'industry_name', 'level', 'updated_at']
+[sw_member] n=7740 cols=['index_code', 'con_code', 'in_date', 'out_date']
+--- sample etf_holdings ---
+     ts_code  ann_date  end_date   con_code  weight
+0  159611.SZ  20261027  20260930  600157.SH    3.52
+1  159611.SZ  20261027  20260930  601985.SH    8.30
+--- sample sw_industry ---
+  index_code industry_name level           updated_at
+0  801010.SI          农林牧渔    L1  2026-11-04 16:36:31
+1  801030.SI          基础化工    L1  2026-11-04 16:36:31
+--- sample sw_member ---
+  index_code   con_code   in_date  out_date
+0  801010.SI  000019.SZ  20211213       NaN
+1  801010.SI  000034.SZ  20070703  20090601
+
+### MAIN relevant table cols
+[stk_factor_pro] ['ts_code', 'trade_date', 'open', 'open_hfq', 'open_qfq', 'high', 'high_hfq', 'high_qfq', 'low', 'low_hfq', 'low_qfq', 'close', 'close_hfq', 'close_qfq', 'pre_close', 'change', 'pct_chg', 'vol', 'amount', 'turnover_rate', '...(261)']
+[daily_cache] ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']
+[daily_basic_cache] ['ts_code', 'trade_date', 'turnover_rate', 'volume_ratio', 'total_mv', 'circ_mv', 'turnover_rate_f', 'pe', 'pe_ttm', 'pb', 'ps', 'dv_ttm', 'float_share', 'total_share']
+[fina_indicator_cache] ['ts_code', 'ann_date', 'end_date', 'grossprofit_margin', 'netprofit_yoy', 'or_yoy', 'netprofit_2yoy', 'ocf_to_or', 'ocf_yoy', 'roe', 'debt_to_assets']
+[adj_factor_cache] ['ts_code', 'trade_date', 'adj_factor']
+[index_daily_cache] ['ts_code', 'trade_date', 'open', 'high', 'low', 'close', 'pre_close', 'change', 'pct_chg', 'vol', 'amount']
+--- sample daily_basic_cache ---
+     ts_code trade_date  turnover_rate  volume_ratio      total_mv       circ_mv  turnover_rate_f      pe  pe_ttm      pb      ps  dv_ttm   float_share   total_share
+0  000001.SZ   20260731         1.0435          1.36  2.256908e+07  2.256871e+07           2.4814  5.2938  5.2413  0.4863  1.7170  5.1248  1.940560e+06  1.940592e+06
+1  000002.SZ   20260731         1.2926          0.85  3.984857e+06  3.245457e+06           1.9401     NaN     NaN  0.3605  0.1707     NaN  9.716936e+05  1.193071e+06
+--- sample fina_indicator_cache ---
+     ts_code  ann_date  end_date  grossprofit_margin  netprofit_yoy   or_yoy netprofit_2yoy  ocf_to_or   ocf_yoy     roe  debt_to_assets
+0  600152.SH  20260825  20260630             12.1191         4.7778  31.3456           None    -0.0467 -835.5655 -2.2648         44.0569
+1  600152.SH  20260430  20260331              8.8702       -52.6465  33.2745           None     0.0739  408.2429 -1.5252         44.7781
+--- sample index_daily_cache ---
+     ts_code trade_date       open       high        low      close  pre_close   change  pct_chg          vol        amount
+0  000001.SH   20260911  3910.9234  3912.3247  3852.0322  3888.1106  3934.4036 -46.2930  -1.1766  579123145.0  9.581863e+08
+1  000001.SH   20260910  3939.0948  3949.2549  3927.3472  3934.4036  3951.5068 -17.1032  -0.4328  484675114.0  7.796727e+08
+
+### fina_indicator_cache range           a         b        e0        e1      n
+0  20230407  20260829  20230331  20260630  76773
+### daily_basic_cache range           a         b        n
+0  20210104  20261104  7207627
+
+### parquet families
+actual_vip_#_#.parquet  x6  eg=actual_vip_20260630_20260828.parquet
+balance_#_SH.parquet  x1  eg=balance_601872_SH.parquet
+balance_v#_#_SH_#.parquet  x2152  eg=balance_v14_600000_SH_2023.parquet
+balance_v#_#_SZ_#.parquet  x2775  eg=balance_v14_000001_SZ_2023.parquet
+cashflow_#_SH_#.parquet  x2151  eg=cashflow_600000_SH_2023.parquet
+cashflow_#_SZ_#.parquet  x2775  eg=cashflow_000001_SZ_2023.parquet
+cyq_chips_#.BJ_#.parquet  x81  eg=cyq_chips_920118.BJ_20260803.parquet
+cyq_chips_#.SH_#.parquet  x6426  eg=cyq_chips_600010.SH_20260803.parquet
+cyq_chips_#.SZ_#.parquet  x8026  eg=cyq_chips_000008.SZ_20260803.parquet
+cyq_perf_#.BJ_#.parquet  x81  eg=cyq_perf_920118.BJ_20260803.parquet
+cyq_perf_#.SH_#.parquet  x6426  eg=cyq_perf_600010.SH_20260803.parquet
+cyq_perf_#.SZ_#.parquet  x8026  eg=cyq_perf_000008.SZ_20260803.parquet
+daily_#.BJ_#_#.parquet  x36  eg=daily_920118.BJ_20200101_20261231.parquet
+daily_#.SH_#_#.parquet  x1682  eg=daily_600010.SH_20200101_20261231.parquet
+daily_#.SZ_#_#.parquet  x2476  eg=daily_000004.SZ_20251121_20260828.parquet
+daily_#.parquet  x183  eg=daily_20260129.parquet
+daily_basic_#.parquet  x87  eg=daily_basic_20260629.parquet
+daily_basic_code_#_SH_#_#.parquet  x783  eg=daily_basic_code_600000_SH_20240101_20260620.parquet
+daily_basic_code_#_SZ_#_#.parquet  x1022  eg=daily_basic_code_000001_SZ_20240101_20260620.parquet
+daily_code_#_BJ_#_#.parquet  x748  eg=daily_code_920003_BJ_20250101_20260731.parquet
+daily_code_#_SH_#_#.parquet  x24542  eg=daily_code_600000_SH_20240101_20260620.parquet
+daily_code_#_SZ_#_#.parquet  x28204  eg=daily_code_000001_SZ_20240101_20260620.parquet
+express_vip_#.parquet  x1  eg=express_vip_20260630.parquet
+fina_indicator_#.BJ_#.parquet  x40  eg=fina_indicator_920016.BJ_20260630.parquet
+fina_indicator_#.SH_#.parquet  x1869  eg=fina_indicator_600004.SH_20260630.parquet
+fina_indicator_#.SZ_#.parquet  x3606  eg=fina_indicator_000002.SZ_20260630.parquet
+fina_indicator_q_#.BJ_#.parquet  x36  eg=fina_indicator_q_920118.BJ_20250930.parquet
+fina_indicator_q_#.SH_#.parquet  x3177  eg=fina_indicator_q_600010.SH_20250930.parquet
+fina_indicator_q_#.SZ_#.parquet  x4227  eg=fina_indicator_q_000004.SZ_20250930.parquet
+fina_indicator_yoy_#.BJ_#.parquet  x40  eg=fina_indicator_yoy_920016.BJ_20260630.parquet
+fina_indicator_yoy_#.SH_#.parquet  x1779  eg=fina_indicator_yoy_600004.SH_20260630.parquet
+fina_indicator_yoy_#.SZ_#.parquet  x3419  eg=fina_indicator_yoy_000002.SZ_20260630.parquet
+forecast_vip_#.parquet  x1  eg=forecast_vip_20260630.parquet
+forecast_vip_#_#.parquet  x24  eg=forecast_vip_20260630_20260803.parquet
+fund_daily_#_SH_#_#.parquet  x29  eg=fund_daily_512660_SH_20260525_20260803.parquet
+fund_daily_#_SZ_#_#.parquet  x24  eg=fund_daily_159516_SZ_20260525_20260803.parquet
+holdernumber_raw_#_SH_#.parquet  x787  eg=holdernumber_raw_600006_SH_3.parquet
+holdernumber_raw_#_SZ_#.parquet  x892  eg=holdernumber_raw_000002_SZ_3.parquet
+income_#.BJ_#.parquet  x40  eg=income_920016.BJ_20260630.parquet
+income_#.SH_#.parquet  x1779  eg=income_600004.SH_20260630.parquet
+income_#.SZ_#.parquet  x3419  eg=income_000002.SZ_20260630.parquet
+income_#_SH_#.parquet  x2151  eg=income_600000_SH_2023.parquet
+income_#_SZ_#.parquet  x2775  eg=income_000001_SZ_2023.parquet
+index_daily_#.SH_#_#.parquet  x27  eg=index_daily_000300.SH_20251116_20260803.parquet
+index_daily_#_SH_#_#.parquet  x41  eg=index_daily_000001_SH_20240101_20260620.parquet
+limit_list_d_#.parquet  x6  eg=limit_list_d_20260803.parquet
+limit_step_#.parquet  x6  eg=limit_step_20260803.parquet
+mainbz_raw_#_SH_#.parquet  x787  eg=mainbz_raw_600006_SH_20251231.parquet
+mainbz_raw_#_SZ_#.parquet  x892  eg=mainbz_raw_000002_SZ_20251231.parquet
+moneyflow_#.BJ_#_#.parquet  x195  eg=moneyflow_920118.BJ_20260526_20260804.parquet
+moneyflow_#.SH_#_#.parquet  x13761  eg=moneyflow_600010.SH_20260525_20260803.parquet
+moneyflow_#.SZ_#_#.parquet  x16913  eg=moneyflow_000004.SZ_20260620_20260828.parquet
+moneyflow_#.parquet  x147  eg=moneyflow_20260129.parquet
+moneyflow_code_#_SH_#_#.parquet  x9917  eg=moneyflow_code_600000_SH_20240101_20260620.parquet
+moneyflow_code_#_SZ_#_#.parquet  x11216  eg=moneyflow_code_000001_SZ_20240101_20260620.parquet
+north_hold_#.parquet  x1  eg=north_hold_20260630.parquet
+pledge_raw_#_SH.parquet  x682  eg=pledge_raw_600006_SH.parquet
+pledge_raw_#_SZ.parquet  x823  eg=pledge_raw_000002_SZ.parquet
+report_rc_#_SH.parquet  x2108  eg=report_rc_600000_SH.parquet
+report_rc_#_SZ.parquet  x2654  eg=report_rc_000001_SZ.parquet
+report_rc_all_#.parquet  x1  eg=report_rc_all_20260908.parquet
+report_rc_empty_#_SH.parquet  x43  eg=report_rc_empty_600234_SH.parquet
+report_rc_empty_#_SZ.parquet  x121  eg=report_rc_empty_000953_SZ.parquet
+share_float_raw_#_SH.parquet  x782  eg=share_float_raw_600006_SH.parquet
+share_float_raw_#_SZ.parquet  x892  eg=share_float_raw_000002_SZ.parquet
+stk_factor_pro_range_#_SH_#_#.parquet  x2922  eg=stk_factor_pro_range_600000_SH_20240101_20260620.parquet
+stk_factor_pro_range_#_SZ_#_#.parquet  x3366  eg=stk_factor_pro_range_000001_SZ_20240101_20260620.parquet
+stock_list_L.parquet  x1  eg=stock_list_L.parquet
+ths_concepts_list.parquet  x1  eg=ths_concepts_list.parquet
+ths_concepts_members.parquet  x1  eg=ths_concepts_members.parquet
+trade_cal_#_#_#.parquet  x282  eg=trade_cal_20200101_20260731_1.parquet
+
+### parquet schema per family
+[actual] file=actual_vip_20260630_20260828.parquet cols=['ts_code', 'end_date', 'ann_date', 'update_flag', 'netprofit_yoy', 'or_yoy', 'roe', '_flag', '_yoy', '_summary']
+   sample: {'ts_code': '000004.SZ', 'end_date': '20260630', 'ann_date': '20260824', 'update_flag': '1', 'roe': '-24.8478'}
+[balance] file=balance_601872_SH.parquet cols=['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'total_assets', 'inventories', 'fix_assets', 'total_hldr_eqy_exc_min_int', 'total_hldr_eqy_inc_min_int', 'goodwill', 'accounts_receiv']
+   sample: {'ts_code': '601872.SH', 'ann_date': '20260425', 'end_date': '20260331', 'report_type': '1', 'total_assets': '85264248425.99', 'goodwill': '41812360.42'}
+[cashflow] file=cashflow_000001_SZ_2023.parquet cols=['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'n_cashflow_act', 'n_cashflow_inv_act', 'n_cash_flows_fnc_act', 'c_pay_acq_const_fiolta']
+   sample: {'ts_code': '000001.SZ', 'ann_date': '20260815', 'end_date': '20260630', 'report_type': '1', 'n_cashflow_act': '215012000000.0'}
+[express] file=express_vip_20260630.parquet cols=['ts_code', 'ann_date', 'end_date', 'revenue', 'operate_profit', 'total_profit', 'n_income', 'total_assets', 'diluted_eps', 'yoy_net_profit', 'yoy_eps', 'perf_summary']
+   sample: {'ts_code': '601231.SH', 'ann_date': '20260710', 'end_date': '20260630', 'revenue': '27336366042.06', 'n_income': '822095752.12', 'total_assets': '40941242878.47'}
+[fina_indicator] file=fina_indicator_000002.SZ_20260630.parquet cols=['ts_code', 'end_date', 'ann_date', 'roe', 'roic', 'gross_margin', 'debt_to_assets', 'profit_dedt', 'eps']
+   sample: {'ts_code': '000002.SZ', 'end_date': '20260630', 'ann_date': '20260828', 'roe': '-13.6487', 'roic': '-1.6981', 'debt_to_assets': '77.5146', 'profit_dedt': '-13840436168.69'}
+[forecast] file=forecast_vip_20260630.parquet cols=['ts_code', 'ann_date', 'end_date', 'type', 'p_change_min', 'p_change_max', 'net_profit_min', 'net_profit_max', 'last_parent_net', 'summary', 'update_flag']
+   sample: {'ts_code': 'A15222.SH', 'ann_date': '20260824', 'end_date': '20260630', 'type': '续亏', 'p_change_min': '-34.7379', 'p_change_max': '-22.489', 'update_flag': '0'}
+[income] file=income_000001_SZ_2023.parquet cols=['ts_code', 'ann_date', 'f_ann_date', 'end_date', 'report_type', 'comp_type', 'end_type', 'basic_eps', 'diluted_eps', 'total_revenue', 'revenue', 'n_income', 'n_income_attr_p', 'rd_exp', 'total_profit', 'total_cogs', 'operate_profit', 'oper_exp']
+   sample: {'ts_code': '000001.SZ', 'ann_date': '20260815', 'end_date': '20260630', 'report_type': '1', 'total_revenue': '70617000000.0', 'revenue': '70617000000.0', 'n_income': '25696000000.0', 'n_income_attr_p': '25696000000.0'}

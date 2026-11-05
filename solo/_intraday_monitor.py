@@ -44,6 +44,11 @@ try:
 except Exception:
     suh = None
 
+try:
+    import intraday_position_anchor as ipa   # ★ V10.7.5 盘后仓位锚点（纯收紧）
+except Exception:
+    ipa = None
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # ★ 关键时点表：名称 -> (时刻, 决策权重, 说明)
@@ -438,10 +443,32 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
             except Exception:
                 pass
 
+    # ---- ★ V10.7.5：盘后仓位口径桥接（只收紧，不放宽） ----
+    #   此前盘中链路只跑到「V10.0 状态机 → V10.1 权限表 → V10.7 状态门控」，
+    #   与盘后 10.7.4 的 P0风险 / P1P2优化 / 波段闸门 / 主升段锁存结果
+    #   互不知晓 → 可能给出高于盘后最终有效目标的建议。
+    #   这里只读**严格早于当日**的盘后摘要做一次 min()，不重算任何盘后逻辑、
+    #   不跨日继承满仓授权、不在盘中重新触发主升段锁存。
+    cap_before_anchor = cap
+    anchor = None
+    anchor_note = ""
+    try:
+        if ipa is not None:
+            import market_regime_v107 as _v107mod
+            _vcfg = _v107mod.load_config()
+            anchor = ipa.load_anchor(trade_date, _vcfg)
+            cap, anchor_note = ipa.apply_anchor_cap(cap, anchor, _vcfg)
+    except Exception as e:
+        anchor_note = f"盘后锚点异常 → 沿用原口径：{e}"
+
+    cap_after_anchor = cap
+
     # 时点置信折扣：早盘读数不可信 → 但仓位建议本身取整到 5%，
     # 避免出现 19%、28% 这种伪精确数字（真实档位只有 5/20/30/40/60/100）
     if weight > 0 and weight < 1:
+        _pre_discount = cap
         cap = int(round(cap * weight / 5.0) * 5)
+        cap = min(cap, _pre_discount)   # ★ 折扣只允许收紧，防止 round 放大
     cap = max(5, min(100, cap))
 
     return {
@@ -470,6 +497,10 @@ def analyze(trade_date, slot_key, mkt=None, etf=None, snap=None):
         'prev_promo': v10r.get('promotion_rate'),
         'prev_target_pos': v10r.get('target_position'),
         'v107': v107,
+        'cap_before_anchor': cap_before_anchor,
+        'cap_after_anchor': cap_after_anchor,
+        'position_anchor': anchor.as_dict() if anchor is not None else None,
+        'position_anchor_note': anchor_note,
     }
 
 
@@ -556,6 +587,16 @@ def render(r):
                 L.append(f"  ⚠ {b}")
             for a in (g.applied or []):
                 L.append(f"  ✓ {a}")
+    # ---- ★ V10.7.5 盘后仓位基准审计（只收紧） ----
+    try:
+        if ipa is not None:
+            L.extend(ipa.render_anchor_lines(
+                r.get('position_anchor'),
+                int(r.get('cap_before_anchor', r['cap'])),
+                int(r.get('cap_after_anchor', r['cap'])),
+                r.get('position_anchor_note') or ""))
+    except Exception:
+        pass
     if r['weight'] >= 0.5:
         L.append(f"建议仓位：{r['cap']}%")
         if r['weight'] < 0.9:

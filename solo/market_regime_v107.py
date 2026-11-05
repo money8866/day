@@ -58,6 +58,10 @@ sys.path.insert(0, BASE_DIR)
 import market_regime_v10 as v10
 import market_regime_v101 as v101
 import market_micro as micro
+import position_p0_fix as p0fix
+import position_optimizer as posopt
+import swing_gate
+import bull_latch
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config_v107_refine.json")
 
@@ -955,23 +959,50 @@ class PositionPlan:
     actual_hint: Optional[int] = None     # 实际仓位参考（含执行层约束）
     actual_note: str = ""
     target_is_mandatory: bool = False     # ★ 目标仓位不视为必须持仓
+    cash_floor_note: str = ""             # ★ P2：现金地板与满仓授权的语义说明
     limits: List[str] = field(default_factory=list)
 
 
 def build_position_plan(state: str, target, authority, portfolio,
                         authorization, opportunities, current_position,
-                        cfg: dict) -> PositionPlan:
-    """构造仓位计划：目标 / 区间 / 硬上限 / 主动加仓 / 满仓授权。"""
+                        cfg: dict, risk_cap: Optional[int] = None,
+                        extra_cap: Optional[int] = None,
+                        lo_ratio: Optional[float] = None,
+                        waive_cash_floor: bool = False,
+                        authorized_cap: Optional[int] = None) -> PositionPlan:
+    """构造仓位计划：目标 / 区间 / 硬上限 / 主动加仓 / 满仓授权。
+
+    ★ P0 修复：``risk_cap`` 为「由风险预算反解的最大仓位」。
+    ★ P1/P2：``extra_cap``（确认门控回落）、``lo_ratio``（动态建议区间）、
+      ``waive_cash_floor``（S6 现金地板豁免，默认关闭）。
+    ★ V10.7.4：``authorized_cap`` 仅由 bull_latch 授权链给出，**只放宽
+      「状态权限」这一项**；现金地板 / 风险预算 / 确认门控 / 满仓授权否决
+      仍逐项取 min。不传这些可选参数时行为与旧版完全一致（A/B 兼容）。
+    """
     ps = cfg.get("position_semantics", {})
     out = PositionPlan(state=state)
     out.target_position = int(target.suggested) if target else 0
     out.full_authorization = authorization.result if authorization else ""
     out.target_is_mandatory = False
 
-    # 硬上限 = 仓位权限 ∩ 现金下限 ∩ 风险预算约束后的上限
+    # 硬上限 = 仓位权限 ∩ 现金下限 ∩ 满仓授权 ∩ 风险预算反解上限 ∩ 确认门控
     hard = int(authority.max_position) if authority else 0
-    if portfolio is not None and portfolio.cash_floor_max is not None:
+    if authorized_cap is not None:
+        state_cap_original = hard
+        hard = max(hard, max(0, min(int(authorized_cap), 100)))
+        out.limits.append(
+            f"主升段锁存授权：状态权限 {state_cap_original}% → {hard}%"
+            f"（P0 风险预算重算 + 满仓授权 FULL_ALLOWED；仅放宽状态权限一项，"
+            f"现金地板/风险预算/确认门控/满仓授权否决仍逐项取 min）")
+    if (portfolio is not None and portfolio.cash_floor_max is not None
+            and not waive_cash_floor):
         hard = min(hard, int(portfolio.cash_floor_max))
+    if risk_cap is not None:
+        hard = min(hard, int(risk_cap))
+        out.limits.append(f"风险预算反解仓位上限 {int(risk_cap)}%")
+    if extra_cap is not None:
+        hard = min(hard, int(extra_cap))
+        out.limits.append(f"确认门控回落仓位上限 {int(extra_cap)}%（非 PASS 即继续保持观察）")
     if authorization and authorization.result != v101.FULL_ALLOWED:
         auth_cfg = cfg.get("full_position_authorization", {})
         cap = (auth_cfg.get("cap_when_review", 99)
@@ -983,7 +1014,8 @@ def build_position_plan(state: str, target, authority, portfolio,
     # 建议区间
     nq = opportunities.qualified_count if opportunities else 0
     has_signal = bool(opportunities and opportunities.data_available and nq > 0)
-    lo_ratio = float(ps.get("range_low_with_signal", 0.5))
+    lo_ratio_used = (float(lo_ratio) if lo_ratio is not None
+                     else float(ps.get("range_low_with_signal", 0.5)))
     hi_ratio = float(ps.get("range_high_ratio", 1.0))
     if not has_signal and ps.get("cash_when_no_qualified_signal", True):
         out.suggested_low = 0
@@ -994,7 +1026,7 @@ def build_position_plan(state: str, target, authority, portfolio,
             "不是必须达到的持仓比例。当前无合格买入标的，"
             "实际仓位可以低于目标，甚至保持现金（0%）。")
     else:
-        out.suggested_low = int(round(out.target_position * lo_ratio))
+        out.suggested_low = int(round(out.target_position * lo_ratio_used))
         out.suggested_high = int(round(out.target_position * hi_ratio))
         out.actual_hint = out.target_position
         out.actual_note = (
@@ -1226,6 +1258,12 @@ class V107Result:
     portfolio: Optional[Any] = None
     plan: Optional[PositionPlan] = None
     switch_conditions: Dict[str, str] = field(default_factory=dict)
+    p0: Optional[Any] = None                # ★ P0 风险口径修复记录（可对比）
+    opt: Optional[Any] = None               # ★ P1/P2 仓位优化记录（可对比）
+    swing: Optional[Any] = None             # ★ V10.7.3 波段闸门记录（可对比）
+    bull: Optional[Any] = None              # ★ V10.7.4 主升段锁存记录（可对比）
+    ladder_patch: Optional[Any] = None      # ★ P2 修正后的阶梯（原记录保留在 r.base）
+    current_position: Optional[int] = None
 
 
 def _switch_conditions(state: str, cfg: dict) -> Dict[str, str]:
@@ -1256,11 +1294,22 @@ def _switch_conditions(state: str, cfg: dict) -> Dict[str, str]:
 
 def analyze_trade_date_v107(trade_date: str, cfg: dict = None,
                             current_position: Optional[int] = None,
-                            persist: bool = True) -> V107Result:
+                            persist: bool = True,
+                            optimizer_history: Optional[Dict] = None,
+                            swing_gate_history: Optional[Dict] = None,
+                            bull_latch_history: Optional[Dict] = None) -> V107Result:
     """V10.7 完整链路。
 
     V10.1 决策记录（完整保留） → 量价判定 → S4确认 → S5确认 → 结构性机会
     → 状态门控 → 按**门控后状态**重算权限/授权/仓位 → 仓位语义分离
+    → P0 风险口径修复 → P1/P2 仓位优化（平滑器 / 确认门控 / 语义边界）
+    → V10.7.3 波段闸门（纯收紧型 overlay，默认只开 S2/S5 状态过滤）
+    → V10.7.4 主升段锁存（默认关闭的升仓层，需 P0 重算 + 满仓授权）
+
+    ``optimizer_history``：回放时可传入一个可变 dict 作为内存历史链；
+    不传则读 ``position_optimizer_state`` 表中严格早于当日的记录。
+    ``swing_gate_history``：波段闸门的独立内存历史链（``swing_gate_state`` 表）。
+    ``bull_latch_history``：主升段锁存的独立内存历史链（``bull_latch_state`` 表）。
     """
     cfg = cfg or load_config()
     out = V107Result(trade_date=str(trade_date))
@@ -1327,7 +1376,203 @@ def analyze_trade_date_v107(trade_date: str, cfg: dict = None,
     out.plan = build_position_plan(state, target, authority, out.portfolio,
                                    authorization, base.opportunities,
                                    current_position, cfg)
+
+    # ---- 7b) ★ P0 修复：统一风险口径 + 决策/报告同一对象 + 风险上限闭环 ----
+    #   v10/v101 源码一行不动；r.base 的 V10.1 原决策记录不被修改。
+    out.p0 = p0fix.apply_p0_fix(out, cfg)
+    out.plan = build_position_plan(state, out.target, authority, out.portfolio,
+                                   authorization, base.opportunities,
+                                   current_position, cfg,
+                                   risk_cap=out.p0.risk_cap)
+    out.p0.hard_cap_after = out.plan.hard_cap
+    out.p0.changed = bool(out.p0.changed
+                          or (out.p0.hard_cap_before is not None
+                              and out.p0.hard_cap_before != out.plan.hard_cap))
+    if out.p0.consistent is None and out.p0.enabled:
+        # 止损距离缺失 → UNKNOWN，不得默认通过
+        out.plan.allow_active_add = False
+        out.plan.active_add_conditions.append(
+            "组合风险口径 UNKNOWN（止损距离缺失），不得默认通过")
+        out.plan.limits.append("主动试探权限因风险口径 UNKNOWN 被关闭")
     out.switch_conditions = _switch_conditions(state, cfg)
+
+    # ---- 7c) ★ P1/P2 仓位优化（增量层；enabled=false 时完全不施加） ----
+    #   历史链严格早于当日；波动率序列由模块自行按 trade_date 截断加载。
+    out.current_position = current_position
+    hist = optimizer_history if optimizer_history is not None else \
+        posopt.load_history(str(trade_date))
+    # 历史链过期校验由 posopt.compute 内部按 trade_date 截断完成（无未来数据）
+    adj = posopt.compute(out, cfg, history=hist, series=None,
+                         current_position=current_position)
+    out.opt = adj.audit
+    # plan 重建参数集中定义：7c（P1/P2）与 7d（波段闸门）共用，
+    # 且 A/B 关闭 P1/P2 时仍保持 7b 的 risk_cap，不会放宽硬上限。
+    waived = bool((adj.audit.cash_floor or {}).get("waived"))
+    _cap_kwargs = dict(
+        risk_cap=(adj.risk_cap if adj.enabled
+                  else (out.p0.risk_cap if out.p0 is not None else None)),
+        extra_cap=(adj.extra_cap if adj.enabled else None),
+        lo_ratio=(adj.lo_ratio if adj.enabled else None),
+        waive_cash_floor=waived,
+    )
+
+    def _rebuild_plan():
+        return build_position_plan(
+            state, out.target, authority, out.portfolio, authorization,
+            base.opportunities, current_position, cfg, **_cap_kwargs)
+
+    if adj.enabled:
+        old_t = int(out.target.suggested)
+        out.target.suggested = int(adj.target_override)
+        if not hasattr(out.target, "limited_by") or out.target.limited_by is None:
+            out.target.limited_by = []
+        if adj.target_override != old_t:
+            out.target.limited_by.append(
+                f"[P1] 仓位平滑器：目标 {old_t}% → {adj.target_override}%"
+                f"（升仓限速/降仓冷却，硬上限不受影响）")
+
+        out.plan = _rebuild_plan()
+        if out.target.suggested > out.plan.hard_cap:
+            # 只收紧不放宽：目标不得超过确认门控/风险预算后的硬上限
+            out.target.suggested = int(out.plan.hard_cap)
+            out.plan = _rebuild_plan()
+        if adj.deny_active_add:
+            out.plan.allow_active_add = False
+            out.plan.limits = [x for x in out.plan.limits
+                               if not str(x).startswith("允许主动加仓")]
+            out.plan.active_add_conditions.extend(adj.deny_reasons)
+            out.plan.limits.extend(adj.deny_reasons)
+        out.plan.cash_floor_note = adj.cash_floor_note
+        out.ladder_patch = adj.ladder_patch
+        adj.audit.target_after = out.plan.target_position
+        adj.audit.hard_cap_after = out.plan.hard_cap
+        adj.history_record["target"] = out.plan.target_position
+        adj.history_record["hard_cap"] = out.plan.hard_cap
+        if persist or (optimizer_history is None
+                       and (cfg.get("position_optimizer") or {})
+                       .get("persist_history_without_state", True)):
+            # ★ 盘后/微信链路用 persist=False，但平滑器仍需自己的历史链：
+            #   写独立表，严格按 trade_date 读取，不触碰 V10.0/V10.1 状态表。
+            posopt.save_history(str(trade_date), adj.history_record)
+        if optimizer_history is not None and adj.history_record:
+            optimizer_history.clear()
+            optimizer_history.update(adj.history_record)
+
+    # ---- 7d) ★ V10.7.3 波段闸门（纯收紧型 overlay；enabled=false 完全不施加） ----
+    #   作用在 7c 之后的最终目标上；闸门有自己的独立历史链，
+    #   P1 平滑器历史链仍存「闸门之前」的目标（与回测实验口径一致）。
+    sg_base = int(out.plan.target_position)
+    _sgcfg = cfg.get("swing_gate") or {}
+    sg_hist = (swing_gate_history if swing_gate_history is not None
+               else swing_gate.load_history(str(trade_date)))
+    sg = swing_gate.compute(out, cfg, base_target=sg_base,
+                            hard_cap=int(out.plan.hard_cap),
+                            history=sg_hist)
+    out.swing = sg.audit
+    if sg.enabled and sg.effective_target is not None \
+            and sg.effective_target < sg_base:
+        old_eff = int(out.target.suggested)
+        out.target.suggested = int(sg.effective_target)
+        if not hasattr(out.target, "limited_by") or out.target.limited_by is None:
+            out.target.limited_by = []
+        out.target.limited_by.append(
+            f"[波段闸门] 有效目标 {old_eff}% → {sg.effective_target}%"
+            f"（档位 {(sg.audit.profile or 'default')}，只收紧不放宽）")
+        out.plan = _rebuild_plan()
+        # 重建会重置 7c 的附加约束，按原口径重新施加
+        if adj.enabled and adj.deny_active_add:
+            out.plan.allow_active_add = False
+            out.plan.limits = [x for x in out.plan.limits
+                               if not str(x).startswith("允许主动加仓")]
+            out.plan.active_add_conditions.extend(adj.deny_reasons)
+            out.plan.limits.extend(adj.deny_reasons)
+        if sg.deny_active_add:
+            out.plan.allow_active_add = False
+            out.plan.limits = [x for x in out.plan.limits
+                               if not str(x).startswith("允许主动加仓")]
+            out.plan.active_add_conditions.append(
+                "波段闸门信号 UNKNOWN，不默认通过 → 关闭主动加仓")
+            out.plan.limits.append("主动试探权限因波段闸门 UNKNOWN 被关闭")
+        out.plan.cash_floor_note = adj.cash_floor_note
+        # ★ 不回填 adj.audit：P1/P2 段的 target_after 仍反映 P1/P2 自身结果，
+        #   闸门段用 base_target→effective_target 单独呈现，便于逐层对比。
+    sg.audit.target_after = int(out.plan.target_position)
+    if sg.enabled and sg.history_record:
+        if persist or (swing_gate_history is None
+                       and _sgcfg.get("persist_history_without_state", True)):
+            # 与 P1 同理：盘后/微信链路 persist=False 也要写闸门独立历史表
+            swing_gate.save_history(str(trade_date), sg.history_record)
+        if swing_gate_history is not None:
+            swing_gate_history.clear()
+            swing_gate_history.update(sg.history_record)
+
+    # ---- 7e) ★ V10.7.4 主升段锁存（默认关闭；突破 hard_cap 需显式授权） ----
+    #   作用在 7d 之后的有效目标上；自己的历史链不污染 P1 / 闸门链。
+    #   enabled=false 时 compute 直接返回 base，下面完全不动 plan（A/B 逐字节一致）。
+    bl_base = int(out.plan.target_position)
+    _blcfg = cfg.get("bull_latch") or {}
+    bl_hist = (bull_latch_history if bull_latch_history is not None
+               else bull_latch.load_history(str(trade_date)))
+    bl = bull_latch.compute(out, cfg, base_target=bl_base,
+                            hard_cap=int(out.plan.hard_cap),
+                            history=bl_hist)
+    out.bull = bl.audit
+    bl_changed = bool(bl.enabled and (
+        (bl.effective_target is not None and bl.effective_target != bl_base)
+        or bl.authorized_hard_cap is not None))
+    if bl_changed:
+        old_eff = int(out.target.suggested)
+        new_eff = int(bl.effective_target if bl.effective_target is not None
+                      else old_eff)
+        out.target.suggested = new_eff
+        if not hasattr(out.target, "limited_by") or out.target.limited_by is None:
+            out.target.limited_by = []
+        out.target.limited_by.append(
+            f"[主升段锁存] 有效目标 {old_eff}% → {new_eff}%"
+            f"（档位 {(bl.audit.profile or 'recommended')}，"
+            f"授权 {bl.audit.authorization.get('mode', 'NOT_NEEDED')}）")
+        if bl.authorized_hard_cap is not None \
+                and bl.authorized_hard_cap > out.plan.hard_cap:
+            # ★ 不是绕过上限，而是经 P0 重算 + 满仓授权后重算上限：
+            #   只放宽状态权限一项，其余约束仍逐项取 min。
+            _cap_kwargs["authorized_cap"] = int(bl.authorized_hard_cap)
+            if _blcfg.get("waive_cash_floor_on_latch", False):
+                _cap_kwargs["waive_cash_floor"] = True
+        out.plan = _rebuild_plan()
+        if out.target.suggested > out.plan.hard_cap:
+            out.target.suggested = int(out.plan.hard_cap)
+            out.plan = _rebuild_plan()
+        # 重建会重置 7c/7d 的附加约束，按原口径重新施加
+        if adj.enabled and adj.deny_active_add:
+            out.plan.allow_active_add = False
+            out.plan.limits = [x for x in out.plan.limits
+                               if not str(x).startswith("允许主动加仓")]
+            out.plan.active_add_conditions.extend(adj.deny_reasons)
+            out.plan.limits.extend(adj.deny_reasons)
+        if sg.enabled and sg.deny_active_add:
+            out.plan.allow_active_add = False
+            out.plan.limits = [x for x in out.plan.limits
+                               if not str(x).startswith("允许主动加仓")]
+            out.plan.active_add_conditions.append(
+                "波段闸门信号 UNKNOWN，不默认通过 → 关闭主动加仓")
+            out.plan.limits.append("主动试探权限因波段闸门 UNKNOWN 被关闭")
+        if bl.deny_active_add:
+            out.plan.allow_active_add = False
+            out.plan.limits = [x for x in out.plan.limits
+                               if not str(x).startswith("允许主动加仓")]
+            out.plan.active_add_conditions.append(
+                "主升段锁存信号 UNKNOWN，不默认通过 → 关闭主动加仓")
+            out.plan.limits.append("主动试探权限因主升段锁存 UNKNOWN 被关闭")
+        out.plan.cash_floor_note = adj.cash_floor_note
+    bl.audit.target_after = int(out.plan.target_position)
+    if bl.enabled and bl.history_record:
+        if persist or (bull_latch_history is None
+                       and _blcfg.get("persist_history_without_state", True)):
+            # 与 P1/闸门同理：盘后/微信链路 persist=False 也写独立历史表
+            bull_latch.save_history(str(trade_date), bl.history_record)
+        if bull_latch_history is not None:
+            bull_latch_history.clear()
+            bull_latch_history.update(bl.history_record)
 
     # ---- 8) 状态连续天数（V10.7 自己的表） ----
     prev = load_prev_v107_state(str(trade_date)) if persist else None
@@ -1452,6 +1697,24 @@ def render_v107_report(r: V107Result, cfg: dict = None) -> str:
             L.append(f"  实际仓位参考：{p.actual_hint}%")
         if p.actual_note:
             L.append(f"        {p.actual_note}")
+        if getattr(p, "cash_floor_note", ""):
+            L.append(f"  现金地板口径：{p.cash_floor_note}")
+
+    # ---------- 6b) P0 风险口径修复（可对比） ----------
+    if r.p0 is not None:
+        L.extend(p0fix.render_p0_section(r.p0))
+
+    # ---------- 6c) P1/P2 仓位优化（可对比） ----------
+    if getattr(r, "opt", None) is not None:
+        L.extend(posopt.render_optimizer_section(r.opt))
+
+    # ---------- 6d) V10.7.3 波段闸门（可对比） ----------
+    if getattr(r, "swing", None) is not None:
+        L.extend(swing_gate.render_gate_section(r.swing))
+
+    # ---------- 6e) V10.7.4 主升段锁存（可对比） ----------
+    if getattr(r, "bull", None) is not None:
+        L.extend(bull_latch.render_latch_section(r.bull))
 
     # ---------- 7) 切换关键条件 ----------
     if r.switch_conditions:
@@ -1498,7 +1761,26 @@ def render_v107_summary(r: V107Result) -> Dict[str, Any]:
         "仓位硬上限": (p.hard_cap if p else None),
         "满仓授权": (p.full_authorization if p else None),
         "切换关键条件": r.switch_conditions,
+        # ★ P0 / P1P2 的口径对比（不改变上面用户要求的字段契约）
+        "P0风险口径修复": (r.p0.as_dict() if r.p0 is not None else None),
+        "P1P2仓位优化": (r.opt.as_dict() if getattr(r, "opt", None) is not None else None),
+        "波段闸门": (r.swing.as_dict() if getattr(r, "swing", None) is not None else None),
+        "主升段锁存": (r.bull.as_dict() if getattr(r, "bull", None) is not None else None),
     }
+
+
+def _json_default(o):
+    """numpy 标量/数组 → Python 原生类型。
+
+    既有 ``--json`` 链路在 ``structural.checks`` 遇到 numpy.bool_ 时会抛
+    「Object of type bool is not JSON serializable」（numpy 2.x 的类型名），
+    这里只做序列化兜底，不改变任何决策值。
+    """
+    if isinstance(o, np.generic):
+        return o.item()
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    return str(o)
 
 
 def main():
@@ -1545,7 +1827,8 @@ def main():
                 "suggested": r.base.target.suggested if (r.base and r.base.target) else None,
                 "authority_max": r.base.authority.max_position if (r.base and r.base.authority) else None,
             },
-        }, ensure_ascii=False, indent=2))
+            "p0": r.p0.as_dict() if r.p0 is not None else None,
+        }, ensure_ascii=False, indent=2, default=_json_default))
     else:
         print(render_v107_report(r, cfg))
 

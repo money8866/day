@@ -993,6 +993,116 @@ def _load_v107_block(trade_date):
             "仓位语义: 目标仓位为环境参考值，不是必须达到的持仓比例；"
             "无合格标的时可低于目标甚至保持现金" + hint_s)
 
+        # ★ P0 风险口径修复（敞口与仓位挂钩 / 决策与报告同源）
+        #   旧版盘后摘要没有该键时静默跳过，保持降级路径原样。
+        p0d = g('P0风险口径修复')
+        if isinstance(p0d, dict) and p0d.get('consistent'):
+            c = p0d['consistent']
+            o = p0d.get('original') or {}
+            lines.append(
+                f"组合风险(P0): V10.1旧口径 {_f(o.get('total_risk_pct'))}% "
+                f"→ 统一口径 {c['total_risk_pct']:.3f}% / 预算 {c['risk_budget_pct']:.2f}% "
+                f"| 风险上限 {_f(c.get('risk_cap'))}% "
+                f"| 决策/报告{'一致' if p0d.get('consistency_ok') else 'UNKNOWN'} "
+                f"| 目标仓位{'已收紧' if p0d.get('changed') else '未改变'}")
+        elif p0d is not None:
+            lines.append("组合风险(P0): UNKNOWN（止损距离缺失，不默认通过，主动加仓关闭）")
+
+        # ★ P1/P2 仓位优化（平滑器 / 确认门控 / 语义边界）
+        #   旧版盘后摘要没有该键时静默跳过，保持降级路径原样。
+        od = g('P1P2仓位优化')
+        if isinstance(od, dict) and od.get('enabled'):
+            sm = od.get('smoother') or {}
+            cg = od.get('confirm_gates') or {}
+            vl = od.get('volatility') or {}
+            rr = od.get('range_ratio') or {}
+            step_s = (f"限速 {sm['step']}pp" if sm.get('step') is not None
+                      else "限速 不适用")
+            cap_s = (f"回落上限 {cg['extra_cap']}%"
+                     if cg.get('extra_cap') is not None else "回落上限 无")
+            lines.append(
+                f"仓位优化(P1/P2): 目标 {_f(od.get('target_before'))}%→{_f(od.get('target_after'))}% "
+                f"| 硬上限 {_f(od.get('hard_cap_before'))}%→{_f(od.get('hard_cap_after'))}% "
+                f"| 平滑 {_f(sm.get('action'))}（{step_s}，冷却 {_f(sm.get('cooldown_left'))}日）"
+                f"| 确认门控 卖压 {_f(cg.get('easing'))}/反弹 {_f(cg.get('rebound'))}"
+                f"/{cap_s}"
+                f"| 主动试探{'关闭' if cg.get('deny_active_add') else '按原规则'}"
+                f"| 波动率 {_f(vl.get('status'))}/因子 {_f(vl.get('factor'))}"
+                f"| 区间下限比例 {_f(rr.get('final'))}")
+            if od.get('missing'):
+                lines.append("仓位优化-UNKNOWN: " + "；".join(dict.fromkeys(od['missing']))
+                             + "（缺失不默认通过）")
+        elif od is not None:
+            lines.append("仓位优化(P1/P2): 已关闭（A/B 对照）")
+
+        # ★ V10.7.3 波段闸门（纯收紧型 overlay，默认只开 S2/S5 状态过滤）
+        #   旧版盘后摘要没有该键时静默跳过，保持降级路径原样。
+        wd = g('波段闸门')
+        if isinstance(wd, dict) and wd.get('enabled'):
+            ly = wd.get('layers') or {}
+            fc = wd.get('factors') or {}
+            wsg = wd.get('signals') or {}
+            ex = wd.get('execution') or {}
+
+            def _fac(k):
+                if ly.get(k) == 'OFF':
+                    return 'OFF'
+                v = fc.get(k)
+                return ('%.2f' % float(v)) if isinstance(v, (int, float)) else 'UNKNOWN'
+
+            def _num(x):
+                return ('%.2f' % float(x)) if isinstance(x, (int, float)) else 'UNKNOWN'
+
+            lines.append(
+                f"波段闸门: 档位 {_f(wd.get('profile'))} | "
+                f"有效目标 {_f(wd.get('base_target'))}%→{_f(wd.get('effective_target'))}%"
+                f"（硬上限 {_f(wd.get('hard_cap'))}%，只收紧不放宽）"
+                f" | 层级 S2/S5 {_f(ly.get('state_filter'))}/MA {_f(ly.get('ma_gate'))}"
+                f"/回撤 {_f(ly.get('drawdown_brake'))}"
+                f" | 因子 {_fac('state_filter')}/{_fac('ma_gate')}"
+                f"/{_fac('drawdown_brake')}"
+                f" | 收盘 {_num(wsg.get('close'))} / MA{_f(wsg.get('ma_window'))} {_num(wsg.get('ma'))}"
+                f" | {_f(wsg.get('dd_window'))}日回撤 {_num(wsg.get('dd_pct'))}%"
+                f" | 执行 {_f(ex.get('action'))}（升仓限速 {_f(ex.get('up_step_pct'))}pp，降仓立即）")
+            if wd.get('missing'):
+                lines.append("波段闸门-UNKNOWN: " + "；".join(dict.fromkeys(wd['missing']))
+                             + "（缺失不默认通过，主动加仓关闭）")
+        elif wd is not None:
+            lines.append("波段闸门: 已关闭（A/B 对照）")
+
+        # ★ V10.7.4 主升段锁存（默认关闭做 A/B；旧盘后摘要无该键静默跳过）
+        bd = g('主升段锁存')
+        if isinstance(bd, dict) and bd.get('enabled'):
+            bs = bd.get('signals') or {}
+            bk = bd.get('latch') or {}
+            ba = bd.get('authorization') or {}
+            be = bd.get('execution') or {}
+            sigv = bs.get('signal')
+            sig_s = ('触发' if sigv is True else
+                     ('未触发' if sigv is False else 'UNKNOWN'))
+            auth_s = ''
+            if bd.get('authorized_hard_cap') is not None:
+                auth_s = f"→授权申请 {_f(bd.get('authorized_hard_cap'))}%"
+            lines.append(
+                f"主升段锁存: 档位 {_f(bd.get('profile'))} | "
+                f"有效目标 {_f(bd.get('base_target'))}%→{_f(bd.get('effective_target'))}%"
+                f"（硬上限 {_f(bd.get('hard_cap'))}%{auth_s}）"
+                f" | 信号 {sig_s}（MA{_f(bs.get('ma_window'))}上行 + "
+                f"{_f(bs.get('breadth_window'))}日广度 "
+                f"{_f(bs.get('breadth5'))}/{_f(bs.get('breadth_threshold'))}）"
+                f" | 锁存 {'ON' if bk.get('locked') else 'OFF'}"
+                f"（剩余 {_f(bk.get('left_after'))}日，退出 {_f(bk.get('exit_mode'))}）"
+                f" | 授权 {_f(ba.get('mode'))}/满仓 {_f(ba.get('full_authorization'))}"
+                f"/P0上限 {_f(ba.get('risk_cap'))}%"
+                f" | 执行 {_f(be.get('action'))}"
+                f"（限速 {_f(be.get('step_pct'))}pp，降仓立即，不碰杠杆）")
+            if bd.get('missing'):
+                lines.append("主升段锁存-UNKNOWN: "
+                             + "；".join(dict.fromkeys(bd['missing']))
+                             + "（缺失不默认通过，主动加仓关闭）")
+        elif bd is not None:
+            lines.append("主升段锁存: 已关闭（A/B 对照）")
+
         # 切换关键条件
         sc = g('切换关键条件') or {}
         if isinstance(sc, dict):
@@ -10711,7 +10821,7 @@ def run(target_date=None, simple_mode=False):
 标题：**每日复盘({TRADE_DATE})**
 内容(分成以下部分，输出中也显示序号1、2、3、4、....段落名称及换行)：
 1、**大盘分析**：严格按照上述“大盘分析”给定的内容进行分析，【严格按以下固定模板输出，带上适合手机阅读的换行符，禁止自由发挥格式】
-（"大盘节点"来自 MarketNode 引擎，看短线情绪冷热与节点轨迹；"大盘环境 V10"来自 V10.0 五状态机，看市场环境风险档位与对应目标仓位；"大盘环境 V10.7"来自 V10.7 增量层，看三项确认、量价四要素、结构性机会与仓位硬约束，并保留 V10.1 原决策记录供新旧对比。三者是独立且互补的判断，都要照抄，不得互相替代、不得合并成一句话、不得只挑一个写）
+（"大盘节点"来自 MarketNode 引擎，看短线情绪冷热与节点轨迹；"大盘环境 V10"来自 V10.0 五状态机，看市场环境风险档位与对应目标仓位；"大盘环境 V10.7"来自 V10.7 增量层，看三项确认、量价四要素、结构性机会与仓位硬约束，含 P0 风险口径修复、P1/P2 仓位优化（平滑器、确认门控、语义边界）与 V10.7.3 波段闸门（默认只开 S2/S5 状态过滤的纯收紧 overlay）、V10.7.4 主升段锁存（默认关闭做 A/B，开启时满仓无杠杆 + 4% 跟踪止损，突破硬上限须 P0 重算与满仓授权），并保留 V10.1 原决策记录供新旧对比。三者是独立且互补的判断，都要照抄，不得互相替代、不得合并成一句话、不得只挑一个写）
 ** 市场分析
 * 节点：{{照抄"大盘节点"数据块的「当前节点」，并保留"是否新节点"里的"新节点"字样（若为"是"则在节点后加"（新节点）"）；数据块显示"无新节点"则写"无新节点"}} | 状态：{{照抄「市场状态」}} | 情绪：{{照抄「情绪子状态」}} | 强度：{{照抄「节点强度」}} | 置信度：{{照抄「置信度」}}
 * 节点动态：{{照抄"大盘节点"数据块的「节点动态」冒号后的全部内容（含轨迹与今日节点·第N日）；数据块无此行则写"无"}}
@@ -10727,7 +10837,7 @@ def run(target_date=None, simple_mode=False):
 * 当前目标：xx%
 * 环境目标：{{照抄"大盘环境 V10"数据块的「环境目标仓位」；数据块无此行则写"无"}}
 * 正常区间：xx%～xx%   确认上限：xx%
-* V10.7仓位约束：{{照抄"大盘环境 V10.7"数据块的「仓位」行（目标/建议区间/硬上限/主动试探/满仓授权）与「仓位语义」行，一字不差；硬上限不得突破，目标仓位不是必须持仓比例；数据块无此行则写"无"}}
+* V10.7仓位约束：{{照抄"大盘环境 V10.7"数据块的「仓位」行（目标/建议区间/硬上限/主动试探/满仓授权）与「仓位语义」行，一字不差；硬上限不得突破，目标仓位不是必须持仓比例；若数据块有「仓位优化(P1/P2)」行，须一并照抄其目标/硬上限变化与确认门控结论，以平滑后的目标与门控后的硬上限为准；有「仓位优化-UNKNOWN」行也照抄；若数据块有「波段闸门」行，须一并照抄其档位、有效目标与三层结论，**注意「仓位」行的目标仓位已是叠加闸门与主升段锁存后的最终有效目标，以该有效目标为最终口径，不得用 base_target 覆盖、不得突破硬上限**；有「波段闸门-UNKNOWN」行也照抄；若数据块有「主升段锁存」行且非「已关闭（A/B 对照）」，须一并照抄其档位、有效目标、授权结论与执行结论（授权未通过不得写成已突破硬上限），有「主升段锁存-UNKNOWN」行也照抄；数据块无此行则写"无"}}
 * 触发原因：{{仅当"大盘分析"数据块出现「⚠ 关键低点：X已跌破且未收复（日期）」时输出这一行，数值与日期一字不差照抄，写成"跌破关键低点X（日期）未收复 → 强制0仓，等底分型或右侧信号"；数据块无此行时写"无强制闸门"，禁止自行编造原因}}
 * 一句话：XXXXX。
 ** 策略：XXXX
