@@ -1,34 +1,76 @@
 {
  "trade_date": "20261020",
  "universe": 2024,
- "signals": [],
- "watch": [],
- "early": [
-  {
-   "code": "000408.SZ",
-   "name": "藏格矿业",
-   "date_t0": "20261019",
-   "days_pullback": 1,
-   "gap": 0.0149,
-   "gap_top": 70.7,
-   "break_price": 73.98,
-   "total_mv_wan": 11181656.0,
-   "vol_avg_ratio": 0.721,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
   {
    "code": "688385.SH",
    "name": "复旦微电",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 15.0,
    "date_t0": "20261016",
-   "days_pullback": 2,
+   "date_entry": "20261020",
    "gap": 0.0159,
    "gap_top": 48.4,
-   "break_price": 56.76,
    "total_mv_wan": 4353357.0,
+   "t0_pct": 14.61,
+   "t0_vol_mult": 3.93,
+   "n": 2,
    "vol_avg_ratio": 0.495,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.447,
+   "close": 52.85,
+   "entry": [
+    52.85,
+    52.85
+   ],
+   "hard_stop": 48.4,
+   "target1": 63.59,
+   "target2": 74.33,
+   "time_stop_days": 5,
+   "ma5": 51.22,
+   "winner": 0.1655,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2739.20 低于 MA20 3101.30"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 16.6%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.50×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.59%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 14.61%（≥7%）"
+    }
+   ]
   }
  ]
 }

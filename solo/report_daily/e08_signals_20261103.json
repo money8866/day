@@ -1,7 +1,214 @@
 {
  "trade_date": "20261103",
- "universe": 0,
- "signals": [],
- "watch": [],
- "early": []
+ "universe": 1921,
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
+  {
+   "code": "600928.SH",
+   "name": "西安银行",
+   "industry": "银行",
+   "grade": "B级",
+   "score": 60.0,
+   "date_t0": "20261030",
+   "date_entry": "20261103",
+   "gap": 0.0139,
+   "gap_top": 3.6,
+   "total_mv_wan": 1693333.0,
+   "t0_pct": 8.64,
+   "t0_vol_mult": 3.96,
+   "n": 2,
+   "vol_avg_ratio": 0.482,
+   "vol_min_ratio": 0.334,
+   "close": 3.81,
+   "entry": [
+    3.81,
+    3.81
+   ],
+   "hard_stop": 3.6,
+   "target1": 4.18,
+   "target2": 4.55,
+   "time_stop_days": 5,
+   "ma5": 3.73,
+   "winner": 0.9403,
+   "ma_bullish": true,
+   "theme_hit": [
+    "银行"
+   ],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 20,
+     "why": "命中全市场 Top3 主线: 银行"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3608.10 低于 MA20 3715.43"
+    },
+    {
+     "name": "筹码结构",
+     "score": 15,
+     "why": "获利盘 94.0%（>85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.48×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 10,
+     "why": "MA5>MA10>MA20>MA60 标准多头排列"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.39%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 8.64%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "600018.SH",
+   "name": "上港集团",
+   "industry": "港口",
+   "grade": "观察",
+   "score": 25.0,
+   "date_t0": "20261030",
+   "date_entry": "20261103",
+   "gap": 0.02,
+   "gap_top": 5.5,
+   "total_mv_wan": 13269562.0,
+   "t0_pct": 5.84,
+   "t0_vol_mult": 2.63,
+   "n": 2,
+   "vol_avg_ratio": 0.61,
+   "vol_min_ratio": 0.482,
+   "close": 5.7,
+   "entry": [
+    5.7,
+    5.7
+   ],
+   "hard_stop": 5.5,
+   "target1": 6.16,
+   "target2": 6.62,
+   "time_stop_days": 5,
+   "ma5": 5.63,
+   "winner": 0.9624,
+   "ma_bullish": true,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3608.10 低于 MA20 3715.43"
+    },
+    {
+     "name": "筹码结构",
+     "score": 15,
+     "why": "获利盘 96.2%（>85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.61×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 10,
+     "why": "MA5>MA10>MA20>MA60 标准多头排列"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.00%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 5.84%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "600688.SH",
+   "name": "上海石化",
+   "industry": "石油加工",
+   "grade": "观察",
+   "score": 15.0,
+   "date_t0": "20261030",
+   "date_entry": "20261103",
+   "gap": 0.0142,
+   "gap_top": 2.81,
+   "total_mv_wan": 3152243.0,
+   "t0_pct": 8.93,
+   "t0_vol_mult": 5.06,
+   "n": 2,
+   "vol_avg_ratio": 0.472,
+   "vol_min_ratio": 0.316,
+   "close": 2.99,
+   "entry": [
+    2.99,
+    2.99
+   ],
+   "hard_stop": 2.81,
+   "target1": 3.3,
+   "target2": 3.61,
+   "time_stop_days": 5,
+   "ma5": 2.93,
+   "winner": 0.6695,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3608.10 低于 MA20 3715.43"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 67.0%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.47×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.42%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 8.93%（≥7%）"
+    }
+   ]
+  }
+ ]
 }

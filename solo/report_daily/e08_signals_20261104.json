@@ -1,295 +1,214 @@
 {
  "trade_date": "20261104",
  "universe": 1975,
- "signals": [],
- "watch": [
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
   {
-   "code": "600688.SH",
-   "name": "上海石化",
-   "date_t0": "20261030",
-   "days_pullback": 3,
-   "gap": 0.0142,
-   "gap_top": 2.81,
-   "break_price": 3.08,
-   "total_mv_wan": 3152243.0,
-   "vol_avg_ratio": 0.42,
-   "earliest_in": 1,
-   "latest_in": 4
-  },
-  {
-   "code": "600928.SH",
-   "name": "西安银行",
-   "date_t0": "20261030",
-   "days_pullback": 3,
-   "gap": 0.0139,
-   "gap_top": 3.6,
-   "break_price": 3.91,
-   "total_mv_wan": 1693333.0,
-   "vol_avg_ratio": 0.423,
-   "earliest_in": 1,
-   "latest_in": 4
-  },
-  {
-   "code": "600018.SH",
-   "name": "上港集团",
-   "date_t0": "20261030",
-   "days_pullback": 3,
-   "gap": 0.02,
-   "gap_top": 5.5,
-   "break_price": 5.84,
-   "total_mv_wan": 13223002.0,
-   "vol_avg_ratio": 0.562,
-   "earliest_in": 1,
-   "latest_in": 4
-  },
-  {
-   "code": "603612.SH",
-   "name": "索通发展",
-   "date_t0": "20261029",
-   "days_pullback": 4,
-   "gap": 0.0126,
-   "gap_top": 15.88,
-   "break_price": 16.91,
-   "total_mv_wan": 843291.0,
-   "vol_avg_ratio": 0.413,
-   "earliest_in": 1,
-   "latest_in": 3
-  },
-  {
-   "code": "002948.SZ",
-   "name": "青岛银行",
-   "date_t0": "20261029",
-   "days_pullback": 4,
-   "gap": 0.0136,
-   "gap_top": 5.88,
-   "break_price": 6.36,
-   "total_mv_wan": 3562057.0,
-   "vol_avg_ratio": 0.44,
-   "earliest_in": 1,
-   "latest_in": 3
-  },
-  {
-   "code": "600862.SH",
-   "name": "中航高科",
-   "date_t0": "20261029",
-   "days_pullback": 4,
-   "gap": 0.0295,
-   "gap_top": 17.31,
-   "break_price": 18.7,
-   "total_mv_wan": 2602216.0,
-   "vol_avg_ratio": 0.446,
-   "earliest_in": 1,
-   "latest_in": 3
-  },
-  {
-   "code": "002179.SZ",
-   "name": "中航光电",
-   "date_t0": "20261029",
-   "days_pullback": 4,
-   "gap": 0.0358,
-   "gap_top": 32.1,
-   "break_price": 34.25,
-   "total_mv_wan": 7327759.0,
-   "vol_avg_ratio": 0.496,
-   "earliest_in": 1,
-   "latest_in": 3
-  },
-  {
-   "code": "000983.SZ",
-   "name": "山西焦煤",
-   "date_t0": "20261029",
-   "days_pullback": 4,
-   "gap": 0.0111,
-   "gap_top": 6.3,
-   "break_price": 6.52,
-   "total_mv_wan": 3673084.0,
-   "vol_avg_ratio": 0.534,
-   "earliest_in": 1,
-   "latest_in": 3
-  },
-  {
-   "code": "002078.SZ",
-   "name": "太阳纸业",
-   "date_t0": "20261029",
-   "days_pullback": 4,
-   "gap": 0.013,
-   "gap_top": 13.11,
-   "break_price": 13.72,
-   "total_mv_wan": 3993005.0,
-   "vol_avg_ratio": 0.712,
-   "earliest_in": 1,
-   "latest_in": 3
-  },
-  {
-   "code": "600548.SH",
-   "name": "深高速",
-   "date_t0": "20261029",
-   "days_pullback": 4,
-   "gap": 0.012,
-   "gap_top": 8.35,
-   "break_price": 8.76,
-   "total_mv_wan": 2213011.0,
-   "vol_avg_ratio": 0.689,
-   "earliest_in": 1,
-   "latest_in": 3
-  },
-  {
-   "code": "600395.SH",
-   "name": "盘江股份",
-   "date_t0": "20261028",
-   "days_pullback": 5,
-   "gap": 0.0309,
-   "gap_top": 4.86,
-   "break_price": 5.28,
-   "total_mv_wan": 1096925.0,
-   "vol_avg_ratio": 0.519,
-   "earliest_in": 1,
-   "latest_in": 2
-  },
-  {
-   "code": "603658.SH",
-   "name": "安图生物",
-   "date_t0": "20261027",
-   "days_pullback": 6,
-   "gap": 0.0312,
-   "gap_top": 36.27,
-   "break_price": 39.44,
-   "total_mv_wan": 2225128.0,
-   "vol_avg_ratio": 0.398,
-   "earliest_in": 1,
-   "latest_in": 1
-  },
-  {
-   "code": "002532.SZ",
-   "name": "天山铝业",
-   "date_t0": "20261027",
-   "days_pullback": 6,
-   "gap": 0.0307,
-   "gap_top": 11.41,
-   "break_price": 12.09,
-   "total_mv_wan": 5674832.0,
-   "vol_avg_ratio": 0.575,
-   "earliest_in": 1,
-   "latest_in": 1
-  },
-  {
-   "code": "600309.SH",
-   "name": "万华化学",
-   "date_t0": "20261027",
-   "days_pullback": 6,
-   "gap": 0.0133,
-   "gap_top": 67.79,
-   "break_price": 70.94,
-   "total_mv_wan": 22201305.0,
-   "vol_avg_ratio": 0.501,
-   "earliest_in": 1,
-   "latest_in": 1
-  },
-  {
-   "code": "002468.SZ",
-   "name": "申通快递",
-   "date_t0": "20261026",
-   "days_pullback": 7,
-   "gap": 0.0173,
-   "gap_top": 13.91,
-   "break_price": 14.94,
-   "total_mv_wan": 2279364.0,
-   "vol_avg_ratio": 0.472,
-   "earliest_in": 1,
-   "latest_in": 0
-  }
- ],
- "early": [
-  {
-   "code": "600779.SH",
-   "name": "水井坊",
-   "date_t0": "20261103",
-   "days_pullback": 1,
-   "gap": 0.0156,
-   "gap_top": 28.12,
-   "break_price": 29.8,
-   "total_mv_wan": 1387066.0,
-   "vol_avg_ratio": 0.626,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "600259.SH",
-   "name": "中稀有色",
-   "date_t0": "20261103",
-   "days_pullback": 1,
-   "gap": 0.0179,
-   "gap_top": 57.97,
-   "break_price": 63.77,
-   "total_mv_wan": 2124593.0,
-   "vol_avg_ratio": 0.716,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "603202.SH",
-   "name": "天有为",
-   "date_t0": "20261103",
-   "days_pullback": 1,
-   "gap": 0.0143,
-   "gap_top": 49.72,
-   "break_price": 54.47,
-   "total_mv_wan": 832960.0,
-   "vol_avg_ratio": 0.715,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "600801.SH",
-   "name": "华新建材",
-   "date_t0": "20261103",
-   "days_pullback": 1,
-   "gap": 0.0302,
-   "gap_top": 23.54,
-   "break_price": 25.4,
-   "total_mv_wan": 5272333.0,
-   "vol_avg_ratio": 0.661,
-   "earliest_in": 2,
-   "latest_in": 6
+   "code": "601169.SH",
+   "name": "北京银行",
+   "industry": "银行",
+   "grade": "观察",
+   "score": 45.0,
+   "date_t0": "20261102",
+   "date_entry": "20261104",
+   "gap": 0.0176,
+   "gap_top": 5.67,
+   "total_mv_wan": 12368646.0,
+   "t0_pct": 3.71,
+   "t0_vol_mult": 2.58,
+   "n": 2,
+   "vol_avg_ratio": 0.546,
+   "vol_min_ratio": 0.524,
+   "close": 5.85,
+   "entry": [
+    5.85,
+    5.85
+   ],
+   "hard_stop": 5.67,
+   "target1": 6.26,
+   "target2": 6.67,
+   "time_stop_days": 5,
+   "ma5": 5.77,
+   "winner": 0.9606,
+   "ma_bullish": true,
+   "theme_hit": [
+    "银行"
+   ],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 20,
+     "why": "命中全市场 Top3 主线: 银行"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3686.17 低于 MA20 3707.63"
+    },
+    {
+     "name": "筹码结构",
+     "score": 15,
+     "why": "获利盘 96.1%（>85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.55×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 10,
+     "why": "MA5>MA10>MA20>MA60 标准多头排列"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.76%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 3.71%（<7%）"
+    }
+   ]
   },
   {
    "code": "000596.SZ",
    "name": "古井贡酒",
+   "industry": "白酒",
+   "grade": "观察",
+   "score": 30.0,
    "date_t0": "20261102",
-   "days_pullback": 2,
+   "date_entry": "20261104",
    "gap": 0.0137,
    "gap_top": 95.7,
-   "break_price": 105.0,
    "total_mv_wan": 5365290.0,
+   "t0_pct": 8.46,
+   "t0_vol_mult": 3.06,
+   "n": 2,
    "vol_avg_ratio": 0.526,
-   "earliest_in": 1,
-   "latest_in": 5
-  },
-  {
-   "code": "601169.SH",
-   "name": "北京银行",
-   "date_t0": "20261102",
-   "days_pullback": 2,
-   "gap": 0.0176,
-   "gap_top": 5.67,
-   "break_price": 5.99,
-   "total_mv_wan": 12368646.0,
-   "vol_avg_ratio": 0.546,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.476,
+   "close": 101.5,
+   "entry": [
+    101.5,
+    101.5
+   ],
+   "hard_stop": 95.7,
+   "target1": 119.1,
+   "target2": 136.7,
+   "time_stop_days": 5,
+   "ma5": 98.65,
+   "winner": 0.9548,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3686.17 低于 MA20 3707.63"
+    },
+    {
+     "name": "筹码结构",
+     "score": 15,
+     "why": "获利盘 95.5%（>85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.53×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.37%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 8.46%（≥7%）"
+    }
+   ]
   },
   {
    "code": "688169.SH",
    "name": "石头科技",
+   "industry": "家用电器",
+   "grade": "观察",
+   "score": 30.0,
    "date_t0": "20261102",
-   "days_pullback": 2,
+   "date_entry": "20261104",
    "gap": 0.0206,
    "gap_top": 110.72,
-   "break_price": 129.5,
    "total_mv_wan": 3373346.0,
+   "t0_pct": 16.42,
+   "t0_vol_mult": 2.52,
+   "n": 2,
    "vol_avg_ratio": 0.788,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.635,
+   "close": 129.95,
+   "entry": [
+    129.95,
+    129.95
+   ],
+   "hard_stop": 110.72,
+   "target1": 153.25,
+   "target2": 176.55,
+   "time_stop_days": 5,
+   "ma5": 120.84,
+   "winner": 0.8944,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2544.73 低于 MA20 2700.66"
+    },
+    {
+     "name": "筹码结构",
+     "score": 15,
+     "why": "获利盘 89.4%（>85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.79×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.06%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 16.42%（≥7%）"
+    }
+   ]
   }
  ]
 }

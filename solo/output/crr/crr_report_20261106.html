@@ -1,0 +1,41 @@
+<!DOCTYPE html><html lang='zh-CN'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>CRR 暴跌错杀扫描 20261106</title><meta charset="utf-8">
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+  --fg:#e6e9ef; --muted:#98a2b3; --dim:#6b7280;
+  --buy:#22c55e; --watch:#f59e0b; --no:#ef4444; --accent:#3b82f6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB",-apple-system,Segoe UI,sans-serif;
+  font-size:14px;line-height:1.6}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 22px 60px}
+h1{font-size:24px;margin:0 0 4px}
+h2{font-size:17px;margin:30px 0 12px;padding-left:10px;border-left:4px solid var(--accent)}
+h3{font-size:14px;margin:18px 0 8px;color:var(--muted);font-weight:600}
+.sub{color:var(--muted);font-size:13px;margin-bottom:6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:16px 18px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.kpi .lab{color:var(--muted);font-size:12px}
+.kpi .val{font-size:21px;font-weight:700;margin-top:2px}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+th{background:var(--panel2);color:var(--muted);font-weight:600;white-space:nowrap}
+tbody tr:nth-child(even){background:rgba(255,255,255,.015)}
+td{word-break:break-word}
+.tbl-scroll{overflow-x:auto;border-radius:8px;border:1px solid var(--line)}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:700}
+.t-BUY{background:rgba(34,197,94,.16);color:var(--buy);border:1px solid rgba(34,197,94,.4)}
+.t-WATCH{background:rgba(245,158,11,.16);color:var(--watch);border:1px solid rgba(245,158,11,.4)}
+.t-NO_TRADE{background:rgba(239,68,68,.14);color:var(--no);border:1px solid rgba(239,68,68,.35)}
+.muted{color:var(--muted)}
+.dim{color:var(--dim);font-size:12px}
+ul{margin:6px 0 6px 20px;padding:0}
+li{margin:3px 0}
+.warn{border-left:3px solid var(--watch);background:rgba(245,158,11,.07);padding:8px 12px;border-radius:0 6px 6px 0}
+.note{border-left:3px solid var(--accent);background:rgba(59,130,246,.07);padding:8px 12px;border-radius:0 6px 6px 0}
+footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
+</style>
+</head><body><div class='wrap'><h1>CRR V1.0 暴跌错杀扫描报告 · 20261106</h1><div class='sub'>Crash Repricing &amp; Recovery · 仅用本地 Tushare 缓存 + sli/industry DB · 生成于 2026-11-06 23:16:29</div><div class='card'><div class='sub'>市场门控：市场状态 CORRECTION 不属于扫描态 ['SELLOFF', 'PANIC', 'SELLING_EXHAUSTION', 'RECOVERY']，未启动深度模块；全部 NO TRADE（不强制每日交易）</div><div class='grid'><div class='kpi'><div class='lab'>市场状态</div><div class='val'>CORRECTION / 回调</div></div><div class='kpi'><div class='lab'>候选股</div><div class='val'>0</div></div><div class='kpi'><div class='lab'>有效评分</div><div class='val'>0</div></div><div class='kpi'><div class='lab'>BUY</div><div class='val' style='color:var(--buy)'>0</div></div><div class='kpi'><div class='lab'>WATCH</div><div class='val' style='color:var(--watch)'>0</div></div><div class='kpi'><div class='lab'>NO TRADE</div><div class='val' style='color:var(--no)'>0</div></div><div class='kpi'><div class='lab'>最高总分/55</div><div class='val'>UNKNOWN</div></div><div class='kpi'><div class='lab'>平均置信度</div><div class='val'>UNKNOWN</div></div></div><div class='warn'>当前不在暴跌扫描窗口，按模块一门控规则，全市场结论为 NO TRADE —— 本系统不强制每日交易。</div></div><h2>一、市场状态（模块一，不占评分）</h2><div class='card'><table class=""><thead><tr><th>项目</th><th>值</th></tr></thead><tbody><tr><td>数据基准日</td><td>20261106</td></tr><tr><td>状态（含记忆）</td><td>CORRECTION / 回调</td></tr><tr><td>当日原始状态</td><td>CORRECTION</td></tr><tr><td>是否暴跌事件段内</td><td>否</td></tr><tr><td>事件段编号 / 段长</td><td>0 / 0</td></tr><tr><td>严重度</td><td>1</td></tr><tr><td>状态明确度</td><td>0.50</td></tr><tr><td>全A 5日收益</td><td>4.55%</td></tr><tr><td>全A 10日收益</td><td>-2.90%</td></tr><tr><td>全A 20日收益</td><td>-8.23%</td></tr><tr><td>当日下跌家数占比</td><td>85.09%</td></tr><tr><td>近5日下跌占比均值</td><td>36.88%</td></tr><tr><td>跌停家数（阈值代理）</td><td>20</td></tr><tr><td>涨停家数（阈值代理）</td><td>38</td></tr><tr><td>成交额（千元）</td><td>1671601777</td></tr><tr><td>成交额/20日均额</td><td>1.01</td></tr><tr><td>20日波动率</td><td>0.0199</td></tr><tr><td>波动率/基准倍数</td><td>1.36</td></tr><tr><td>个股收益中位数</td><td>-1.87%</td></tr></tbody></table><div class='note'>市场收益 = daily_cache 全A等权 pct_chg/100 逐日累乘（非指数）；涨跌停家数为 pct_chg 板块阈值代理（|pct_chg|>31 剔除异常）。</div></div><h2>二、结论分组（BUY / WATCH / NO TRADE）</h2><h3>BUY（0 只）</h3><div class="dim">无</div><h3>WATCH（0 只）</h3><div class="dim">无</div><h3>NO TRADE（0 只，以下仅列前 30）</h3><div class="dim">无</div><h2>三、评分构成与判定规则</h2><div class='card'><table class=""><thead><tr><th>项目</th><th>值</th></tr></thead><tbody><tr><td>总分上限 SCORE_CAP</td><td>55</td></tr><tr><td>模块三 基本面质量</td><td>30 分（quality）</td></tr><tr><td>模块四 估值错杀</td><td>25 分（valuation）</td></tr><tr><td>打分公式</td><td>total_score = q_score + v_score，满分 55 = SCORE_CAP（模块三 30 + 模块四 25）；score_ratio = total_score / SCORE_CAP；其余 45 分未定义，见 pending_modules</td></tr><tr><td>置信度公式</td><td>confidence = w_completeness*completeness + w_state*state_confidence + w_coverage*coverage；completeness = (q_completeness*30 + v_completeness*25)/55（55 分权重的真实数据占比）；coverage = mean(模块二 data_completeness, q_completeness, v_completeness)（三模块证据广度等权均值）；state_confidence 取模块一状态明确度。以上口径为 engine 内部定义，非用户给定阈值</td></tr><tr><td>判定规则</td><td>buy_score_ratio=0.68, buy_min_confidence=0.55, watch_score_ratio=0.45, watch_min_confidence=0.34, buy_max_specific_share=0.5, top_n=30, min_data_completeness=0.3</td></tr><tr><td>置信度权重</td><td>w_completeness=0.5, w_state=0.2, w_coverage=0.3</td></tr></tbody></table></div><h2>四、数据缺口、代理口径与未实现模块</h2><div class='card'><h3>估值模块（模块四）口径说明</h3><ul></ul><h3>估值模块已知缺口</h3><ul></ul><h3>基本面模块（模块三）口径说明</h3><ul></ul><h3>基本面模块已知缺口</h3><ul></ul></div><div class='card'><h3>未实现模块（不参与本次评分）</h3><ul><li>抛压衰竭量化（成交量/换手/振幅收敛、卖压衰减）——开发目标第5点，用户未给指标/阈值/评分</li><li>资金回流与趋势修复条件（资金流、均线修复、相对强度）——开发目标第6点，用户未给指标/阈值/评分</li><li>评分剩余 45 分（55→100 的构成）及模块五/模块六——用户消息仅定义到模块四</li></ul><div class='warn'>以上内容用户未给出指标/阈值/评分口径，本版本一律不实现、不臆造、不折算进总分。当前可解释的分数上限为 55 分（模块三 30 + 模块四 25）。</div></div><h2>五、as-of 防未来保证</h2><div class='card'><ul></ul></div><footer>CRR V1.0 · 扫描日 20261106 · 数据源：本地 Tushare 缓存(SQLite+parquet) + sli/industry DB · 未引入 TDX · 缺失字段一律 UNKNOWN</footer></div></body></html>

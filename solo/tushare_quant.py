@@ -8652,8 +8652,8 @@ def _load_mainline_rotation_themes(trade_date):
 # （20260928 起弃用 theme_scores.db：该口径在 0928 出现 36 个主题全部"清仓回避"、
 #   主线候选为空，与实际热度严重背离）
 # =========================
-def _build_theme_advice_feed(trade_date):
-    """组装【今日主题分析情况】结构化喂料 —— 主题热度 V2.5.1 主题雷达
+def _build_theme_feed_v25(trade_date):
+    """【回退口径】组装【今日主题分析情况】结构化喂料 —— 主题热度 V2.5.1 主题雷达
 
     数据源 = report_daily/theme_heat_v25_{date}.json，经 _load_theme_evolution() 读取。
     只描述「主题热度正在往哪里移动」，不含个股、不含买卖建议：
@@ -8780,6 +8780,185 @@ def _build_theme_advice_feed(trade_date):
     feed.append("")
     feed.append("◆ 数据说明：本段只允许引用上述主题名与数值，数据块里没有的主题一律不得出现；"
                 "本数据块不含个股，禁止编造领涨龙头/容量中军等个股，也禁止改写状态标签。")
+    return "\n".join(feed)
+
+
+def _build_theme_advice_feed(trade_date):
+    """组装【今日主题分析情况】结构化喂料 —— 主题 3.0（theme3_heat / theme3_opportunity）
+
+    3.0 口径：对每个二级主题分别计算「今日 / 本周(≈5日) / 本月(≈20日)」三窗口热度与排名，
+    再按「跃升 + 结构 + 中军 + 量能 + 新鲜度 − 扣分」给新机会候选打分
+    （kind: RESUME=强势再启动 / NEW_START=新出现 / OBSERVE=观察）。
+      · ◆ 市场风格   —— 防御组 vs 成长组三窗口 Heat 与差值
+      · ◆ 今日最热   —— TODAY 排名前 10（附本周/本月排名，便于看是否共振）
+      · ◆ 本周/本月  —— 各前 5
+      · ◆ 新机会候选 —— 评分前 6，含评分拆解与龙头/中军
+      · ◆ 高位钝化 / ◆ 正在降温
+      · ◆ 一句话总结
+    3.0 文件缺失时回退 V2.5.1 主题雷达（_build_theme_feed_v25）。
+    """
+    base = r"D:\mystock\solo\report_daily"
+    hp = os.path.join(base, f"theme3_heat_{trade_date}.json")
+    op = os.path.join(base, f"theme3_opportunity_{trade_date}.json")
+    if not os.path.exists(hp):
+        print("[实盘建议] 无 theme3_heat 文件，主题喂料回退 V2.5.1")
+        return _build_theme_feed_v25(trade_date)
+    try:
+        with open(hp, "r", encoding="utf-8") as f:
+            heat = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"[实盘建议] theme3_heat 读取失败，回退 V2.5.1: {e}")
+        return _build_theme_feed_v25(trade_date)
+    opp = {}
+    if os.path.exists(op):
+        try:
+            with open(op, "r", encoding="utf-8") as f:
+                opp = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[实盘建议] theme3_opportunity 读取失败（只用 heat）: {e}")
+
+    subs = heat.get("subtopics") or []
+    if not subs:
+        return _build_theme_feed_v25(trade_date)
+
+    def _f(x, d=1):
+        try:
+            return f"{float(x):.{d}f}"
+        except (TypeError, ValueError):
+            return "-"
+
+    def _i(x):
+        try:
+            return str(int(x))
+        except (TypeError, ValueError):
+            return "-"
+
+    def _w(s, k):
+        return s.get(k) or {}
+
+    def _rk(s, k):
+        return _w(s, k).get("rank") or 999
+
+    def _flags(w):
+        fl = w.get("flags") or []
+        return f"｜标记{'/'.join(str(x) for x in fl)}" if fl else ""
+
+    feed = [f"【主题分析结构化数据 · {trade_date} · 主题3.0（theme3_heat/theme3_opportunity）自动组装，禁止改动数值】",
+            f"口径：{len(subs)} 个二级主题，三窗口 = 今日 / 本周(≈5日) / 本月(≈20日)；"
+            "Heat 为全主题分位(0-100)，rank 为窗口内名次（1=最热）；上涨占比/中位涨幅/强势股占比取自对应窗口。",
+            "本段只描述主题热度与资金方向，不预测收益率，不构成买卖建议。"]
+
+    # ◆ 市场风格
+    st = opp.get("style") or {}
+    if st:
+        _wn = {"TODAY": "今日", "WEEK": "本周", "MONTH": "本月"}
+        feed.append("")
+        feed.append("◆ 市场风格（防御组 vs 成长组；差 = 防御 − 成长，正数=防御占优）")
+        for k in ("TODAY", "WEEK", "MONTH"):
+            x = st.get(k) or {}
+            feed.append(f"{_wn[k]}：防御 Heat {_f(x.get('defensive_heat'))}（#{_f(x.get('defensive_rank'))}）"
+                        f" vs 成长 Heat {_f(x.get('growth_heat'))}（#{_f(x.get('growth_rank'))}）"
+                        f" → 差 {_f(x.get('gap'))}")
+        if st.get("verdict"):
+            feed.append(f"结论：{st['verdict']}")
+
+    # ◆ 今日最热 TOP10
+    feed.append("")
+    feed.append("◆ 今日最热 TOP10（今日 Heat 排名；括号内附本周排名 / 本月排名 / 上涨占比 / 中位涨幅 / 涨停数）")
+    for s in sorted(subs, key=lambda x: _rk(x, "TODAY"))[:10]:
+        t, wk, mo = _w(s, "TODAY"), _w(s, "WEEK"), _w(s, "MONTH")
+        feed.append(f"#{_i(t.get('rank'))} {s.get('theme')}（{s.get('top_category', '-')}）"
+                    f"Heat {_f(t.get('heat'))}｜本周#{_i(wk.get('rank'))}｜本月#{_i(mo.get('rank'))}"
+                    f"｜上涨{_f((t.get('up_ratio') or 0) * 100)}%｜中位{_f(t.get('p50'))}%"
+                    f"｜涨停{_i(t.get('limit_up_n'))}{_flags(t)}")
+
+    # ◆ 本周 / 本月最热 TOP5
+    for k, lab in (("WEEK", "本周最热 TOP5"), ("MONTH", "本月最热 TOP5")):
+        feed.append("")
+        feed.append(f"◆ {lab}（该窗口 Heat 排名；附今日排名）")
+        for s in sorted(subs, key=lambda x: _rk(x, k))[:5]:
+            w, t = _w(s, k), _w(s, "TODAY")
+            feed.append(f"#{_i(w.get('rank'))} {s.get('theme')}（{s.get('top_category', '-')}）"
+                        f"Heat {_f(w.get('heat'))}｜今日#{_i(t.get('rank'))}"
+                        f"｜上涨{_f((w.get('up_ratio') or 0) * 100)}%｜中位{_f(w.get('p50'))}%"
+                        f"｜涨停{_i(w.get('limit_up_n'))}{_flags(w)}")
+
+    # ◆ 新机会候选
+    cands = opp.get("candidates") or []
+    _kind_cn = {"RESUME": "强势再启动", "NEW_START": "新出现", "OBSERVE": "观察"}
+    _part_cn = {"jump": "跃升", "struct": "结构", "mid": "中军", "vol": "量能",
+                "fresh": "新鲜度", "penalty": "扣分"}
+    if cands:
+        feed.append("")
+        feed.append("◆ 新机会候选（3.0 评分 = 跃升 + 结构 + 中军 + 量能 + 新鲜度 − 扣分；"
+                    "RESUME=强势再启动 / NEW_START=新出现 / OBSERVE=观察，仅 OBSERVE 以下不构成信号）")
+        for c in cands[:6]:
+            _q = c.get("quality_flag") or ""
+            feed.append(
+                f"▸ {c.get('theme')}（{c.get('top_category', '-')}）"
+                f"｜{c.get('kind')}（{_kind_cn.get(c.get('kind'), c.get('kind'))}）"
+                f"｜评分 {_f(c.get('score'))}｜跃升 {_i(c.get('jump'))} 位"
+                f"｜今日#{_i(c.get('today_rank'))}(Heat{_f(c.get('today_heat'))})"
+                f" 本周#{_i(c.get('week_rank'))}({_f(c.get('week_heat'))})"
+                f" 本月#{_i(c.get('month_rank'))}({_f(c.get('month_heat'))})"
+                f"｜上涨{_f((c.get('up_ratio') or 0) * 100)}%｜中位{_f(c.get('p50'))}%"
+                f"｜强势股{_f((c.get('strong_ratio') or 0) * 100)}%｜涨停{_i(c.get('limit_up_n'))}"
+                + (f"｜质量:{_q}" if _q and _q != "OK" else ""))
+            parts = c.get("parts") or {}
+            _txt = " + ".join(f"{_part_cn.get(k, k)}{_f(v)}" for k, v in parts.items() if v)
+            if _txt:
+                feed.append(f"    评分拆解：{_txt}")
+            picks = c.get("picks") or {}
+
+            def _nm(lst, lim=2):
+                return "、".join(
+                    f"{p.get('name')}({(p.get('code') or '')[:6]})今日{_f(p.get('today'))}%"
+                    for p in (lst or [])[:lim])
+
+            if picks.get("leaders"):
+                feed.append(f"    龙头：{_nm(picks['leaders'])}")
+            if picks.get("zhongjun"):
+                feed.append(f"    中军：{_nm(picks['zhongjun'])}")
+            if c.get("risks"):
+                feed.append(f"    风险：{'、'.join(str(x) for x in c['risks'])}")
+
+    # ◆ 高位钝化 / 正在降温
+    dull = [s for s in subs if _rk(s, "MONTH") <= 15 and _rk(s, "TODAY") >= 30]
+    dull.sort(key=lambda x: _rk(x, "MONTH"))
+    cool = [s for s in subs if _rk(s, "WEEK") <= 20 and _rk(s, "TODAY") >= 50]
+    cool.sort(key=lambda x: _rk(x, "WEEK"))
+    feed.append("")
+    feed.append("◆ 高位钝化（本月前15、今日掉到30名之后）")
+    feed.append("、".join(f"{s['theme']}（本月#{_i(_rk(s, 'MONTH'))}→今日#{_i(_rk(s, 'TODAY'))}）"
+                         for s in dull[:10]) or "（无）")
+    feed.append("")
+    feed.append("◆ 正在降温（本周前20、今日掉到50名之后）")
+    feed.append("、".join(f"{s['theme']}（本周#{_i(_rk(s, 'WEEK'))}→今日#{_i(_rk(s, 'TODAY'))}）"
+                         for s in cool[:12]) or "（无）")
+
+    # ◆ 一句话总结（确定性拼接）
+    t1 = min(subs, key=lambda x: _rk(x, "TODAY"))
+    _res = [c for c in cands if c.get("kind") in ("RESUME", "NEW_START") and c.get("theme")]
+    _res.sort(key=lambda c: -(c.get("score") or 0))
+    _tri = [s for s in subs if _rk(s, "TODAY") <= 10 and _rk(s, "WEEK") <= 10 and _rk(s, "MONTH") <= 10]
+    _tri.sort(key=lambda x: _rk(x, "TODAY"))
+    _sent = (f"今日最热 {t1.get('theme')}（Heat {_f(_w(t1, 'TODAY').get('heat'))}"
+             f"｜本周#{_i(_rk(t1, 'WEEK'))}｜本月#{_i(_rk(t1, 'MONTH'))}）")
+    if _tri:
+        _sent += f"；三窗口同时在前10的只有 {'、'.join(s['theme'] for s in _tri[:4])}"
+    if _res:
+        _sent += "；新机会集中在 " + "、".join(
+            f"{c['theme']}（{c.get('kind')}·评分{_f(c.get('score'))}）" for c in _res[:3])
+    if dull:
+        _sent += f"；{len(dull)} 个本月强势主题今日明显掉队（{'、'.join(s['theme'] for s in dull[:3])}）"
+    _sent += "。热度只看当日与周月的相对位移，谁在本周内跃升最快，谁才是下一段的主线候选。"
+    feed.append("")
+    feed.append("◆ 一句话总结")
+    feed.append(_sent)
+
+    feed.append("")
+    feed.append("◆ 数据说明：本段只允许引用上述主题名与数值，数据块里没有的主题/个股一律不得出现；"
+                "龙头/中军只允许照抄「◆ 新机会候选」里已列出的标的，禁止自行补充或替换。")
     return "\n".join(feed)
 
 
@@ -9577,7 +9756,10 @@ def run(target_date=None, simple_mode=False):
 
     total = len(market)
 
-    for idx, row in market.iterrows():
+    # 20261107 停用【双底调整到位股池】(breakout_pool)：横向对比为负超额（超额 -4.85%、胜率 28.6%），
+    # 库内信号已删除、每日生成任务下线。此处空迭代跳过全市场双底扫描，
+    # 下游 ranked_stocks 恒为空 → 不落库、不进报告、不进推送。恢复时还原为 market.iterrows()。
+    for idx, row in market.iloc[0:0].iterrows():
 
         ts_code = row['ts_code']
 
@@ -10048,8 +10230,9 @@ def run(target_date=None, simple_mode=False):
                     '双底_左底日期': _dbl.get('dbl_left_date', ''),
                     '入选Top10': True,
                 })
-            _n = _pick_record('breakout_pool', '双底调整到位股池', _rows, pick_date=TRADE_DATE)
-            print(f"[双底股池] stock_pick_db 写入 {_n}/{len(_rows)} 条 (strategy=breakout_pool pick_date={TRADE_DATE})")
+            # 20261107 breakout_pool 停用：不再落 stock_pick_db
+            # _n = _pick_record('breakout_pool', '双底调整到位股池', _rows, pick_date=TRADE_DATE)
+            # print(f"[双底股池] stock_pick_db 写入 {_n}/{len(_rows)} 条 (strategy=breakout_pool pick_date={TRADE_DATE})")
     except Exception as _e:
         print(f"[突破股池] stock_pick_db 落库失败: {_e}")
 
@@ -10141,31 +10324,21 @@ def run(target_date=None, simple_mode=False):
             lines.append(f"  YRI: 总分={yri_total:.0f} 最大连板={yri_lb}板 标签={yri_tags}")
         lines.append("")
     
-    # 突破池明细：控制台输出供排查 + 作为报告第7段【双底调整到位股池】的喂料
-    print("\n".join(lines))
-    double_bottom_pool_text = "\n".join(lines)
-    
-    icpm_top10_list = []
-    for s in ranked_stocks[:20]:
-        icpm_top10_list.append({
-            'code': s.get('代码', ''),
-            'name': s.get('名称', ''),
-            'theme': s.get('所属主题', ''),
-            'open_score': s.get('整合评分', 0),
-        })
+    # 20261107 breakout_pool 停用：原「突破池明细」控制台输出、double_bottom_pool_text
+    # 与 icpm_top10_list 一并移除（报告第7段已删除，不再进入日报与推送）。
 
 
     # =========================
     # 实盘交易建议（主题分析第2段喂料）
-    # 优先：主题热度 V2.5.1 主题雷达（theme_heat_v25 当日产出，状态+边际+确认/失效条件）
-    #       内部回退：主题热度 V2.4 三窗口 Top5（theme_heat_v24）
+    # 优先：主题 3.0（theme3_heat / theme3_opportunity 当日产出，三窗口热度 + 新机会候选）
+    #       内部回退：主题热度 V2.5.1 主题雷达（theme_heat_v25）→ V2.4 三窗口 Top5（theme_heat_v24）
     # 兜底：theme_analysis_v2 报告文本
     # =========================
     trade_advice_text = ""
     try:
         trade_advice_text = _build_theme_advice_feed(TRADE_DATE)
         if trade_advice_text:
-            print(f"[实盘建议] 主题喂料(热度V2.5主题雷达): {len(trade_advice_text)}字")
+            print(f"[实盘建议] 主题喂料(主题3.0): {len(trade_advice_text)}字")
     except Exception as e:
         print(f"[实盘建议] 结构化喂料失败: {e}")
         trade_advice_text = ""
@@ -10254,9 +10427,7 @@ def run(target_date=None, simple_mode=False):
             print(f"[V7拉升回调] 加载失败: {e}")
             return ""
 
-    rally_pullback_v7_text = _load_rally_pullback_v7(TRADE_DATE)
-    if rally_pullback_v7_text:
-        print(f"[V7拉升回调] 已加载拉升回调买点信号（{rally_pullback_v7_text.count('】')}只）")
+    # 20261107 起 AI 报告只保留 E08 / W7-T20 / HVT-BULL-TE 三类买点，V7 拉升回调段已停用
 
     # =========================
     # W7 二波·今日可操作（读取 w7_today_action_{date}.json = 收盘后过滤的「当日买点」七态；
@@ -10598,13 +10769,7 @@ def run(target_date=None, simple_mode=False):
                 p.append("- {}({})：{}".format(it["name"], it["code"], r["reason"] or "跌破结构防线"))
         return "\n".join(p)
 
-    w7_today_action_text = _load_w7_today_action(TRADE_DATE)
-    if w7_today_action_text:
-        print(f"[W7今日执行状态] 已加载二波当日买点（{w7_today_action_text.count('｜W7总分')}只）"
-              f" | " + " / ".join(
-                  ln.strip() for ln in w7_today_action_text.splitlines()
-                  if ln.startswith(("EXECUTION：", "TRIGGER_WATCH：", "PULLBACK_WATCH："))
-              ))
+    # 20261107 起 AI 报告只保留 E08 / W7-T20 / HVT-BULL-TE 三类买点，W7 二波当日执行段已停用
 
     # =========================
     # HVT-BULL 第一梯队（读取天量牛股日报「★ 第一梯队重点解读」段；PRIMARY_BUY 最高置信买点层级，与 hvt_bull/daily.py 同步）
@@ -10717,9 +10882,101 @@ def run(target_date=None, simple_mode=False):
         out.extend(kept)
         return "\n".join(out).strip()
 
-    hvt_first_echelon_text = _load_hvt_bull_first_echelon(TRADE_DATE)
-    if hvt_first_echelon_text:
-        print("[HVT 第一梯队] 已加载天量牛股 PRIMARY_BUY 层级")
+    # =========================
+    # E08 回踩买点（跳空缺口放量 T0 -> 回踩第 2 日缩量的唯一买点）
+    # 数据源：report_daily/e08_signals_{date}.json（e08_scanner.py 收盘后生成）
+    # =========================
+    def _load_e08_buy_signals(trade_date: str) -> str:
+        r"""读取 e08_signals_{date}.json（E08 跳空缺口回踩策略·唯一买点）。
+        评级 S级/A级/B级 为可执行买点，'观察' 级只跟踪、不构成买点。
+        """
+        path = os.path.join(r"D:\mystock\solo\report_daily", f"e08_signals_{trade_date}.json")
+        out = ["【E08 回踩买点（跳空缺口放量 T0 后回踩第 2 日·唯一买点）】"]
+        if not os.path.exists(path):
+            out.append(f"（今日无 E08 数据文件 e08_signals_{trade_date}.json，视为无买入信号，不强行交易）")
+            return "\n".join(out)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[E08] 读取失败: {e}")
+            return ""
+        sigs = d.get("signals") or []
+        out.append(f"数据来源：{os.path.basename(path)}｜扫描 {d.get('universe', '-')} 只全市场｜"
+                   f"口径 {d.get('caliber', '-')}｜策略 {d.get('signal', '-')}")
+        out.append("")
+        if not sigs:
+            out.append("（今日无 E08 买入信号：全市场无同时满足『T0 放量跳空』+『回踩 2 日缩量』的标的，不强行交易）")
+            return "\n".join(out)
+
+        def _f2(v):
+            try:
+                return f"{float(v):.2f}"
+            except (TypeError, ValueError):
+                return "-"
+
+        out.append("| 序号 | 代码 | 名称 | 行业 | 评级 | 总分 | T0日期 | T0涨幅 | T0放量 | 回踩量比 | 现价 | 买区 | 硬止损 | 目标1 | 目标2 | 时间止损 |")
+        out.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        for i, s in enumerate(sigs, 1):
+            ent = s.get("entry") or []
+            lo = _f2(ent[0] if len(ent) > 0 else s.get("close"))
+            hi = _f2(ent[1] if len(ent) > 1 else s.get("close"))
+            row = "| {} | {} | {} | {} | {} | {} | {} | {}% | {}x | {} | {} | {}~{} | {} | {} | {} | {}".format(
+                i, s.get("code", "-"), s.get("name", "-"), s.get("industry", "-"),
+                s.get("grade", "-"), _f2(s.get("score")), s.get("date_t0", "-"),
+                _f2(s.get("t0_pct")), _f2(s.get("t0_vol_mult")), _f2(s.get("vol_avg_ratio")),
+                _f2(s.get("close")), lo, hi, _f2(s.get("hard_stop")),
+                _f2(s.get("target1")), _f2(s.get("target2")),
+                f"{s.get('time_stop_days', '-')}个交易日")
+            out.append(row)
+        out.append("")
+        out.append("分项得分明细（只列得分>0 的维度，用于解释评分来源）：")
+        for s in sigs:
+            items = ["{}+{}（{}）".format(x.get("name"), x.get("score"), x.get("why"))
+                     for x in (s.get("dims") or [])
+                     if float(x.get("score") or 0) > 0]
+            out.append("- {} {}：{}".format(
+                s.get("code", "-"), s.get("name", "-"),
+                "；".join(items) if items else "无加分项"))
+        return "\n".join(out).strip()
+
+    # =========================
+    # W7 T20 右尾·次日买入指令（读取 w7_t20_指令_{date}.md 的精简可执行版）
+    # =========================
+    def _load_w7_t20_buy(trade_date: str) -> str:
+        r"""读取 w7_t20_指令_{date}.md（W7 T20 右尾引擎的 PRIMARY_BUY / TOP_PICK 次日操作指令）。
+        该文件已是「今日结论 + 可操作标的 + 风险/纪律」的精简版，直接整段喂给 AI。
+        """
+        cand = [
+            os.path.join(r"D:\mystock\solo\report_daily", f"w7_t20_指令_{trade_date}.md"),
+            os.path.join(REPORT_DIR, f"w7_t20_指令_{trade_date}.md"),
+        ]
+        files = [p for p in cand if os.path.exists(p)]
+        if not files:
+            return ("【W7 T20 右尾·次日买入指令】\n"
+                    f"（今日无 w7_t20 指令文件 w7_t20_指令_{trade_date}.md，视为零买入动作，不强行交易）")
+        latest = max(files, key=os.path.getmtime)
+        try:
+            with open(latest, "r", encoding="utf-8") as f:
+                body = f.read().splitlines()
+        except OSError as e:
+            print(f"[W7 T20] 读取失败: {e}")
+            return ""
+        lines = [ln for ln in body if not ln.strip().startswith("*W7 T20 Right-Tail")]
+        out = ["【W7 T20 右尾·次日买入指令】",
+               f"数据来源：{os.path.basename(latest)}（PRIMARY_BUY/TOP_PICK 达标才给买入，其余为观察）",
+               ""]
+        out.extend(lines)
+        return "\n".join(out).strip()[:4000]
+
+    e08_text = _load_e08_buy_signals(TRADE_DATE)
+    if e08_text:
+        _n_e08 = sum(1 for _l in e08_text.splitlines() if _l.startswith("| ") and _l[2:3].isdigit())
+        print(f"[E08回踩买点] 已加载信号（{_n_e08}只）")
+
+    w7_t20_text = _load_w7_t20_buy(TRADE_DATE)
+    if w7_t20_text:
+        print("[W7T20右尾] 已加载次日买入指令")
 
     hvt_te_buy_text = _load_hvt_bull_te_buy_pool(TRADE_DATE)
     if hvt_te_buy_text:
@@ -10796,8 +11053,11 @@ def run(target_date=None, simple_mode=False):
             out += [line1, line2, line3, ""]
         return "\n".join(out).strip()
 
+    # 20261107 起 AI 报告只保留 E08 / W7-T20 / HVT-BULL-TE 三类买点
+    # 20261108 用户要求：VSW（量能放大下蹲）段加回，作为第 7 段
     vsw_squat_text = _load_vsw_squat_signals(TRADE_DATE)
-    print(f"[量能放大信号] 已加载 VSW 下蹲买点池（{vsw_squat_text.count('【第')}只）")
+    if vsw_squat_text:
+        print("[量能放大信号] 已加载 VSW 下蹲买点池")
 
 
     #return
@@ -10834,24 +11094,27 @@ def run(target_date=None, simple_mode=False):
 * 量价：{{照抄"大盘环境 V10.7"数据块的「量价」行（环比/相对5日均/指数/上涨占比/形态），一字不差；数据块无此行则写"无"}}
 * 结构性：{{照抄"大盘环境 V10.7"数据块的「结构性机会」行（最强行业/持续性/内部广度）；数据块无此行则写"无"}}
 ** 仓位建议
-* 当前目标：xx%
-* 环境目标：{{照抄"大盘环境 V10"数据块的「环境目标仓位」；数据块无此行则写"无"}}
-* 正常区间：xx%～xx%   确认上限：xx%
-* V10.7仓位约束：{{照抄"大盘环境 V10.7"数据块的「仓位」行（目标/建议区间/硬上限/主动试探/满仓授权）与「仓位语义」行，一字不差；硬上限不得突破，目标仓位不是必须持仓比例；若数据块有「仓位优化(P1/P2)」行，须一并照抄其目标/硬上限变化与确认门控结论，以平滑后的目标与门控后的硬上限为准；有「仓位优化-UNKNOWN」行也照抄；若数据块有「波段闸门」行，须一并照抄其档位、有效目标与三层结论，**注意「仓位」行的目标仓位已是叠加闸门与主升段锁存后的最终有效目标，以该有效目标为最终口径，不得用 base_target 覆盖、不得突破硬上限**；有「波段闸门-UNKNOWN」行也照抄；若数据块有「主升段锁存」行且非「已关闭（A/B 对照）」，须一并照抄其档位、有效目标、授权结论与执行结论（授权未通过不得写成已突破硬上限），有「主升段锁存-UNKNOWN」行也照抄；数据块无此行则写"无"}}
+* 目标：{{照抄"大盘环境 V10.7"数据块「仓位」行的目标仓位；无 V10.7 时改照抄"大盘环境 V10"的「环境目标仓位」}}%{{若"大盘环境 V10"的「环境目标仓位」与之不同，才在其后加"（环境目标 X%）"}}｜建议区间：{{照抄「仓位」行的建议区间}}｜硬上限：{{照抄「仓位」行的硬上限}}｜主动试探：{{照抄「仓位」行的主动试探，写"允许/不允许"}}
+* 若「仓位优化(P1/P2)」或「波段闸门」给出的最终目标/硬上限与上面不同，只在目标后加注一次"（叠加后 目标X%/硬上限Y%）"；**P0风险口径、P1/P2平滑与确认门控、闸门档位与因子、主升段锁存、仓位语义等机制细节一律不输出**，硬上限不得突破、目标仓位不是必须持仓比例
 * 触发原因：{{仅当"大盘分析"数据块出现「⚠ 关键低点：X已跌破且未收复（日期）」时输出这一行，数值与日期一字不差照抄，写成"跌破关键低点X（日期）未收复 → 强制0仓，等底分型或右侧信号"；数据块无此行时写"无强制闸门"，禁止自行编造原因}}
 * 一句话：XXXXX。
 ** 策略：XXXX
 * 最终：XXXXXX
 2、**主题分析**
-【本段只输出主题层面结论，禁止出现任何个股。严格按以下固定模板输出，带上适合手机阅读的换行符（每个"**"行独立成段），禁止自由发挥格式。所有主题名/边际/人话必须一字不差引用上方"【今日主题分析情况】"数据块；数据块里没有的主题一律不得出现；**本段不使用任何数字指标**，更不得自行计算或补数。注意：该数据块是"主题热度V2.5.1主题雷达"，**不含 Top5 榜单口径**，禁止出现"最强主题/三窗口共振/榜单"等旧表述，也禁止因为找不到 Top5 就输出"数据块未提供"之类的话，直接按下面模板引用雷达分组】
-** 主线：{{照抄"◆ 主题雷达"中 🔥当前主线 行冒号之后的全部内容——已按「边际·人话」合并，禁止拆开、禁止逐只重复人话、禁止补写}}{{若"◆ 当日最强"的主题不在上面这段里，就在结尾追加"、该主题（当日最强）"；若🔥当前主线为"（无）"，则主线只写"该主题（当日最强）"}}
-** 升温梯队：🚀{{照抄 🚀加速升温 行冒号后内容}}｜🔄{{照抄 🔄真正再启动 行冒号后内容}}｜↩️{{照抄 ↩️反弹 行冒号后内容}}｜🌱{{照抄 🌱新出现 行冒号后内容}}（某类在数据块中为"（无）"则写"无"）
-** 高位钝化：{{照抄 ⚠️高位钝化 行冒号后内容；为"（无）"则写"无"}}
-** 正在降温：{{照抄"◆ 正在降温"行冒号后的主题名，只列名、不展开、不加人话}}
-** 看什么（从"◆ 重点主题解读"里挑 1–2 只最重要的主题，每只一行）：{{主题名}}：{{照抄该主题的"支持证据"整句}}
-** 一句话市场总结：{{照抄"◆ 一句话市场总结"整行}}
-（缺值处理：某行显示"（无）"或数据块无该行则写"无"，不得用其它主题填补；主题名/边际/人话一律不得改写或重算。仅当数据块标题为 V2.4 三窗口（theme_heat_v24）时，才改按"◆ 本日/本周/本月热度 Top5"逐组引用。）
-（【禁止啰嗦】"看什么"每只主题只写「主题名：+ 支持证据一句」，**禁止输出"当前状态/确认条件/失效条件"及任何数字指标**；"主线"与"升温梯队"直接照抄数据块里已合并好的分组，**禁止把同一句人话在多个主题上重复展开**。）
+【本段只输出主题层面结论 + 数据块已给出的龙头/中军个股。严格按以下固定模板输出，带上适合手机阅读的换行符（每个"**"行独立成段），禁止自由发挥格式。所有主题名/数值/个股必须一字不差引用上方"【今日主题分析情况】"数据块（主题 3.0 口径：今日/本周/本月三窗口热度 + 新机会候选评分）；数据块里没有的主题一律不得出现；**数值一律照抄，禁止自行计算、换算或补数**；个股只允许照抄「◆ 新机会候选」里已列出的龙头/中军，禁止自行补充、替换或延伸产业链】
+** 市场风格：{{照抄"◆ 市场风格"的今日/本周/本月三行"防御 Heat X（#a） vs 成长 Heat Y（#b） → 差 Z"，用"｜"分隔}}；结论：{{照抄"结论："后面的整句}}
+** 主线：{{照抄"◆ 今日最热 TOP10"的前 3 名，格式"#排名 主题（一级目录）Heat 数值"，用"｜"分隔；若某主题本周、本月排名也都≤10，在其后加注"（三窗口共振）"，未满足不得加}}
+** 今日最热：{{照抄"◆ 今日最热 TOP10"的 #4–#10，只写"#排名 主题"，用"｜"分隔；不足则写到最后一行为止}}
+** 本周最热：{{照抄"◆ 本周最热 TOP5"逐条，格式"#排名 主题（Heat X｜今日#Y）"，用"｜"分隔}}
+** 本月最热：{{照抄"◆ 本月最热 TOP5"逐条，格式"#排名 主题（Heat X｜今日#Y）"，用"｜"分隔}}
+** 新机会（从"◆ 新机会候选"按原顺序取，最多 5 只，每只一行）：{{主题}}（{{一级目录}}）｜{{类型中文，即括号内中文}}｜评分{{X}}｜跃升{{N}}位｜今日#{{a}}/本周#{{b}}/本月#{{c}}｜上涨{{x}}%｜中位{{y}}%
+** 龙头中军：{{只照抄"◆ 新机会候选"下"龙头："与"中军："两行，必须带上所属主题名，个股名称、代码、涨幅原样保留；数据块无则写"无"}}
+** 高位钝化：{{照抄"◆ 高位钝化"整行；为"（无）"则写"无"}}
+** 正在降温：{{照抄"◆ 正在降温"整行；为"（无）"则写"无"}}
+** 看什么（从"◆ 新机会候选"里挑评分最高的 1–2 只，每只一行）：{{主题}}：{{一句话说明为什么值得看——只能用该候选的评分拆解和三窗口排名解释，禁止编造数据块外的原因}}
+** 一句话市场总结：{{照抄"◆ 一句话总结"整行，一字不改}}
+（缺值处理：某行显示"（无）"或数据块无该块则写"无"，不得用其它主题填补；主题名/数值/个股一律不得改写或重算。若数据块标题为 V2.5.1 主题雷达（theme_heat_v25）或 V2.4（theme_heat_v24），说明 3.0 数据缺失，此时改按"◆ 主题雷达 / ◆ 本日·本周·本月热度 Top5"对应块引用，并跳过"市场风格/新机会/龙头中军"三行。）
+（【禁止啰嗦】"看什么"每只主题只写一行，**禁止输出"当前状态/确认条件/失效条件"三段式**；"主线/今日最热/本周最热/本月最热"直接照抄，**禁止把同一句人话在多个主题上重复展开**；类型为 OBSERVE（观察）的必须写明"观察级，不构成买入信号"，禁止写成买点。）
 
 3、**【ETF操作建议】**
 {etf_tips_text}
@@ -10861,51 +11124,25 @@ def run(target_date=None, simple_mode=False):
 - 如果建议中有与主线主题一致的ETF，说明共振确认
 - 禁止输出"数据不足"：上方数据区即为全部真实ETF数据，动量排名/持仓信息一字不差引用
 
-4、**【中长线股票池】**（HVT-BULL 引擎当日最高置信买点层级·天量牛股：历史天量+缩量锁筹+二次突破+RS20≥70 四要素同时满足且无硬否决；FE≥70 为A级=四要素×Future Expansion双重确认，B级=结构达标但扩张确认稍弱；宁缺毋滥，数量稀少为常态）：
-{hvt_first_echelon_text}
-（【数据边界】本段只分析上方"【HVT-BULL 第一梯队】"标记中列出的股票；若显示"今日无第一梯队"，必须明确提示"今日无第一梯队，不强行交易"，禁止用其它股池股票填补。）
-【输出要求-第4段】按原列表顺序逐只输出，每只控制在一屏内。**必须用散户看得懂的普通话讲，不许堆砌行业黑话/英文缩略语**（如"锁筹""二次突破分层""扩张空间""FE""RS20"等一律不许直接出现；确实非用不可时，必须紧跟括号用一句大白话解释）。每只股票固定三行：
-① 名称(代码)[A级/B级]
-② **为什么值得看**：一句大白话讲清主力在干什么、现在处在什么阶段（例："前期放历史巨量拉升，之后一路缩量横盘不跌，说明筹码被拿住了、没人急着跑"、"刚放量冲破前期高点，属于二次启动第一天"），禁止只罗列术语
-③ **怎么买卖**：触发价/止损/目标/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改），并翻译成动作——"跌到X.XX元就认错走人"、"到X.XX元先落袋一部分"
-最后整段末尾附一句白话纪律：**放量跌破前期高点(T0_High)、两天都收不回来，就别扛了，直接止损离场**；B级个股必须加注"信号偏弱，仓位从低"。
+4、**【E08 回踩买点】**（E08 跳空缺口策略——前期 T0 放量跳空，随后回踩到第 2 个交易日且缩量，是唯一买点；评级 S级/A级/B级＝可执行买点，『观察』级＝只跟踪、不构成买点）：
+{e08_text}
+（【数据边界】本段只分析上方"【E08 回踩买点】"数据块里的股票；数据块显示"今日无 E08 买入信号"或"无 E08 数据文件"时必须原样提示"今日无 E08 买点，不强行交易"，禁止用其它股池股票填补。）
+【输出要求-第4段】按数据块顺序逐只输出，每只固定 4 行、个股之间空一行：①加粗"序号. 名称(代码)（评级·总分）"；②一行数据（T0日期/T0涨幅/T0放量/回踩量比/现价/买区/硬止损/目标1/目标2/时间止损，一律照抄，价格保留两位小数，禁止改动或重算）；③一句大白话讲形态（"前期某天放量跳空高开，之后缩量回踩两天，今天缩到几成量"），禁止只罗列术语；④"怎么买卖：X.XX~X.XX 元买，收盘跌破 X.XX 元就认错走人，N 个交易日内没到 X.XX 元先撤"。评级为『观察』的必须写明"观察级不构成买点，只跟踪"，禁止写成可买入。
 
-4B、**【次日执行买点池】**（HVT-BULL 引擎 te_buy_pool·短线执行口径：execution_state=READY_BUY/PULLBACK_BUY，按执行分取 top≤3、已剔除 R1/R2 低胜率形态；**本段只含 next_day_action=BUY——无需再确认、次日可直接执行**，BUY_ON_CONFIRM 已排除；与第4段"中长线股票池"互补——那边看结构质量与右尾潜力，这边看明天能否实际下单，两池无交集为常态，不是矛盾）：
+5、**【W7 T20 右尾·次日买入指令】**（W7 T20 右尾引擎：只给 PRIMARY_BUY / TOP_PICK 达标标的的次日操作指令，含突破价/回踩区/失效位/动作条件；未达标的只进观察清单，不是买点）：
+{w7_t20_text}
+（【数据边界】本段只引用上方"【W7 T20 右尾·次日买入指令】"数据块；显示"今日零买入动作"或"无 w7_t20 指令文件"时必须原样写"今日零买入动作，不强行交易"，禁止用其它股池股票填补。）
+【输出要求-第5段】先照抄数据块「今日结论」；若结论为"零买入动作"，到此为止，不得编造标的。有可操作标的时按数据块顺序逐只输出，每只固定 4 行、个股之间空一行：①加粗"序号. 名称(代码)（链路/状态）"；②一行价位（突破价/回踩区/失效位/MA20，照抄数据块，价格两位小数）；③一句大白话讲"什么条件下买、怎么买"（动作条件一律照抄引擎原文，禁止改写成"可以直接买入"）；④"防线：跌破 X.XX 元出局"。末尾照抄数据块「风险/纪律」段。观察清单（CONFIRMED_NEXT / WAIT_RETEST / EXTENDED 等）不得写成买入。
+
+6、**【HVT-BULL TE 执行买点池】**（HVT-BULL 引擎 te_buy_pool·短线执行口径：execution_state=READY_BUY/PULLBACK_BUY，按执行分取 top≤3、已剔除 R1/R2 低胜率形态；**本段只含 next_day_action=BUY——无需再确认、次日可直接执行**，BUY_ON_CONFIRM 已排除）：
 {hvt_te_buy_text}
 （【数据边界】本段只分析上方"【HVT-BULL 执行买点池】"标记中列出的股票；数据区为空或显示无候选时，必须明确提示"今日无可直接执行的买点，不强行交易"，禁止用其它股池股票填补。）
-【输出要求-第4B段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出：名称(代码) + 类型(HORIZON) + 动作(BUY) + 触发价/买区/失效位/建议仓位直接引用引擎数据（价格保留两位小数，禁止修改）+ 一句话执行理由（引用缩量比/守位/执行分等原文数值）；这些均为可直接执行的信号，但仍须按开盘预案输出纪律：高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销。
+【输出要求-第6段】按引擎优先级顺序（第一优先/第2优先/第3优先）逐只输出，每只固定 4 行、个股之间空一行：①名称(代码)（类型 HORIZON·动作 BUY）；②一行价位（触发价/买区/失效位/建议仓位，直接引用引擎数据，价格两位小数，禁止修改）；③一句话执行理由（引用缩量比/守位/执行分等原文数值）；④开盘纪律（高开>+5%默认不追、低开放量跌破失效位且无法收复→撤销）。
 
-5、**【V7 严格拉升回调买点】**（仅适用于主板大市值、20日内放量且至少两涨停、回撤后当日低开阳线承接的窄形态策略）：
-{rally_pullback_v7_text}
-（【数据边界】本段只分析上方"【V7 拉升回调买点池】"标记后列出的股票；若该段落为空则提示"今日无V7严格拉升回调买点信号"。该策略不是当日全市场强势股清单。）
-【输出要求-第5段】按总分从高到低逐只输出，严格引用引擎给出的价位，禁止改判。止损纪律提醒：该策略为短线激进型，跌破止损价无条件离场，单只仓位不超过10%。
-
-6、**【W7 二波·今日执行状态】**（W7 HVT-V3 引擎收盘后输出。已按「实际交易距离 + 触发条件 + 结构是否失效」做**输出层三状态分层**：EXECUTION=已进入执行区 / EXECUTION_WAIT_VOLUME=已进入价格执行区但量能未确认 / TRIGGER_WATCH=距触发≤3%只差一个放量确认 / PULLBACK_WATCH=仍需等待回踩或重新确认。此分层只改展示与状态标签，不改选股、不改评分、不改量能口径；结构失效的候选已移出操作榜）：
-{w7_today_action_text}
-（【数据边界】本段只分析上方"【W7 二波·今日执行状态（输出层三状态分层 V1.0）】"数据块中列出的股票；数据为空则明确提示"今日无 W7 当日买点信号，空仓等待 C池高分票放量突破"，禁止用第4段第一梯队或任何其它股池股票填补。）
-【输出要求-第6段】严格照抄数据块给出的状态分类与全部数值（状态、现价、触发价、距触发%、MA20、量比、IGE_ADJ、W7总分、结构防线一律不得改动、重算或四舍五入错位），并遵守：
-① 禁止在报告开头（"1、大盘分析"之前）单独输出【W7 状态汇总】小节，也不得把数据块里的"速览"行（EXECUTION 只数 / 今日真正进入执行区 等）搬到报告开头；本段只按下方 EXECUTION / TRIGGER_WATCH / PULLBACK_WATCH 三段输出，不另设汇总小节；
-② 正文按【EXECUTION｜已进入执行区】→【TRIGGER_WATCH｜等待触发】→【PULLBACK_WATCH｜等待回踩/重新确认】三段输出，段内顺序严格照数据块，禁止跨段重排；
-③ 格式极简、面向散户：**每只股票独立成块，固定 4 行，个股之间空一行**——①加粗"序号. 名称(代码)（类型｜状态）"；②一行价格数据（现价/触发价/MA20/量比/IGE_ADJ，照抄数据块）；③一句大白话做法或条件（EXECUTION 写"可按计划买入，单只不超过10%"；EXECUTION_WAIT_VOLUME 写"已到买点价，但量还没放出来，先别动手，等量比≥1.2 再买"；TRIGGER_WATCH 写"还没触发，不追价，放量站上XXX才算触发"；PULLBACK_WATCH 写"还在回踩，先观察不动手"）；④"防线：收盘跌破XXX 就出局"。价格保留两位小数，不堆术语、不加多余解释；
-④ 执行状态优先于总分：禁止因为 W7 总分高就把 PULLBACK_WATCH / TRIGGER_WATCH 写成"已进入执行区"；禁止因为 IGE_ADJ 高就升级状态；禁止把已经跌回关键位的票仍标为 EXECUTION；
-⑤ 量能阀门不可绕过：量比<1.2 一律按数据块标为"量能未确认（EXECUTION_WAIT_VOLUME）"，禁止写成"已确认买入""立即买入"，禁止下调量比阈值；
-⑥ 若 EXECUTION（含量能未确认）为 0，必须明确写出"今日 W7 无 EXECUTION 标的。结论：不强行交易。"，禁止人为制造买入信号；
-⑦ 数据块末尾如给出【已失效｜不参与排名】，照抄该行，不得给它排名；禁止把 C池等待票混入本段充当买点；单只仓位不超过10%。
-
-7、**【双底调整到位股池】**（一波大涨后回落成双底、右底缩量不破左底的低吸口径；按双底排名分从高到低排序）：
-{double_bottom_pool_text}
-（【数据边界】本段只分析上方"🔥 双底调整到位股池"数据块中列出的股票；数据块显示"今日无双底调整到位标的（空池）"时必须原样提示，禁止用第4段第一梯队或任何其它股池股票填补。）
-【输出要求-第7段】本段是**低吸买点**口径，不是突破追高，全部结论只能依据数据块给出的「主题」与「双底」几何：
-① 按数据块顺序（排名分从高到低）逐只输出，每只固定 5 行、个股之间空一行：第1行加粗"序号. 名称(代码)（双底低吸）"；第2行"主题：XXX"，**照抄数据块"  主题: ..."行的主题名，一字不差**（形如"元器件（未入当前热点主题）"就原样写，数据块写"未匹配主题"就写"未匹配主题"），该行若还带"主线:xxx(质量N)""趋势分X/情绪分Y"则一并引用；禁止自己编造概念名、行业名或换用同义词；数据块没有主题信息时写"主题：数据块未给出"，不得推测；第3行照抄价格数据（现价/涨跌幅/排名分/双底前波涨幅/左底/颈线/右底/缩量）；第4行一句大白话讲结构——前期大涨了多少、之后回落做成右底、右底缩量且不破左底，所以现在是低吸位；并点明该主题当前是否属于热点主线（数据块主题名带"未入当前热点主题"即为非热点，须明说"主题不在当前热点上，属于纯技术面低吸"）；第5行"防线：收盘跌破左底X.XX 就出局"；
-② 所有价格与比例一律照抄数据块的"  双底: ..."行，价格保留两位小数，禁止改动、重算或四舍五入错位；禁止把"颈线"写成触发买点——
-本段的低吸买点是右底本身，"站上颈线"属于后续转突破的加仓条件，不是本段买入门槛；
-③ 禁止罗列 V10/资金/筹码/YRI 等内部指标，禁止堆砌行业黑话，只用散户看得懂的话讲双底结构；
-④ 数据块为空（空池）时只输出一句"今日无双底调整到位标的"，不得强行编造买点。
-
-8、**【量能放大信号选股】**（VSW 量能爆发+宽幅震荡策略·下蹲买点池：量能爆发/宽幅震荡结构已成立、当日缩量回踩，提前于突破日给出的低吸买点。signal 后缀 (优选)/(扩大) 为形态分支——优选=当日缩量（量比≤1.2）+ 涨幅≤+1%；扩大=回调后小阴/小阳/十字星（小实体K线，实体≤2%）企稳、量比≤1.6、涨幅 -3%~+2.5%，均视为有效下蹲买点；后缀另可能带「·主题效应」= 同一主题在本次下蹲池出现≥2只（落库理由里带「🔗主题效应：主题名（同池N只）」），表示资金在同一方向多点开花，属于加分提示而非新门槛。下跌幅度不设均线/距前高/止损空间等额外门槛，只由「跟踪期间收盘跌破 T0 前一交易日收盘价 → T0 作废」单一口径把关；池内已剔除「缩量过快且持续缩量」者 = 5日量能变化≤-50% 且 连续缩量≥3天）：
+7、**【量能放大信号选股】**（VSW 量能爆发 + 宽幅震荡策略·下蹲买点池：先放量爆发、随后缩量下蹲回踩，买点在下蹲企稳处；signal 后缀 (优选)/(扩大) 为形态分支）：
 {vsw_squat_text}
-（【数据边界】本段只分析上方"【量能放大信号选股】"数据块中列出的股票；数据块显示"无 VSW 下蹲买点信号（空池）"时必须原样提示"今日无下蹲买点信号，不强行交易"，禁止用第4段第一梯队、第4B段执行买点池、第5/6/7段任何其它股池的股票填补。）
-【输出要求-第8段】按数据块顺序（选股总分从高到低）逐只输出，每只固定 4 行、个股之间空一行：①加粗"序号. 名称(代码)（下蹲买点·优选/扩大）"；②一行数据（收盘/涨跌幅/量能爆发评分/选股总分，一律照抄数据块，价格保留两位小数，禁止改动或重算）；③一句大白话讲下蹲形态——把"下蹲买点…"括号内的信息翻译成散户话（缩量回踩、量比多少、是十字星还是小阴/小阳线），禁止只罗列术语；④"怎么买卖：止损位X.XX元（T0标志日开盘价，收盘跌破就走）｜优选可直接开仓，扩大为半仓、次日放量确认再加"。禁止罗列 V10/资金/筹码/YRI 等内部指标，禁止堆砌行业黑话。
+（【数据边界】本段只分析上方"【量能放大信号选股】"数据块里的股票；数据块显示"无 VSW 下蹲买点信号（空池）"时必须原样提示"今日无 VSW 下蹲买点，不强行交易"，禁止用其它股池股票填补。）
+【输出要求-第7段】按数据块顺序逐只输出，每只固定 4 行、个股之间空一行：①加粗"序号. 名称(代码)（形态分支·选股总分+评级）"；②一行数据（收盘价/涨跌幅/量能爆发评分/选股总分/所属主题，一律照抄，价格两位小数，禁止改动或重算）；③一句大白话讲形态（照抄数据块「说明」字段并翻译成口语："前面放量爆发过一轮，现在缩量下蹲回踩，蹲住了才买"）；④"操作：照抄数据块的 action 原文；止损位 X.XX 元跌破就走"。数据块无止损位时不得编造价格。
 
 ------------------
 以上全局格式要求：
@@ -10913,7 +11150,7 @@ def run(target_date=None, simple_mode=False):
 - 段落标题（即使以“##”开头的），也只需加粗即可，不用放大字体
 - 风格简洁明了，适合手机阅读
 - 返回MD格式，字体大小适合手机阅读
-- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 中长线股票池、第 6 段 W7 二波·今日执行状态、第 7 段 双底调整到位股池、第 8 段 量能放大信号选股）；**报告开头禁止输出【W7 状态汇总】小节**
+- **严格禁止添加本 prompt 中未指定的任何额外章节**（如热点追踪、风险扫描、投资建议书等），只分析 prompt 中已列出的数据（含第 4 段 E08 回踩买点、第 5 段 W7 T20 右尾买入指令、第 6 段 HVT-BULL TE 执行买点池、第 7 段量能放大信号选股）；**报告中不得出现其它选股策略段落（中长线股票池、V7 拉升回调、W7 二波执行状态、双底一律不写）**
 
 """
     if not simple_mode:

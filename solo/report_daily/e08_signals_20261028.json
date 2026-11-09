@@ -1,165 +1,416 @@
 {
  "trade_date": "20261028",
  "universe": 1985,
- "signals": [],
- "watch": [
-  {
-   "code": "600267.SH",
-   "name": "海正药业",
-   "date_t0": "20261021",
-   "days_pullback": 5,
-   "gap": 0.0136,
-   "gap_top": 13.27,
-   "break_price": 14.28,
-   "total_mv_wan": 1581565.0,
-   "vol_avg_ratio": 0.394,
-   "earliest_in": 1,
-   "latest_in": 2
-  },
-  {
-   "code": "600888.SH",
-   "name": "新疆众和",
-   "date_t0": "20261021",
-   "days_pullback": 5,
-   "gap": 0.0114,
-   "gap_top": 8.81,
-   "break_price": 9.23,
-   "total_mv_wan": 1397777.0,
-   "vol_avg_ratio": 0.624,
-   "earliest_in": 1,
-   "latest_in": 2
-  }
- ],
- "early": [
-  {
-   "code": "603658.SH",
-   "name": "安图生物",
-   "date_t0": "20261027",
-   "days_pullback": 1,
-   "gap": 0.0312,
-   "gap_top": 36.27,
-   "break_price": 39.44,
-   "total_mv_wan": 2179986.0,
-   "vol_avg_ratio": 0.566,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "002532.SZ",
-   "name": "天山铝业",
-   "date_t0": "20261027",
-   "days_pullback": 1,
-   "gap": 0.0307,
-   "gap_top": 11.41,
-   "break_price": 12.09,
-   "total_mv_wan": 5494311.0,
-   "vol_avg_ratio": 0.558,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "600309.SH",
-   "name": "万华化学",
-   "date_t0": "20261027",
-   "days_pullback": 1,
-   "gap": 0.0133,
-   "gap_top": 67.79,
-   "break_price": 70.94,
-   "total_mv_wan": 22057303.0,
-   "vol_avg_ratio": 0.489,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
   {
    "code": "300357.SZ",
    "name": "我武生物",
+   "industry": "生物制药",
+   "grade": "观察",
+   "score": 15.0,
    "date_t0": "20261026",
-   "days_pullback": 2,
+   "date_entry": "20261028",
    "gap": 0.0139,
    "gap_top": 19.45,
-   "break_price": 21.08,
    "total_mv_wan": 1105286.0,
+   "t0_pct": 8.3,
+   "t0_vol_mult": 4.48,
+   "n": 2,
    "vol_avg_ratio": 0.61,
-   "earliest_in": 1,
-   "latest_in": 5
-  },
-  {
-   "code": "688208.SH",
-   "name": "道通科技",
-   "date_t0": "20261026",
-   "days_pullback": 2,
-   "gap": 0.015,
-   "gap_top": 24.6,
-   "break_price": 26.6,
-   "total_mv_wan": 1706965.0,
-   "vol_avg_ratio": 0.535,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.46,
+   "close": 21.11,
+   "entry": [
+    21.11,
+    21.11
+   ],
+   "hard_stop": 19.45,
+   "target1": 23.71,
+   "target2": 26.31,
+   "time_stop_days": 5,
+   "ma5": 20.25,
+   "winner": 0.2162,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2634.76 低于 MA20 2888.65"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 21.6%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.61×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.39%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 8.30%（≥7%）"
+    }
+   ]
   },
   {
    "code": "002315.SZ",
    "name": "焦点科技",
+   "industry": "互联网",
+   "grade": "观察",
+   "score": 10.0,
    "date_t0": "20261026",
-   "days_pullback": 2,
+   "date_entry": "20261028",
    "gap": 0.0288,
    "gap_top": 26.4,
-   "break_price": 28.79,
    "total_mv_wan": 1133062.0,
+   "t0_pct": 6.78,
+   "t0_vol_mult": 2.55,
+   "n": 2,
    "vol_avg_ratio": 0.486,
-   "earliest_in": 1,
-   "latest_in": 5
-  },
-  {
-   "code": "002468.SZ",
-   "name": "申通快递",
-   "date_t0": "20261026",
-   "days_pullback": 2,
-   "gap": 0.0173,
-   "gap_top": 13.91,
-   "break_price": 14.94,
-   "total_mv_wan": 2207417.0,
-   "vol_avg_ratio": 0.462,
-   "earliest_in": 1,
-   "latest_in": 5
-  },
-  {
-   "code": "688772.SH",
-   "name": "珠海冠宇",
-   "date_t0": "20261026",
-   "days_pullback": 2,
-   "gap": 0.0108,
-   "gap_top": 14.8,
-   "break_price": 15.73,
-   "total_mv_wan": 1696037.0,
-   "vol_avg_ratio": 0.489,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.445,
+   "close": 27.41,
+   "entry": [
+    27.41,
+    27.41
+   ],
+   "hard_stop": 26.4,
+   "target1": 31.98,
+   "target2": 36.55,
+   "time_stop_days": 5,
+   "ma5": 26.84,
+   "winner": 0.7558,
+   "ma_bullish": true,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3681.47 低于 MA20 3764.55"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 75.6%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.49×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 10,
+     "why": "MA5>MA10>MA20>MA60 标准多头排列"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.88%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 6.78%（<7%）"
+    }
+   ]
   },
   {
    "code": "000513.SZ",
    "name": "丽珠集团",
+   "industry": "化学制药",
+   "grade": "观察",
+   "score": 0.0,
    "date_t0": "20261026",
-   "days_pullback": 2,
+   "date_entry": "20261028",
    "gap": 0.017,
    "gap_top": 27.09,
-   "break_price": 28.57,
    "total_mv_wan": 2471046.0,
+   "t0_pct": 5.3,
+   "t0_vol_mult": 2.02,
+   "n": 2,
    "vol_avg_ratio": 0.474,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.379,
+   "close": 27.83,
+   "entry": [
+    27.83,
+    27.83
+   ],
+   "hard_stop": 27.09,
+   "target1": 30.7,
+   "target2": 33.57,
+   "time_stop_days": 5,
+   "ma5": 27.43,
+   "winner": 0.2143,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3681.47 低于 MA20 3764.55"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 21.4%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.47×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.70%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 5.30%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "002468.SZ",
+   "name": "申通快递",
+   "industry": "仓储物流",
+   "grade": "观察",
+   "score": 0.0,
+   "date_t0": "20261026",
+   "date_entry": "20261028",
+   "gap": 0.0173,
+   "gap_top": 13.91,
+   "total_mv_wan": 2207417.0,
+   "t0_pct": 5.84,
+   "t0_vol_mult": 2.36,
+   "n": 2,
+   "vol_avg_ratio": 0.462,
+   "vol_min_ratio": 0.366,
+   "close": 14.42,
+   "entry": [
+    14.42,
+    14.42
+   ],
+   "hard_stop": 13.91,
+   "target1": 15.94,
+   "target2": 17.46,
+   "time_stop_days": 5,
+   "ma5": 14.23,
+   "winner": 0.4556,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3681.47 低于 MA20 3764.55"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 45.6%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.46×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.73%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 5.84%（<7%）"
+    }
+   ]
   },
   {
    "code": "300014.SZ",
    "name": "亿纬锂能",
+   "industry": "电气设备",
+   "grade": "观察",
+   "score": 0.0,
    "date_t0": "20261026",
-   "days_pullback": 2,
+   "date_entry": "20261028",
    "gap": 0.0229,
    "gap_top": 44.48,
-   "break_price": 47.8,
    "total_mv_wan": 10092791.0,
+   "t0_pct": 6.5,
+   "t0_vol_mult": 1.77,
+   "n": 2,
    "vol_avg_ratio": 0.481,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.408,
+   "close": 46.44,
+   "entry": [
+    46.44,
+    46.44
+   ],
+   "hard_stop": 44.48,
+   "target1": 52.87,
+   "target2": 59.3,
+   "time_stop_days": 5,
+   "ma5": 45.27,
+   "winner": 0.0374,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2634.76 低于 MA20 2888.65"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 3.7%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.48×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.29%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 6.50%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "688208.SH",
+   "name": "道通科技",
+   "industry": "IT设备",
+   "grade": "观察",
+   "score": 0.0,
+   "date_t0": "20261026",
+   "date_entry": "20261028",
+   "gap": 0.015,
+   "gap_top": 24.6,
+   "total_mv_wan": 1706965.0,
+   "t0_pct": 4.65,
+   "t0_vol_mult": 3.29,
+   "n": 2,
+   "vol_avg_ratio": 0.535,
+   "vol_min_ratio": 0.457,
+   "close": 25.47,
+   "entry": [
+    25.47,
+    25.47
+   ],
+   "hard_stop": 24.6,
+   "target1": 29.29,
+   "target2": 33.11,
+   "time_stop_days": 5,
+   "ma5": 24.71,
+   "winner": 0.2136,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2634.76 低于 MA20 2888.65"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 21.4%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.54×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.50%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 4.65%（<7%）"
+    }
+   ]
   }
  ]
 }

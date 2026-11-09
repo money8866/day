@@ -1,21 +1,76 @@
 {
  "trade_date": "20261016",
  "universe": 2010,
- "signals": [],
- "watch": [],
- "early": [
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
   {
    "code": "688018.SH",
    "name": "乐鑫科技",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 15.0,
    "date_t0": "20261014",
-   "days_pullback": 2,
+   "date_entry": "20261016",
    "gap": 0.0254,
    "gap_top": 109.89,
-   "break_price": 124.61,
    "total_mv_wan": 2775813.0,
+   "t0_pct": 14.0,
+   "t0_vol_mult": 2.27,
+   "n": 2,
    "vol_avg_ratio": 0.662,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.509,
+   "close": 118.43,
+   "entry": [
+    118.43,
+    118.43
+   ],
+   "hard_stop": 109.89,
+   "target1": 138.69,
+   "target2": 158.95,
+   "time_stop_days": 5,
+   "ma5": 116.21,
+   "winner": 0.4682,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2772.38 低于 MA20 3157.41"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 46.8%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.66×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.54%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 14.00%（≥7%）"
+    }
+   ]
   }
  ]
 }

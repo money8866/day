@@ -1,0 +1,158 @@
+{
+  "quality": {
+    "panel": {
+      "trade_days": 200,
+      "raw_codes": 5603,
+      "date_from": "20260108",
+      "date_to": "20261106",
+      "adj_factor_missing_cells": 15092,
+      "market_source": "ALL_A_EQUAL_WEIGHT",
+      "market_benchmark_days": 0,
+      "market_fallback_days": 200,
+      "industry_count": 111,
+      "industry_small_groups": 1,
+      "benchmark_index_days": 0,
+      "quote_coverage": 0.983,
+      "pit_name_coverage": 0.7967,
+      "read_mode": "ro"
+    },
+    "universe": {
+      "asof": "20261102",
+      "candidate_codes": 5603,
+      "final": 4703,
+      "rejections": {
+        "board_or_bj": 356,
+        "st_or_delisting_pit": 0,
+        "listed_lt_60d": 0,
+        "no_quote_on_asof": 15,
+        "low_liquidity": 276,
+        "suspended": 13,
+        "incomplete_history": 27,
+        "invalid_amount": 0
+      },
+      "pit_st_names": true,
+      "pit_name_coverage": 0.7967,
+      "filters": {
+        "min_listed_trade_days": 60,
+        "min_avg_amount_20_thousand_cny": 30000,
+        "max_suspension_days_20": 4,
+        "min_valid_ratio_60d": 0.9
+      },
+      "no_future_data": true
+    },
+    "residual": {
+      "lookback": 60,
+      "min_obs": 40,
+      "usable_days": 196,
+      "beta_market_mean": 1.0215,
+      "beta_industry_mean": 1.0463,
+      "market_explained_var_mean": 0.24,
+      "primary_network": "market",
+      "causal_beta": true,
+      "no_future_data": true
+    },
+    "features": {
+      "asof": "20261102",
+      "T": 196,
+      "N": 4703,
+      "event_types": [
+        "VOL_UP",
+        "VOL_DOWN",
+        "BREAKOUT",
+        "PULLBACK",
+        "REBOUND",
+        "RELATIVE_STRENGTH",
+        "LIMIT_UP",
+        "LIMIT_DOWN"
+      ],
+      "event_rows": 27644,
+      "events_by_type": {
+        "VOL_UP": 38921,
+        "VOL_DOWN": 14289,
+        "BREAKOUT": 43278,
+        "PULLBACK": 52077,
+        "REBOUND": 63935,
+        "RELATIVE_STRENGTH": 59948,
+        "LIMIT_UP": 13630,
+        "LIMIT_DOWN": 3971
+      },
+      "feature_count": 40,
+      "no_future_data": true
+    },
+    "network": {
+      "universe_pairs": 11056753,
+      "candidate_pairs": 400000,
+      "candidate_ratio": 0.03618,
+      "prescreen_topk": 30,
+      "prescreen_method": "residual_corr_matrix + behavior_cosine_topk",
+      "full_metric_pairs": 400000,
+      "pairs_corr_gate": 279136,
+      "rejected_by_condition": {
+        "corr_gate": 120864,
+        "not_market_driven_pseudo": 13653,
+        "not_industry_explained": 8749,
+        "dual_network_corr": 179165,
+        "long_window_corr": 26655,
+        "corr_stability": 826,
+        "min_effective_sample": 0,
+        "min_edge_score": 15452,
+        "min_reliability": 0,
+        "fdr": 16787
+      },
+      "rejected_market_driven_pseudo": 13653,
+      "rejected_industry_explained": 8921,
+      "kept_edges": 17849,
+      "graph_nodes_market": 4703,
+      "graph_edges_market": 17849,
+      "graph_edges_dual": 17849,
+      "new_edges": 4917,
+      "mean_edge_score": 0.5547,
+      "perm_null_abs_corr_p95": 0.4987,
+      "null_method": "fisher_z_permutation_calibrated",
+      "null_z_mean": 0.0172,
+      "null_z_sd": 1.1384,
+      "permutation_pairs": 4800
+    },
+    "clusters": {
+      "raw_communities": 57,
+      "valid_clusters": 2,
+      "rejected": {
+        "oversize": 16,
+        "small": 37,
+        "low_density": 2
+      },
+      "algorithm": "louvain",
+      "grade_counts": {
+        "S": 0,
+        "A": 1,
+        "B": 1,
+        "C": 0
+      },
+      "state_counts": {
+        "EMERGING_CLUSTER": 1,
+        "EXISTING_CLUSTER": 1
+      },
+      "emerging_clusters": 1,
+      "expanding_clusters": 0,
+      "strengthening_clusters": 0,
+      "decaying_clusters": 0,
+      "pre_sector_clusters": 0,
+      "new_edges_today": 4917,
+      "history_available": true
+    },
+    "no_future_data": true,
+    "synthetic_data": false
+  },
+  "timings": {
+    "universe": 0.0153,
+    "slice": 0.156,
+    "residual": 0.3908,
+    "features": 3.1528,
+    "history": 0.2882,
+    "network": 7.555,
+    "clusters": 0.4327,
+    "attribution": 0.0192,
+    "observation": 0.0177,
+    "total": 12.028
+  }
+}

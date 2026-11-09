@@ -98,19 +98,22 @@ REM 独立落 stock_pick_db(strategy=w7_retest)，不改 w7_ab 主链；样本�
 REM 攒够 30 条后用 solo/_w7_ab_review.py 同套口径复检，再决定是否并入主链。
 REM 依赖 daily_cache（tushare_quant 已写入当日行情），故排在其后；失败不阻塞后续步骤。
 REM 日期取 daily_cache 最新交易日（run_all.bat 不接日期参数）
-for /f "usebackq delims=" %%d in (`python -c "import sqlite3;print(sqlite3.connect(r'd:\mystock\cache_daily\stock_data.db').execute('select max(trade_date) from daily_cache').fetchone()[0])"`) do set W7DATE=%%d
-echo [w7_retest] 使用交易日 %W7DATE%
-python solo\w7_retest_signal.py --date %W7DATE%
+echo [Step 5.3/7] W7 逆势缩量回踩低吸 —— 已停用（20261107）
+echo =============================================
+REM 20261107：w7_retest 已从跟踪库删除全部信号并下线每日生成任务。该策略注册 7 个交易日
+REM 仅产出 1 条信号，分月回测极不稳定（202607 -2.44%、202609 +3.22%、202610 -3.77%），
+REM 不构成成熟策略。w7_retest_signal.py 不再执行；如需恢复，取消下面三行的注释。
+rem for /f "usebackq delims=" %%d in (`python -c "import sqlite3;print(sqlite3.connect(r'd:\mystock\cache_daily\stock_data.db').execute('select max(trade_date) from daily_cache').fetchone()[0])"`) do set W7DATE=%%d
+rem echo [w7_retest] 使用交易日 %W7DATE%
+rem python solo\w7_retest_signal.py --date %W7DATE%
 echo.
 
-echo [Step 5.32/7] RB 底部抬高（中长线形态 + 主题共振）...
+echo [Step 5.32/7] RB 底部抬高 —— 已停用（20261107）
 echo =============================================
-REM 20261028 新增：中长下跌见底后回踩低点逐级抬高（≥4 次、累计 ≥20%）、MA20 上行、
-REM 短均线站上 MA60，买点落在抬高后的回踩位，持有 20~60 个交易日。
-REM 主题联动：今日命中池内同题材家数越多，综合分越高（技术分 + 0~15 主题分）。
-REM 依赖 daily_cache（tushare_quant 已写入当日行情），排在其后；失败不阻塞后续步骤。
-REM 脚本自身会落库(stock_pick_db strategy=rb_trend, replace=True)，并单独发一封邮件日报。
-python solo\rising_bottom_select.py
+REM 20261107：rb_trend 经全策略横向对比确认为负超额（超额 -0.50%、胜率 25.8%、盈亏比 0.78），
+REM 已从跟踪库删除全部信号并下线每日生成任务。rising_bottom_select.py 及其邮件报告不再执行。
+REM 如需恢复，取消下面一行的注释并把上面的停用说明一并还原。
+rem python solo\rising_bottom_select.py
 echo.
 
 echo [Step 5.35/7] 入场信号记分卡（追加进 Final_Self，含与昨日对比）...

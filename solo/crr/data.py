@@ -397,19 +397,20 @@ def build_industry_returns(panel: PricePanel, label_by_code: dict,
         if c in r.columns and lab:
             groups.setdefault(lab, []).append(c)
 
-    ind_ret = pd.DataFrame(index=r.index)
-    valid_labels = set()
+    # 一次性构造，避免逐列 insert 触发 DataFrame 碎片化（行业数多时每条都发警告且明显变慢）
+    ind_cols, valid_labels = {}, set()
     for lab, codes in groups.items():
         if len(codes) >= min_members:
-            ind_ret[lab] = r[codes].median(axis=1)
+            ind_cols[lab] = r[codes].median(axis=1)
             valid_labels.add(lab)
+    ind_ret = pd.DataFrame(ind_cols, index=r.index)
     ind_ret.index.name = "trade_date"
 
-    stock_ind_ret = pd.DataFrame(np.nan, index=r.index, columns=r.columns)
-    for lab, codes in groups.items():
-        if lab in valid_labels:
-            for c in codes:
-                stock_ind_ret[c] = ind_ret[lab]
+    lab_of_code = {c: lab for lab, codes in groups.items()
+                   if lab in valid_labels for c in codes}
+    stock_ind_ret = pd.DataFrame(
+        {c: ind_ret[lab] for c, lab in lab_of_code.items()}, index=r.index
+    ).reindex(index=r.index, columns=r.columns)
     return ind_ret, stock_ind_ret
 
 

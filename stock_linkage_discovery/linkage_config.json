@@ -1,0 +1,197 @@
+{
+  "_note": "A股全市场个股动态联动发现引擎 V2.0 配置。所有阈值均在此配置，代码内不得硬编码业务阈值。",
+  "version": "2.0-phase1",
+
+  "paths": {
+    "market_db": "D:/mystock/cache_daily/stock_data.db",
+    "stock_basic_csv": "D:/mystock/cache_daily/stock_basic.csv",
+    "namechg_glob": "D:/mystock/cache_daily/treasure_namechg_*.parquet",
+    "westock_db": "D:/mystock/data/westock_cache/westock.db",
+    "kpl_db": "D:/mystock/cache_daily/kpl.db",
+    "picks_db": "D:/mystock/solo/picks_db/stock_picks.db",
+    "linkage_db": "D:/mystock/stock_linkage_discovery/data/linkage.db",
+    "output_dir": "D:/mystock/stock_linkage_discovery/output",
+    "log_dir": "D:/mystock/stock_linkage_discovery/logs"
+  },
+
+  "data": {
+    "price_adjust": "hfq",
+    "_price_adjust_note": "统一用 close * adj_factor 构造后复权价；缺因子时回退 daily_cache.pct_chg 并在质量报告中计数",
+    "amount_unit": "thousand_cny",
+    "load_buffer_days": 200,
+    "max_load_days": 420,
+    "market_benchmark": "ALL_A_EQUAL_WEIGHT",
+    "_market_benchmark_note": "全A等权日收益（as-of 只用当日有效行情股票）。实测比中证全指更能剔除中小盘共振：高残差相关对占比 4.0%->2.5%。可选 000985.CSI / ALL_A_CIRC_MV_WEIGHT",
+    "market_fallback": "ALL_A_CIRC_MV_WEIGHT",
+    "industry_source": "stock_basic.csv:industry",
+    "_industry_note": "当前行业快照非 PIT，仅用于双调整残差与事后归因，绝不用于单调整主网络",
+    "winsor_return": 0.25,
+    "min_valid_ratio_60d": 0.90,
+    "min_industry_members": 3
+  },
+
+  "universe": {
+    "board_prefix": ["60", "68", "00", "30"],
+    "exclude_bj": true,
+    "exclude_st": true,
+    "min_listed_trade_days": 60,
+    "min_avg_amount_20": 30000,
+    "_min_avg_amount_20_note": "单位千元，30000 = 3000万元",
+    "max_suspension_days_20": 4,
+    "require_quote_on_asof": true,
+    "max_abs_pct_chg": 0.35,
+    "_max_abs_pct_chg_note": "单日绝对涨跌幅超此值视为异常行情，剔除当日样本",
+    "limit_up_main": 0.098,
+    "limit_up_gem_star": 0.198,
+    "limit_up_st": 0.048,
+    "_limit_note": "无 stk_limit 表，用板块近似阈值识别涨跌停事件，仅作行为特征"
+  },
+
+  "features": {
+    "return_windows": [5, 10, 20, 60],
+    "amount_windows": [5, 10, 20],
+    "ma_windows": [5, 10, 20, 60],
+    "vol_up_multiple": 1.8,
+    "vol_down_multiple": 1.8,
+    "vol_shrink_multiple": 0.7,
+    "breakout_lookback": 20,
+    "pullback_window": 5,
+    "rs_window": 20,
+    "drawdown_window": 20,
+    "event_strength_clip": [0.0, 3.0]
+  },
+
+  "residual": {
+    "_note": "严格因果滚动回归：第 t 日的 beta 仅用 t 之前的 lookback 日估计，不使用未来数据",
+    "lookback": 60,
+    "min_obs": 40,
+    "ridge": 0.0001,
+    "models": ["market", "market_industry"],
+    "primary_network": "market",
+    "_primary_network_note": "仅剔市场因子的残差为主网络，保留跨行业真实共同驱动；双调整网络作稳健性校验",
+    "clip_residual": 0.20
+  },
+
+  "linkage": {
+    "long_window": 60,
+    "mid_window": 20,
+    "short_window": 10,
+    "corr_threshold_20": 0.55,
+    "corr_threshold_10": 0.60,
+    "require_both_windows": false,
+    "_require_both_windows_note": "false=20日或10日任一达标即可建边（利于早期发现）；true=两窗口同时达标",
+    "min_effective_sample": 15,
+    "min_cluster_size": 4,
+    "max_candidates_per_stock": 30,
+    "prescreen_min_similarity": 0.45,
+    "candidate_block_size": 512,
+    "max_candidate_pairs": 400000,
+    "min_edge_score": 0.45,
+    "_min_edge_score_note": "EdgeScore 是综合分；残差相关阈值/FDR/可靠性/群体密度另有多重把关，此处不宜过严以免漏掉早期新联动",
+    "min_reliability": 0.45,
+    "min_dual_network_corr": 0.45,
+    "_min_dual_network_corr_note": "硬门槛：边必须在【市场+行业双调整残差】上仍有足够相关，防止把行业共振当新联动；跨行业群体的行业因子互不相同，不会被过度剔除",
+    "min_long_window_corr": 0.25,
+    "_min_long_window_corr_note": "60日长窗口残差相关下限，避免仅凭一次短窗口相关建立长期关系",
+    "min_corr_stability": 0.55,
+    "_min_corr_stability_note": "60日切成3段20日，相关波动不能过大",
+    "lead_lag_lags": [1, 2, 3],
+    "event_sync_window": 1,
+    "fdr_alpha": 0.05,
+    "permutation_benchmarks": 24,
+    "edge_weights": {
+      "residual_sync": 0.34,
+      "event_sync": 0.18,
+      "volume_sync": 0.14,
+      "trend_similarity": 0.18,
+      "lead_lag": 0.16
+    },
+    "networks": ["market", "market_industry"]
+  },
+
+  "cluster": {
+    "algorithm": "louvain",
+    "_algorithm_note": "检测到 igraph/leidenalg 时自动升级为 leiden，否则使用 networkx.louvain_communities",
+    "resolution": 1.0,
+    "seed": 42,
+    "min_size": 4,
+    "max_size": 60,
+    "min_density": 0.28,
+    "min_mean_edge_score": 0.50,
+    "identity_overlap": 0.30,
+    "_identity_overlap_note": "与昨日/5日前/10日前群体做成员+边重叠匹配，避免同一群体每天改名",
+    "persistence_days": 2,
+    "emerging_history_days": 20,
+    "emerging_new_edge_ratio": 0.35,
+    "emerging_min_positive_residual": 3,
+    "emerging_max_age": 5,
+    "_emerging_max_age_note": "群体形成后 5 日内仍视为早期，可判 EMERGING_CLUSTER；避免成熟群体长期占坑",
+    "expansion_min_new_members": 1,
+    "strengthening_edge_delta": 0.05,
+    "decay_edge_delta": -0.08,
+    "freshness_halflife": 8.0,
+    "overheated_mean_ret_5": 0.30,
+    "overheated_mean_amount_ratio": 3.0
+  },
+
+  "scoring": {
+    "weights": {
+      "residual_sync": 20,
+      "volume_price_sync": 20,
+      "trend_similarity": 15,
+      "lead_lag_stability": 10,
+      "network_dynamics": 20,
+      "driver_confidence": 15
+    },
+    "grade_s_min_score": 62,
+    "grade_a_min_score": 48,
+    "grade_b_min_score": 32,
+    "max_display_clusters": 5,
+    "s_max_freshness_age": 15,
+    "s_min_improving_stocks": 3,
+    "a_min_followers": 1,
+    "a_min_mean_excess_5": -0.01,
+    "_a_min_mean_excess_5_note": "A级要求群体5日平均超额不能明显为负，避免整体走弱群体占位"
+  },
+
+  "attribution": {
+    "enabled": true,
+    "min_tag_coverage": 0.60,
+    "overrep_factor_high": 3.0,
+    "overrep_factor_medium": 1.8,
+    "min_evidence_stocks_high": 3,
+    "max_tags_per_cluster": 5,
+    "cross_sector_threshold": 0.50,
+    "pre_sector_lookback": 10,
+    "pre_sector_max_sector_excess": 0.025,
+    "pre_sector_min_positive_residual": 3
+  },
+
+  "observation": {
+    "enabled": true,
+    "strategy_ids": {
+      "HVT-BULL": ["hvt_bull_te", "hvt_bull"],
+      "W7": ["w7_ab", "w7_t20", "w7_hvt"],
+      "E08": ["e08"],
+      "VSW": ["vsw"]
+    },
+    "signal_lookback_days": 5,
+    "max_watch_stocks_per_cluster": 3
+  },
+
+  "report": {
+    "formats": ["markdown", "json", "csv"],
+    "max_clusters": 5,
+    "max_members_per_table": 12,
+    "float_digits": 3
+  },
+
+  "runtime": {
+    "log_level": "INFO",
+    "incremental": true,
+    "_incremental_note": "已存在 asof 快照默认跳过，--force 强制重算",
+    "strict_no_future_data": true,
+    "allow_synthetic_in_report": false,
+    "_allow_synthetic_note": "合成数据仅允许出现在 tests/ 单元测试中，永不得进入日报"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "events": 55,
+  "horizons": [
+    1,
+    3,
+    5,
+    10,
+    20
+  ],
+  "unique_formation_days": 19,
+  "dedup_dropped_overlapping_events": 5,
+  "by_state": {
+    "EMERGING_CLUSTER": {
+      "n": 23,
+      "T5_mean_excess": 0.02055,
+      "T5_win_rate": 0.7333,
+      "T5_tstat": 2.505,
+      "T5_n": 15,
+      "T10_mean_excess": 0.02308,
+      "T10_win_rate": 0.7692,
+      "T10_tstat": 1.987,
+      "T10_n": 13,
+      "T20_mean_excess": 0.0574,
+      "T20_win_rate": 0.6667,
+      "T20_tstat": 1.429,
+      "T20_n": 3,
+      "control_random_T10_excess": 0.0285,
+      "control_same_industry_T10_excess": 0.02365,
+      "control_similar_size_T10_excess": -0.00323
+    },
+    "LEADER_EXPANSION": {
+      "n": 1,
+      "T5_mean_excess": -0.0076,
+      "T5_win_rate": 0.0,
+      "T5_tstat": null,
+      "T5_n": 1,
+      "T10_mean_excess": 0.09087,
+      "T10_win_rate": 1.0,
+      "T10_tstat": null,
+      "T10_n": 1,
+      "T20_mean_excess": null,
+      "T20_win_rate": null,
+      "T20_tstat": null,
+      "T20_n": 0,
+      "control_random_T10_excess": NaN,
+      "control_same_industry_T10_excess": NaN,
+      "control_similar_size_T10_excess": NaN
+    },
+    "CLUSTER_STRENGTHENING": {
+      "n": 0
+    },
+    "ALL": {
+      "n": 55,
+      "T5_mean_excess": 0.01364,
+      "T5_win_rate": 0.6667,
+      "T5_tstat": 2.462,
+      "T5_n": 42,
+      "T10_mean_excess": 0.02794,
+      "T10_win_rate": 0.6486,
+      "T10_tstat": 3.06,
+      "T10_n": 37,
+      "T20_mean_excess": 0.07398,
+      "T20_win_rate": 0.6667,
+      "T20_tstat": 2.068,
+      "T20_n": 9,
+      "control_random_T10_excess": 0.01867,
+      "control_same_industry_T10_excess": -0.00424,
+      "control_similar_size_T10_excess": -0.01129
+    }
+  },
+  "by_regime": {
+    "BEAR": {
+      "n": 38,
+      "T10_mean_excess": 0.02461
+    },
+    "SIDEWAYS": {
+      "n": 17,
+      "T10_mean_excess": 0.03185
+    }
+  },
+  "verdict": "CONDITIONAL",
+  "reason": "样本内 T+10 超额 0.0279 (t=3.06)，但样本期仅 19 个形成日，缺独立样本外区间与严格多重检验校正，结论仅为条件性",
+  "cost_bp": 30,
+  "disclaimer": "回测为事后评估；实时发现链路严格 as-of。对照组为随机/同行业/同规模流动性股票组合，板块指数用行业等权代理。样本外区间与多重检验的严格 FDR 校正尚未完成，结论偏保守。"
+}

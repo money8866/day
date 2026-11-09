@@ -458,9 +458,21 @@ def _fill_concepts(codes):
     return len(updates)
 
 
-def _calc_tracking(bars, pick_date, base_close, stop_price, target_price):
+def _calc_tracking(bars, pick_date, base_close, stop_price, target_price, rules=None):
+    """跟踪收益与状态判定。
+
+    rules（可选，来自 stock_pick.indicators JSON，缺省行为与旧版完全一致）：
+      time_stop_days  时间止损：第 N 个交易日收盘仍 ACTIVE → EXPIRED，
+                      hit_date = 第 N 个交易日（N < TRACK_WINDOW 时生效）。
+    """
     if bars is None or bars.empty or not base_close:
         return None
+    rules = rules or {}
+    time_stop_days = rules.get('time_stop_days')
+    try:
+        time_stop_days = int(time_stop_days) if time_stop_days else 0
+    except (TypeError, ValueError):
+        time_stop_days = 0
     after = bars[bars['trade_date'] > pick_date].reset_index(drop=True)
     n = len(after)
     if n == 0:
@@ -487,6 +499,8 @@ def _calc_tracking(bars, pick_date, base_close, stop_price, target_price):
         hit = after[after['high'].astype(float) >= target_price]
         if len(hit):
             status, hit_date = 'TARGET_HIT', str(hit['trade_date'].iloc[0])
+    if status == 'ACTIVE' and 0 < time_stop_days < TRACK_WINDOW and n >= time_stop_days:
+        status, hit_date = 'EXPIRED', str(dates[time_stop_days - 1])
     if status == 'ACTIVE' and n >= TRACK_WINDOW:
         status = 'EXPIRED'
 
@@ -508,7 +522,7 @@ def update_tracking(lookback_days=120):
         _ensure_columns(conn)
         rows = conn.execute("""
             SELECT p.pick_date, p.strategy_id, p.ts_code, p.close,
-                   p.stop_price, p.target_price, t.status
+                   p.stop_price, p.target_price, t.status, p.indicators
             FROM stock_pick p
             LEFT JOIN pick_tracking t
               ON t.pick_date = p.pick_date AND t.strategy_id = p.strategy_id
@@ -536,9 +550,15 @@ def update_tracking(lookback_days=120):
         return 0
 
     updates = []
-    for pick_date, strategy_id, ts_code, close, stop_price, target_price, _ in tasks:
+    for pick_date, strategy_id, ts_code, close, stop_price, target_price, _, indicators in tasks:
+        try:
+            rules = json.loads(indicators) if indicators else {}
+            if not isinstance(rules, dict):
+                rules = {}
+        except (TypeError, ValueError):
+            rules = {}
         tr = _calc_tracking(bars_map.get(ts_code), pick_date, _f(close),
-                            _f(stop_price), _f(target_price))
+                            _f(stop_price), _f(target_price), rules)
         if tr is None:
             continue
         updates.append((

@@ -3068,9 +3068,11 @@ class RealtimeThemeMonitor:
                             print(f"⚠ V5 ND2扫描异常: {e}")
                         self.nd2_last_scan_time = time.time()
 
-                # ── 13:30-14:40 每10分钟「猎狐V4」盘中预检(实时价近似收盘,尾盘回落可能作废,14:50定稿为准) ──
+                # ── 13:30-14:40「猎狐V4」盘中预检 —— 已停用（20261107）──
+                # fox_v4 横向对比超额 -4.55%、胜率 18.8%，库内信号已删除；
+                # 盘中预检与 14:50 定稿扫描（含落库与推送）整体下线，恢复时还原条件即可。
                 pre_win = ((now.hour == 13 and now.minute >= 30) or (now.hour == 14 and now.minute < 50))
-                if not self._fox_done and pre_win and time.time() - self.fox_next_pre_time >= 600:
+                if False:  # was: if not self._fox_done and pre_win and time.time() - self.fox_next_pre_time >= 600:
                     self.fox_next_pre_time = time.time()
                     try:
                         self.scan_fox_v4(now, pre=True)
@@ -3079,8 +3081,8 @@ class RealtimeThemeMonitor:
                         print(f"⚠ 猎狐盘中预检异常: {e}")
                         traceback.print_exc()
 
-                # ── 14:50后执行「猎狐V4」定稿扫描(每交易日一次,实时价近似收盘) ──
-                if now.hour == 14 and now.minute >= 50 and not self._fox_done:
+                # ── 14:50后「猎狐V4」定稿扫描 —— 已停用（20261107）──
+                if False:  # was: if now.hour == 14 and now.minute >= 50 and not self._fox_done:
                     self._fox_done = True
                     self.fox_run_date = now.strftime('%Y%m%d')
                     try:

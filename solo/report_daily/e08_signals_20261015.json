@@ -1,7 +1,7 @@
 {
  "trade_date": "20261015",
  "universe": 2007,
- "signals": [],
- "watch": [],
- "early": []
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": []
 }

@@ -390,11 +390,20 @@ def compute_mispricing_panel(scan_date, panel, name_map=None,
     return f, meta
 
 
-def select_candidates(features, cfg=None):
-    """按主窗口跌幅初筛候选：ret{primary_window} <= -min_drop。
+def select_candidates(features, cfg=None, universe=None):
+    """按主窗口跌幅 + 归因主导性 + 股票池筛选候选。
 
-    只做跌幅门槛与「收益已知」过滤；specific_share / data_completeness 门控由 engine
-    依据 DECISION 决定，本模块不提前剔除，也不强制每日都有候选。
+    三道门槛：
+      1) 跌幅门槛：ret{primary_window} <= -min_drop（跌幅已知）；
+      2) 归因门槛：sys_dominant 或 ind_dominant 为真 —— 即跌幅主要由系统性
+         或行业性因素贡献（CRR 的核心前提：「因系统性/恐慌抛售导致过度下跌」）。
+         个股特异主导的下跌多由公司自身利空造成，不属于错杀，不进候选；
+         归因不可判（UNKNOWN）时同样不进候选（不臆造）；
+      3) 股票池：universe 给定时只保留池内代码（默认由 build_mispricing 传入
+         data.get_stock_pool()：沪深主板/创业板/科创板，排除北交所、退市、ST）。
+
+    剩余门控（specific_share 上限、data_completeness 下限）由 engine 依据
+    DECISION 决定，本模块不提前剔除，也不强制每日都有候选。
     """
     cfg = cfg or MISPRICING
     pw = int(cfg["primary_window"])
@@ -402,7 +411,23 @@ def select_candidates(features, cfg=None):
     if col not in features.columns:
         return features.iloc[0:0].copy()
     ok = (features[col] <= -float(cfg["min_drop"])) & features[col].notna()
-    return features[ok].copy()
+    out = features[ok].copy()
+    if out.empty:
+        return out
+    if universe is not None:
+        keep = out.index.astype(str).isin(set(universe))
+        out = out[keep]
+        if out.empty:
+            return out
+    dom = []
+    for c in ("sys_dominant", "ind_dominant"):
+        if c in out.columns:
+            dom.append(out[c].astype(str).str.lower().eq("true"))
+    if dom:
+        sys_ok = dom[0]
+        ind_ok = dom[1] if len(dom) > 1 else sys_ok
+        out = out[(sys_ok | ind_ok)]
+    return out
 
 
 def build_mispricing(scan_date, panel=None, name_map=None,
@@ -421,8 +446,17 @@ def build_mispricing(scan_date, panel=None, name_map=None,
     features, meta = compute_mispricing_panel(
         scan_date, panel, name_map=name_map, industry_map=industry_map, cfg=cfg
     )
-    candidates = select_candidates(features, cfg=cfg)
+    universe = D.get_stock_pool()["ts_code"].astype(str).tolist()
+    candidates = select_candidates(features, cfg=cfg, universe=universe)
     meta["n_candidates"] = int(len(candidates))
+    meta["n_drop_pass"] = int(
+        (features[f"ret{int(cfg['primary_window'])}"]
+         <= -float(cfg["min_drop"])).sum())
+    meta["universe"] = "data.get_stock_pool()：沪深主板/创业板/科创板，排除北交所、退市、ST"
+    meta["candidate_filters"] = (
+        f"跌幅 ret{int(cfg['primary_window'])}<=-{cfg['min_drop']} "
+        "+ 归因主导(系统或行业) + 股票池"
+    )
     return {
         "scan_date": D.norm_date(scan_date),
         "features": features,

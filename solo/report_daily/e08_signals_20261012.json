@@ -1,21 +1,76 @@
 {
  "trade_date": "20261012",
  "universe": 2077,
- "signals": [],
- "watch": [],
- "early": [
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
   {
    "code": "300072.SZ",
    "name": "海新能科",
+   "industry": "化工原料",
+   "grade": "观察",
+   "score": 15.0,
    "date_t0": "20261008",
-   "days_pullback": 2,
+   "date_entry": "20261012",
    "gap": 0.0116,
    "gap_top": 3.45,
-   "break_price": 3.95,
    "total_mv_wan": 916391.0,
+   "t0_pct": 11.37,
+   "t0_vol_mult": 7.23,
+   "n": 2,
    "vol_avg_ratio": 0.599,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.567,
+   "close": 3.9,
+   "entry": [
+    3.9,
+    3.9
+   ],
+   "hard_stop": 3.45,
+   "target1": 4.45,
+   "target2": 5.0,
+   "time_stop_days": 5,
+   "ma5": 3.67,
+   "winner": 0.6858,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2963.82 低于 MA20 3260.97"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 68.6%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.60×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.16%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 11.37%（≥7%）"
+    }
+   ]
   }
  ]
 }

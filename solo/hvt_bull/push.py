@@ -517,11 +517,14 @@ def _right_bottom_section(md_text: str):
 
 
 def _compose_email(md_text: str, ai_text: str, trade_date: str) -> str:
-    """邮件正文组装：一句话清单置顶 → 决策速览表 → 热点主题新增跟踪 → 右底低吸 → AI 白话复盘"""
+    """邮件正文组装：一句话清单置顶 → 决策速览表 → 热点主题新增跟踪 → AI 白话复盘
+
+    20261107 停用右底低吸（hvt_bull_rb）与中位低吸（hvt_bull_mh）：两节已从报告下线，
+    邮件不再拼接对应正文（原 _right_bottom_section 抽取逻辑保留但不再调用）。
+    """
     facts = _load_trigger_facts(trade_date)
     head, body, rest = _extract_one_liner(_strip_ai_headings(ai_text))
     tw_head, tw_body = _theme_watch_section(md_text)
-    rb_head, rb_body = _right_bottom_section(md_text)
     parts = [f'# {trade_date} HVT-BULL 天量牛股决策简报', '']
     if body:
         parts += [f'## {head}', ''] + body + ['']
@@ -529,8 +532,6 @@ def _compose_email(md_text: str, ai_text: str, trade_date: str) -> str:
               _build_decision_table(md_text, facts), '']
     if tw_body:
         parts += [f'## {tw_head}', ''] + tw_body + ['']
-    if rb_body:
-        parts += [f'## {rb_head}', ''] + rb_body + ['']
     parts += ['## 白话复盘', '', rest]
     return '\n'.join(parts)
 

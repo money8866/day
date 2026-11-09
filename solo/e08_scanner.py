@@ -1,25 +1,30 @@
 # -*- coding: utf-8 -*-
-"""E08 全市场扫描器：跳空不补缺 → 缩量回踩 → 放量再突破
+"""E08 全市场扫描器：跳空不补缺 → 回踩第 2 日收盘埋伏（唯一买点）
 
-形态逻辑（强主升浪）：
-  主力借跳空缺口直接跨越阻力区/筹码密集区，回踩时抛压枯竭、缺口上沿成强支撑，
-  随后放量再突破开启第二波。
+形态逻辑：
+  主力借跳空缺口直接跨越阻力区/筹码密集区，回踩时抛压枯竭、缺口上沿成强支撑。
+  回测显示形态收益集中在「回踩末期 → 放量再突破」这一跳，等再突破确认后买入已无超额，
+  故 20261107 起全策略只保留一个买点：T0 之后第 2 个交易日（nd=2）收盘。
+  不再产出「放量再突破」「回踩中跟踪池」「早鸟池」等其它信号。
 
-三阶段硬性条件（数值阈值唯一来源见下方常量区）
-  阶段一 T0     : Low_T0 > High_T-1 且缺口幅度 >=GAP_MIN；T0 为放量阳线(涨幅>=T0_MIN_PCT 或涨停，
-                  量 >=T0_VOL_MULT×前T0_VOL_MA日均量)；位置为突破缺口(距LOW_WINDOW日低点涨幅 <RISE_FROM_LOW_MAX)
-  阶段二 T+1..N : N∈[PULLBACK_N_MIN, PULLBACK_N_MAX]；回踩期收盘价 >= High_T-1（缺口未回补，
-                  允许盘中下影短暂破位）；缩量（均量 <=PULLBACK_VOL_AVG_MAX×Vol_T0 或
-                  最低量 <=PULLBACK_VOL_MIN_MAX×Vol_T0）；无大阴线、波幅收窄；
-                  回踩期不创新高（<=High_T0×(1+PULLBACK_MAX_NEWHIGH)，排除连续一字板/连板）
-  阶段三 T+N+1  : 大阳线(涨幅>=REBRK_MIN_PCT 或涨停)，收盘 > 阶段一+二所有最高价；
-                  量 >=REBRK_VOL_MULT×回踩均量
+买点硬性条件（数值阈值唯一来源见下方常量区）
+  ① T0      : Low_T0 > High_T-1 且缺口幅度 >=GAP_MIN；T0 为放量阳线(涨幅>=T0_MIN_PCT 或涨停，
+              量 >=T0_VOL_MULT×前T0_VOL_MA日均量)；位置为突破缺口(距LOW_WINDOW日低点涨幅 <RISE_FROM_LOW_MAX)
+  ② T+1~T+2 : 回踩 2 日收盘价均 >= High_T-1（缺口未回补，允许盘中下影短暂破位）；
+              回踩均量 <=ENTRY_VOL_AVG_MAX×Vol_T0；无大阴线(单日跌幅 >=PULLBACK_MAX_PCT_DOWN)；
+              期间不创新高（<=High_T0×(1+PULLBACK_MAX_NEWHIGH)，排除连板）；
+              当日收盘不得已构成放量再突破（避免右侧追高）
+  ③ 买点    : T+2 收盘价即建仓价，且须高于缺口上沿 >=ENTRY_STOP_DIST_MIN（剔除止损贴成本的退化信号）；
+              硬止损 = High_T-1（缺口上沿，盘中跌破即补缺）；
+              时间止损 = 第 TIME_STOP_DAYS 个交易日收盘仍未达止盈① → 收盘了结
 
 输出
-  ① 今日 E08 完全符合信号（再突破日 = 最新交易日）→ 得分/评级/交易指令计划
-  ② 回踩中跟踪池（T0 已成立、缺口未补、缩量进行中、等待放量再突破）→ 次日盯盘候选
-  ③ 早鸟池（T0 刚成立、仅回踩 1~EARLY_N_MAX 天，尚未进入正式回踩窗口）→ 提前预警
-  ④ report_daily/e08_scan_{date}.md + report_daily/e08_signals_{date}.json
+  ① 今日 E08 买点清单（T+2 收盘）→ 得分/评级/交易指令计划
+  ② report_daily/e08_scan_{date}.md + report_daily/e08_signals_{date}.json
+  ③ 落库 picks_db/stock_picks.db（strategy_id=e08, signal=E08_回踩2日）
+
+说明：_stage2 / _stage3 / scan_stock 为旧三阶段口径的历史归档函数，保留供回测复用，
+      主流程不再调用（同 w7_second_wave_engine.py 旧形态函数的处理方式）。
 
 数据源：本地 stock_data.db（daily_cache + adj_factor_cache + index_daily_cache）优先，
         基本面/名称读 stock_basic.csv。个股日线/复权/基本面缺失不补网（零 API）；
@@ -43,7 +48,7 @@ import time
 import numpy as np
 import pandas as pd
 
-# 选股落库跟踪（失败不阻塞主流程）：完全符合信号 + 回踩中跟踪池 + 早鸟池 → picks_db/stock_picks.db
+# 选股落库跟踪（失败不阻塞主流程）：唯一买点（T+2 收盘）→ picks_db/stock_picks.db
 # 盘后由 `python stock_pick_db.py tracking` 回填 T+N 收益与胜率
 try:
     from stock_pick_db import record_picks as _PICK_RECORD
@@ -85,6 +90,14 @@ PULLBACK_MAX_NEWHIGH = 0.03  # 阶段二：期间最高价 <= T0最高价×(1+3%
 
 REBRK_MIN_PCT = 1.0          # 阶段三：再突破日涨幅下限 1%（或涨停）
 REBRK_VOL_MULT = 1.5         # 阶段三：量 >= 1.5 × 回踩均量
+
+# ── 唯一买点口径（20261107 起生效）──
+ENTRY_PULLBACK_DAYS = 2      # 买点固定为 T0 之后第 2 个交易日收盘（nd=2）
+ENTRY_VOL_AVG_MAX = 0.80     # 回踩 2 日均量 <= 0.80 × Vol_T0（与无前视回测口径一致）
+# 注：REBRK_MIN_PCT / REBRK_VOL_MULT 在新口径下仅用于「排除当日已再突破」，不再产生信号。
+ENTRY_STOP_DIST_MIN = 0.015  # 买点收盘须高于缺口上沿 ≥1.5%（止损贴成本≈0% 的退化信号直接剔除）
+TIME_STOP_DAYS = 5           # 时间止损：第 5 个交易日收盘仍未达止盈① → 收盘了结
+                             # （超额集中在「回踩末期→再突破」一跳，5 日不兑现即开始回吐）
 
 WATCH_N_MAX = PULLBACK_N_MAX + 1   # 跟踪池：已回踩天数上限（回踩天数含当日，信号 N=回踩天数-1）
 EARLY_N_MAX = PULLBACK_N_MIN       # 早鸟池：已回踩天数上限（尚不足正式回踩窗口，跳空后刚启动）
@@ -453,15 +466,63 @@ def scan_stock(a, i1):
     return signal, watch, early
 
 
+def scan_entry(a, i1):
+    """唯一买点：T0 之后第 2 个交易日（i1 = i0 + ENTRY_PULLBACK_DAYS）收盘。
+
+    几何判定用前复权比值（与 _stage1 一致），返回 detail dict 或 None。
+    口径与无前视历史回测中的 nd=2 埋伏点一致；旧三阶段函数仅供回测复用。
+    """
+    i0 = i1 - ENTRY_PULLBACK_DAYS
+    if i0 < 0:
+        return None
+    s1 = _stage1(a, i0)
+    if not s1:
+        return None
+    hp = a.qh[i0 - 1]
+    seg = slice(i0 + 1, i1 + 1)               # 回踩期 [T+1, T+2]（含当日）
+    closes, highs, vols, pcts = a.qc[seg], a.qh[seg], a.vol[seg], a.pct[seg]
+    if len(closes) != ENTRY_PULLBACK_DAYS or not np.isfinite(closes).all():
+        return None
+    close_min = float(np.nanmin(closes))
+    if close_min < hp:                         # 收盘回补缺口 → 形态失效
+        return None
+    if float(np.nanmax(highs)) > a.qh[i0] * (1.0 + PULLBACK_MAX_NEWHIGH):
+        return None                            # 期间创新高 → 连板/续涨，非真回踩
+    v0 = float(a.vol[i0])
+    v_avg = float(np.nanmean(vols))
+    if not (v0 > 0) or v_avg > ENTRY_VOL_AVG_MAX * v0:
+        return None                            # 缩量进行中
+    if float(np.nanmin(pcts)) < PULLBACK_MAX_PCT_DOWN:
+        return None                            # 大阴线砸盘
+    # 当日已放量再突破 → 属右侧追高，不在本买点口径内
+    if (np.isfinite(a.pct[i1]) and a.pct[i1] >= REBRK_MIN_PCT
+            and a.qc[i1] > np.nanmax(a.qh[i0:i1])
+            and a.vol[i1] >= REBRK_VOL_MULT * v_avg):
+        return None
+    # 买点距缺口上沿（硬止损）不足 ENTRY_STOP_DIST_MIN → 止损贴成本，次日随便一震即扫损，剔除
+    if a.qc[i1] < hp * (1.0 + ENTRY_STOP_DIST_MIN):
+        return None
+    return {
+        **s1,
+        'i0': int(i0), 'i1': int(i1), 'n': ENTRY_PULLBACK_DAYS,
+        'date_entry': str(a.dates[i1]),
+        'vol_avg': v_avg, 'vol_avg_ratio': float(v_avg / v0),
+        'vol_min_ratio': float(np.nanmin(vols) / v0),
+        'close_min': close_min,
+        'gap_hold': float(close_min / hp - 1.0),
+        'pb_high': float(np.nanmax(highs)),
+        'min_pct': float(np.nanmin(pcts)),
+    }
+
+
 # ─────────────────────────────────────────────
 # 评分与交易计划
 # ─────────────────────────────────────────────
 def score_signal(sig, ctx):
-    """按规范评分（满分 100）并给出评级与明细"""
+    """买点评分（满分 100）：板块 / 大盘 / 筹码 / 缩量 / 均线 / 缺口 / T0 强度"""
     items = []
     score = 0.0
 
-    # 板块效应 +20
     th = sig.get('theme_hit') or []
     if th:
         score += 20
@@ -471,14 +532,12 @@ def score_signal(sig, ctx):
     else:
         items.append(('板块效应', 0, '主题热度/映射数据缺失，本项未计'))
 
-    # 大盘环境 +15
     if ctx['index_ok']:
         score += 15
         items.append(('大盘环境', 15, ctx['index_desc']))
     else:
         items.append(('大盘环境', 0, ctx['index_desc']))
 
-    # 筹码结构 +15
     wr = sig.get('winner')
     if wr is not None and wr >= WINNER_STRONG:
         score += 15
@@ -488,35 +547,31 @@ def score_signal(sig, ctx):
     else:
         items.append(('筹码结构', 0, '窗口样本不足，无法估计'))
 
-    # 回踩极致度 +15
-    if sig['n'] == 2 and sig['vol_min_ratio'] < 0.30:
+    if sig['vol_avg_ratio'] < 0.45:
         score += 15
-        items.append(('回踩极致度', 15, '回踩仅 2 天且最低量 %.2f×T0量（<0.30×）' % sig['vol_min_ratio']))
+        items.append(('缩量极致', 15, '回踩 %d 日均量 %.2f×T0量（<0.45×）'
+                      % (sig['n'], sig['vol_avg_ratio'])))
     else:
-        items.append(('回踩极致度', 0, '回踩 %d 天，最低量 %.2f×T0量' % (sig['n'], sig['vol_min_ratio'])))
+        items.append(('缩量极致', 0, '回踩 %d 日均量 %.2f×T0量'
+                      % (sig['n'], sig['vol_avg_ratio'])))
 
-    # 首板/涨停属性 +15
-    if sig['t0_limit'] and sig['rb_limit']:
-        score += 15
-        items.append(('首板/涨停', 15, 'T0 与再突破日均为涨停板'))
-    else:
-        items.append(('首板/涨停', 0, 'T0 %s / 再突破日 %s' % (
-            '涨停' if sig['t0_limit'] else '非涨停',
-            '涨停' if sig['rb_limit'] else '非涨停')))
-
-    # 均线多头 +10
     if sig['ma']['bullish']:
         score += 10
         items.append(('均线多头', 10, 'MA5>MA10>MA20>MA60 标准多头排列'))
     else:
         items.append(('均线多头', 0, '均线未完全多头'))
 
-    # 缺口缓冲 +10
     if sig['gap'] > GAP_BUFFER_STRONG:
         score += 10
         items.append(('缺口缓冲', 10, '缺口幅度 %.2f%%（>3%%）' % (sig['gap'] * 100)))
     else:
         items.append(('缺口缓冲', 0, '缺口幅度 %.2f%%（<3%%）' % (sig['gap'] * 100)))
+
+    if sig['t0_limit'] or sig['t0_pct'] >= 7.0:
+        score += 15
+        items.append(('T0 强度', 15, 'T0 涨停或涨幅 %.2f%%（≥7%%）' % sig['t0_pct']))
+    else:
+        items.append(('T0 强度', 0, 'T0 涨幅 %.2f%%（<7%%）' % sig['t0_pct']))
 
     score = round(min(score, 100.0), 1)
     grade = 'S级' if score >= SCORE_S else ('A级' if score >= SCORE_A else
@@ -529,10 +584,10 @@ def build_plan(sig, a):
     close = float(a.c[-1])
     wave = sig['wave_raw']                     # 缺口浪高 = High_T0 - Low_T-1（原始价）
     return {
-        'entry_low': round(close * 0.97, 2),
-        'entry_high': round(close * 1.03, 2),
+        # 新口径：T+2 收盘价即建仓价，不再给 ±3% 参考区间
+        'entry_low': round(close, 2),
+        'entry_high': round(close, 2),
         'hard_stop': round(sig['gap_top_raw'], 2),      # 缺口上沿 = High_T-1（原始价）
-        'trail_stop': round(sig['body_mid_raw'], 2),    # T0 阳线实体半分位
         'target1': round(close + wave, 2),
         'target2': round(close + 2 * wave, 2),
         'ma5': round(sig['ma5_raw'], 2) if sig.get('ma5_raw') else None,
@@ -578,6 +633,7 @@ def _fmt_pct(x, digits=2):
 
 
 def render_signal_block(k, sig, score, grade, items, plan):
+    """单一买点（T+2 收盘）的展示块"""
     L = []
     L.append('### %d. %s %s ｜ %s（%.1f 分）' % (k, sig['code'], sig['name'], grade, score))
     tag = []
@@ -586,11 +642,11 @@ def render_signal_block(k, sig, score, grade, items, plan):
     if sig.get('total_mv'):
         tag.append('市值 %.0f亿' % (sig['total_mv'] / 10000.0))
     tag.append('缺口 %s' % _fmt_pct(sig['gap']))
-    tag.append('回踩 %d 天' % sig['n'])
-    tag.append('T0量 %.1fx' % sig['t0_vol_mult'])
+    tag.append('T0 %s' % sig['date_t0'])
+    tag.append('回踩均量 %.2fx T0量' % sig['vol_avg_ratio'])
     L.append('　'.join(tag))
     L.append('')
-    L.append('════════ 阶段特征拆解 ════════')
+    L.append('════════ 形态拆解 ════════')
     L.append('阶段一 跳空突破（T0 = %s）' % sig['date_t0'])
     L.append('  缺口：Low %.2f > 前日 High %.2f ｜ 缺口幅度 %s（阈值 %.2f%%）'
              % (sig['low_t0_raw'], sig['gap_top_raw'], _fmt_pct(sig['gap']), GAP_MIN * 100))
@@ -599,22 +655,14 @@ def render_signal_block(k, sig, score, grade, items, plan):
     L.append('  位置：距 %d 日低点 %+.1f%%（上限 +%.0f%%）｜ 平台突破属性：%s'
              % (LOW_WINDOW, sig['rise_from_low'] * 100, RISE_FROM_LOW_MAX * 100,
                 '是' if sig['platform_break'] else '否'))
-    L.append('阶段二 缩量回踩（%d 日）' % sig['n'])
+    L.append('阶段二 缩量回踩（T+1 ~ T+%d，共 %d 日）' % (sig['n'], sig['n']))
     L.append('  缺口防守：回踩期最低收盘 %.2f ≥ 缺口上沿 %.2f（未回补，富余 %s；允许盘中下影破位）'
              % (sig['close_min_raw'], sig['gap_top_raw'], _fmt_pct(sig['gap_hold'])))
-    L.append('  回踩约束：回踩期最高 %.2f ≤ T0 最高 %.2f×%.2f（未创新高，属真回踩）'
-             % (sig['pullback_high_raw'], sig['t0_high_raw'], 1.0 + PULLBACK_MAX_NEWHIGH))
-    L.append('  极度缩量：均量 %.2fx T0量 ｜ 最低量 %.2fx T0量（阈值 ≤%.2fx / ≤%.2fx）'
-             % (sig['vol_avg_ratio'], sig['vol_min_ratio'],
-                PULLBACK_VOL_AVG_MAX, PULLBACK_VOL_MIN_MAX))
-    L.append('  实体收敛：最大日内波幅 %.1f%%（≤%.0f%%）｜ 最弱单日涨跌 %+.2f%%（≥%.0f%%）'
-             % (sig['max_range'] * 100, PULLBACK_MAX_RANGE * 100,
+    L.append('  回踩约束：期间最高 %.2f ≤ T0 最高 %.2f×%.2f（未创新高）｜ 最弱单日 %+.2f%%（≥%.0f%%）'
+             % (sig['pb_high_raw'], sig['t0_high_raw'], 1.0 + PULLBACK_MAX_NEWHIGH,
                 sig['min_pct'], PULLBACK_MAX_PCT_DOWN))
-    L.append('阶段三 放量再突破（%s）' % sig['date_rb'])
-    L.append('  收盘 %.2f > 阶段一+二最高价 %.2f ｜ 涨幅 %+.2f%%（阈值 ≥%.1f%% 或涨停）'
-             ' ｜ 量能 %.2fx 回踩均量（阈值 %.1fx）'
-             % (sig['rb_close_raw'], sig['prior_high_raw'], sig['rb_pct'],
-                REBRK_MIN_PCT, sig['rb_vol_mult'], REBRK_VOL_MULT))
+    L.append('  缩量：均量 %.2fx ｜ 最低量 %.2fx T0量（阈值 ≤%.2fx）'
+             % (sig['vol_avg_ratio'], sig['vol_min_ratio'], ENTRY_VOL_AVG_MAX))
     L.append('')
     L.append('──────── 形态得分明细 ────────')
     for name, val, why in items:
@@ -622,25 +670,24 @@ def render_signal_block(k, sig, score, grade, items, plan):
     L.append('  合计 %.1f / 100 → %s' % (score, grade))
     L.append('')
     L.append('──────── 交易指令计划 ────────')
-    L.append('  形态判定    完全符合（E08 三阶段硬性条件全部满足）')
-    L.append('  参考建仓区  %.2f ~ %.2f（现价 %.2f ±3%%；回踩不破缺口上沿为低吸区）'
-             % (plan['entry_low'], plan['entry_high'], plan['close']))
-    L.append('  硬止损      %.2f（缺口上沿，跌破=缺口封闭，无条件清仓）' % plan['hard_stop'])
-    L.append('  移动止损    %.2f（T0 阳线实体半分位，收盘跌破执行）' % plan['trail_stop'])
-    L.append('  时间止损    入场后 3 个交易日未创新高，无条件离场')
-    L.append('  止盈目标①   %.2f（现价 + 1.0×缺口浪高 %.2f）' % (plan['target1'], plan['target1'] - plan['close']))
-    L.append('  止盈目标②   %.2f（现价 + 2.0×缺口浪高）' % plan['target2'])
-    L.append('  动态止盈    放量滞涨长上影，或跌破 MA5（%s）时分批止盈'
+    L.append('  买点      T0 后第 %d 日收盘 %.2f（当日收盘即建仓价，不追放量再突破）'
+             % (sig['n'], plan['close']))
+    L.append('  硬止损    %.2f（缺口上沿＝T-1 最高价，盘中跌破即缺口封闭，无条件清仓）'
+             % plan['hard_stop'])
+    L.append('  止盈目标① %.2f（建仓价 + 1.0×缺口浪高 %.2f）'
+             % (plan['target1'], plan['target1'] - plan['close']))
+    L.append('  止盈目标② %.2f（建仓价 + 2.0×缺口浪高）' % plan['target2'])
+    L.append('  时间止损  第 %d 个交易日收盘仍未达止盈① → 当日收盘了结（超额集中在再突破一跳，不拖长）'
+             % TIME_STOP_DAYS)
+    L.append('  动态止盈  放量滞涨长上影，或跌破 MA5（%s）时分批止盈'
              % ('%.2f' % plan['ma5'] if plan['ma5'] else '数据缺失'))
-    L.append('  买点提示    买点一：盘中放量突破 T0 最高价 %.2f 瞬间；买点二：临近收盘(14:45后)'
-             '确认放量大阳成立。' % plan['t0_high'])
     L.append('')
     return L
 
 
-def render(signals, watch, early, date, meta):
+def render(signals, date, meta):
     L = []
-    L.append('# E08 跳空不补缺 → 缩量回踩 → 放量再突破 ｜ 全市场扫描')
+    L.append('# E08 跳空不补缺 → 回踩第 %d 日收盘埋伏 ｜ 全市场扫描' % ENTRY_PULLBACK_DAYS)
     L.append('')
     L.append('交易日 %s ｜ 股池 %d ｜ 载入窗口 %d 交易日 ｜ 生成 %s'
              % (date, meta['universe'], meta['lookback'], meta['now']))
@@ -653,73 +700,34 @@ def render(signals, watch, early, date, meta):
     else:
         L.append('主题热度数据不可用（%s）→ 板块效应项一律计 0' % meta['theme_reason'])
     L.append('')
-    L.append('════════ 一、今日 E08 完全符合信号（再突破日 = %s）════════' % date)
+    L.append('════════ 今日 E08 买点（T0 后第 %d 日收盘 = %s，共 %d 只）════════'
+             % (ENTRY_PULLBACK_DAYS, date, len(signals)))
     L.append('')
     if signals:
         for k, (sig, score, grade, items, plan) in enumerate(signals, 1):
             L.extend(render_signal_block(k, sig, score, grade, items, plan))
     else:
-        L.append('今日无完全符合 E08 硬性条件的标的（跳空不补缺 + %d~%d 日缩量回踩 + 放量再突破同日成立）。'
-                 % (PULLBACK_N_MIN, PULLBACK_N_MAX))
+        L.append('今日无符合 E08 买点条件的标的（跳空不补缺 + 回踩 %d 日缩量不补缺 + 当日未再突破）。'
+                 % ENTRY_PULLBACK_DAYS)
         L.append('')
-    L.append('════════ 二、回踩中跟踪池（等待放量再突破，次日盯盘候选）════════')
-    L.append('')
-    if watch:
-        for k, w in enumerate(watch, 1):
-            L.append('### %d. %s %s ｜ 已回踩 %d 天%s'
-                     % (k, w['code'], w['name'], w['days_pullback'],
-                        (' ｜ 市值 %.0f亿' % (w['total_mv'] / 10000.0)) if w.get('total_mv') else ''))
-            L.append('  T0 %s：缺口 %s ｜ 涨幅 %+.2f%% ｜ 量能 %.2fx ｜ 距60日低点 %+.1f%%'
-                     % (w['date_t0'], _fmt_pct(w['gap']), w['t0_pct'],
-                        w['t0_vol_mult'], w['rise_from_low'] * 100))
-            L.append('  缺口上沿 %.2f（回踩期最低收盘距其 %s，未回补）｜ 回踩均量 %.2fx T0量'
-                     % (w['gap_top_raw'], _fmt_pct(w['gap_hold']), w['vol_avg_ratio']))
-            L.append('  触发条件：放量站上 T0 最高价 %.2f 且收盘 > 阶段最高价 → 当日构成 E08 再突破买点'
-                     % w['break_price_raw'])
-            L.append('  失效条件：任一交易日收盘跌破缺口上沿 %.2f（缺口回补）即出局观察'
-                     % w['gap_top_raw'])
-            L.append('  时间窗口：最早可完成于 T+%d，最后有效日 T+%d（回踩超 %d 日胜率大幅衰减，当前已 %d 日）'
-                     % (w['earliest_in'], w['latest_in'], PULLBACK_N_MAX, w['days_pullback']))
-            L.append('')
-    else:
-        L.append('无处于回踩跟踪窗口内的标的。')
-        L.append('')
-    L.append('════════ 三、早鸟池（跳空后刚启动回踩 1~%d 天，提前预警）════════' % EARLY_N_MAX)
-    L.append('')
-    if early:
-        for k, w in enumerate(early, 1):
-            L.append('### %d. %s %s ｜ 已回踩 %d 天%s'
-                     % (k, w['code'], w['name'], w['days_pullback'],
-                        (' ｜ 市值 %.0f亿' % (w['total_mv'] / 10000.0)) if w.get('total_mv') else ''))
-            L.append('  T0 %s：缺口 %s ｜ 涨幅 %+.2f%% ｜ 量能 %.2fx ｜ 距60日低点 %+.1f%%'
-                     % (w['date_t0'], _fmt_pct(w['gap']), w['t0_pct'],
-                        w['t0_vol_mult'], w['rise_from_low'] * 100))
-            L.append('  缺口上沿 %.2f（回踩期最低收盘距其 %s，未回补）｜ 回踩均量 %.2fx T0量'
-                     % (w['gap_top_raw'], _fmt_pct(w['gap_hold']), w['vol_avg_ratio']))
-            L.append('  关注条件：放量站上 T0 最高价 %.2f 且收盘 > 阶段最高价 → 当日构成 E08 再突破买点'
-                     % w['break_price_raw'])
-            L.append('  失效条件：任一交易日收盘跌破缺口上沿 %.2f（缺口回补）即出局观察'
-                     % w['gap_top_raw'])
-            L.append('  时间窗口：最早可完成于 T+%d，最后有效日 T+%d（当前仅回踩 %d 天，尚未进入正式回踩窗口）'
-                     % (w['earliest_in'], w['latest_in'], w['days_pullback']))
-            L.append('')
-    else:
-        L.append('无处于早鸟窗口内的标的。')
-        L.append('')
-    L.append('════════ 四、口径与参数说明 ════════')
+    L.append('════════ 口径与参数说明 ════════')
+    L.append('买点（唯一）：T0 之后第 %d 个交易日收盘，当日收盘价即建仓价。'
+             '不再产出放量再突破 / 回踩中跟踪池 / 早鸟池等其它信号。' % ENTRY_PULLBACK_DAYS)
     L.append('硬性条件：缺口 ≥%.2f%% ｜ T0 涨幅 ≥%.1f%%（或涨停）且量 ≥%.1fx 前%d日均量 ｜ '
-             '距%d日低点涨幅 <%.0f%%' % (GAP_MIN * 100, T0_MIN_PCT, T0_VOL_MULT, T0_VOL_MA,
-                                        LOW_WINDOW, RISE_FROM_LOW_MAX * 100))
-    L.append('　　　　　回踩 %d~%d 日 ｜ 收盘不破缺口上沿（允许盘中下影破位）｜ 期间不创新高(≤T0最高×%.2f) ｜ '
-             '均量 ≤%.2fx 或 最低量 ≤%.2fx T0量 ｜ 单日跌幅 ≥%.0f%% 且振幅 ≤%.0f%%'
-             % (PULLBACK_N_MIN, PULLBACK_N_MAX, 1.0 + PULLBACK_MAX_NEWHIGH,
-                PULLBACK_VOL_AVG_MAX, PULLBACK_VOL_MIN_MAX,
-                PULLBACK_MAX_PCT_DOWN, PULLBACK_MAX_RANGE * 100))
-    L.append('　　　　　再突破日涨幅 ≥%.1f%%（或涨停）｜ 收盘 > 阶段一+二最高价 ｜ 量 ≥%.1fx 回踩均量'
+             '距%d日低点涨幅 <%.0f%%'
+             % (GAP_MIN * 100, T0_MIN_PCT, T0_VOL_MULT, T0_VOL_MA,
+                LOW_WINDOW, RISE_FROM_LOW_MAX * 100))
+    L.append('　　　　　回踩 %d 日收盘均 ≥ 缺口上沿（未回补，允许盘中下影破位）｜ 期间不创新高(≤T0最高×%.2f) ｜ '
+             '均量 ≤%.2fx T0量 ｜ 单日跌幅 ≥%.0f%%'
+             % (ENTRY_PULLBACK_DAYS, 1.0 + PULLBACK_MAX_NEWHIGH,
+                ENTRY_VOL_AVG_MAX, PULLBACK_MAX_PCT_DOWN))
+    L.append('　　　　　排除：当日已放量再突破（涨幅 ≥%.1f%% 且收盘 > 阶段最高 且量 ≥%.1fx 回踩均量）'
              % (REBRK_MIN_PCT, REBRK_VOL_MULT))
-    L.append('　　　　　清单分栏：① 完全符合信号（再突破日=当日）｜ ② 回踩池（已回踩 %d~%d 天，'
-             '进入正式窗口）｜ ③ 早鸟池（已回踩 1~%d 天，跳空后刚启动，提前预警）'
-             % (EARLY_N_MAX + 1, WATCH_N_MAX, EARLY_N_MAX))
+    L.append('　　　　　剔除：买点收盘距缺口上沿 <%.1f%%（止损贴成本≈0%%，次日一震即扫损的退化信号）'
+             % (ENTRY_STOP_DIST_MIN * 100))
+    L.append('风控：硬止损 = 缺口上沿（T-1 最高价，盘中跌破即补缺，无条件清仓）；'
+             '止盈① = 建仓价 + 1.0×缺口浪高；'
+             '时间止损 = 第 %d 个交易日收盘仍未达止盈①即了结。' % TIME_STOP_DAYS)
     L.append('口径提示：几何量（缺口/最高最低价比较）用前复权价，量能与涨跌幅用原始口径，'
              '交易指令价格换算回原始价。')
     L.append('　　　　　获利盘比例为本地近似（近 %d 日成交量加权、成本<=现价占比），'
@@ -828,17 +836,16 @@ def send_email(md_text, trade_date, subject, subtitle='', mail_to=MAIL_TO):
 # 统一选股库落库（picks_db/stock_picks.db）
 # ─────────────────────────────────────────────
 PICK_STRATEGY_ID = 'e08'
-PICK_STRATEGY_NAME = 'E08 跳空不补缺·缩量回踩'
+PICK_STRATEGY_NAME = 'E08 跳空不补缺·回踩第2日收盘买点'
+PICK_SIGNAL = 'E08_回踩2日'
 
 
-def record_e08_picks(date, signals, watch_list, early_list=()):
-    """把当日「完全符合信号」「回踩中跟踪池」「早鸟池」落统一选股库。
+def record_e08_picks(date, signals):
+    """只落唯一买点（T0 后第 2 日收盘）到统一选股库。
 
-    strategy_id='e08'，signal 字段区分 E08_再突破 / E08_回踩中 / E08_早鸟；
-    止损位用缺口上沿，触发位（target）用 T0 最高价；跟踪回填由
-    `python stock_pick_db.py tracking` 完成。落库失败不阻塞主流程。
-    同一标的先入早鸟、后入回踩池属正常（分属不同 pick_date 快照，
-    当日内早鸟/回踩互斥：回踩天数 ≤EARLY_N_MAX 归早鸟，其余归回踩池）。
+    strategy_id='e08'，signal 固定为 E08_回踩2日；止损位用缺口上沿，
+    目标位用建仓价 + 1.0×缺口浪高；跟踪回填由 `python stock_pick_db.py tracking` 完成。
+    replace=True 按 (pick_date, strategy_id) 覆盖当日旧记录，重跑幂等。
     """
     if _PICK_RECORD is None:
         print('[e08-db] stock_pick_db 不可用，跳过落库', flush=True)
@@ -847,67 +854,35 @@ def record_e08_picks(date, signals, watch_list, early_list=()):
     for i, (s, sc, g, _items, plan) in enumerate(signals, 1):
         rows.append({
             'ts_code': s['code'], 'stock_name': s['name'], 'industry': s['industry'],
-            'close': plan['close'], 'pct_chg': round(s['rb_pct'], 2),
-            'signal': 'E08_再突破', 'action': '再突破买点·%s' % g,
+            'close': plan['close'], 'pct_chg': round(s['entry_pct'], 2),
+            'signal': PICK_SIGNAL, 'action': '回踩第%d日收盘买点·%s' % (s['n'], g),
             'score': sc, 'rank_no': i,
-            'reason': '缺口+%.2f%% T0涨幅+%.2f%% 回踩%d日 再突破量%.2fx' % (
-                s['gap'] * 100, s['t0_pct'], s['n'], s['rb_vol_mult']),
+            'reason': '缺口+%.2f%% T0涨幅+%.2f%% 回踩%d日均量%.2fx 收盘不补缺' % (
+                s['gap'] * 100, s['t0_pct'], s['n'], s['vol_avg_ratio']),
             'stop_price': plan['hard_stop'], 'target_price': plan['target1'],
             # 自有字段（自动打包进 indicators JSON）
-            'grade': g, 'date_t0': s['date_t0'], 'date_rb': s['date_rb'],
+            'grade': g, 'date_t0': s['date_t0'], 'date_entry': s['date_entry'],
             'gap_pct': round(s['gap'] * 100, 2), 'gap_top': round(s['gap_top_raw'], 3),
             'break_price': round(s['t0_high_raw'], 3), 'pullback_n': s['n'],
             'vol_avg_ratio': round(s['vol_avg_ratio'], 3),
             'vol_min_ratio': round(s['vol_min_ratio'], 3),
             't0_vol_mult': round(s['t0_vol_mult'], 2),
-            'rb_vol_mult': round(s['rb_vol_mult'], 2),
             'ma_bullish': s['ma']['bullish'], 'theme_hit': s['theme_hit'],
             'winner': (round(s['winner'], 4) if s['winner'] is not None else None),
             'total_mv_wan': (round(s['total_mv'], 0) if s.get('total_mv') else None),
             'entry_low': plan['entry_low'], 'entry_high': plan['entry_high'],
-            'trail_stop': plan['trail_stop'], 'target2': plan['target2'],
-        })
-    for i, w in enumerate(watch_list, 1):
-        rows.append({
-            'ts_code': w['code'], 'stock_name': w['name'], 'industry': w['industry'],
-            'close': w['close_raw'], 'pct_chg': round(w['pct_raw'], 2),
-            'signal': 'E08_回踩中', 'action': '跟踪·等待放量再突破',
-            'rank_no': i,
-            'reason': '缺口+%.2f%% T0涨幅+%.2f%% 已回踩%d日 均量%.2fx' % (
-                w['gap'] * 100, w['t0_pct'], w['days_pullback'], w['vol_avg_ratio']),
-            'stop_price': round(w['gap_top_raw'], 3),
-            'target_price': round(w['break_price_raw'], 3),
-            'date_t0': w['date_t0'], 'days_pullback': w['days_pullback'],
-            'gap_pct': round(w['gap'] * 100, 2), 'gap_top': round(w['gap_top_raw'], 3),
-            'break_price': round(w['break_price_raw'], 3),
-            'vol_avg_ratio': round(w['vol_avg_ratio'], 3),
-            'earliest_in': w['earliest_in'], 'latest_in': w['latest_in'],
-            'total_mv_wan': (round(w['total_mv'], 0) if w.get('total_mv') else None),
-        })
-    for i, e in enumerate(early_list, 1):
-        rows.append({
-            'ts_code': e['code'], 'stock_name': e['name'], 'industry': e['industry'],
-            'close': e['close_raw'], 'pct_chg': round(e['pct_raw'], 2),
-            'signal': 'E08_早鸟', 'action': '早鸟预警·回踩未满窗，观察量能收敛',
-            'rank_no': i,
-            'reason': '缺口+%.2f%% T0涨幅+%.2f%% 已回踩%d日(早鸟) 均量%.2fx' % (
-                e['gap'] * 100, e['t0_pct'], e['days_pullback'], e['vol_avg_ratio']),
-            'stop_price': round(e['gap_top_raw'], 3),
-            'target_price': round(e['break_price_raw'], 3),
-            'date_t0': e['date_t0'], 'days_pullback': e['days_pullback'],
-            'gap_pct': round(e['gap'] * 100, 2), 'gap_top': round(e['gap_top_raw'], 3),
-            'break_price': round(e['break_price_raw'], 3),
-            'vol_avg_ratio': round(e['vol_avg_ratio'], 3),
-            'earliest_in': e['earliest_in'], 'latest_in': e['latest_in'],
-            'total_mv_wan': (round(e['total_mv'], 0) if e.get('total_mv') else None),
+            'target2': plan['target2'],
+            # 跟踪扩展规则（stock_pick_db._calc_tracking 识别）：
+            # time_stop_days 到期未达止盈① → EXPIRED
+            'time_stop_days': TIME_STOP_DAYS,
         })
     if not rows:
-        print('[e08-db] 今日无信号/回踩池/早鸟池，stock_pick_db 无写入', flush=True)
-        return 0
+        # 仍须调用 record_picks(空, replace=True)：清空当日旧口径残留信号
+        print('[e08-db] 今日无买点，清理当日旧口径记录', flush=True)
     n = _PICK_RECORD(PICK_STRATEGY_ID, PICK_STRATEGY_NAME, rows,
                      pick_date=date, replace=True)
-    print('[e08-db] stock_pick_db 写入 %d 条 (strategy=%s pick_date=%s)'
-          % (n, PICK_STRATEGY_ID, date), flush=True)
+    print('[e08-db] stock_pick_db 写入 %d 条 (strategy=%s signal=%s pick_date=%s)'
+          % (n, PICK_STRATEGY_ID, PICK_SIGNAL, date), flush=True)
     return n
 
 
@@ -975,7 +950,7 @@ def main():
     idx_desc_sh = ('%.2f vs MA20 %.2f' % (sh_c, sh_ma)) if sh_c else '数据缺失'
     idx_desc_gem = ('%.2f vs MA20 %.2f' % (gem_c, gem_ma)) if gem_c else '数据缺失'
 
-    signals, watch_list, early_list, universe = [], [], [], 0
+    signals, universe = [], 0
     codes = df['ts_code'].drop_duplicates().tolist()
     if args.limit:
         codes = codes[:args.limit]
@@ -1009,62 +984,39 @@ def main():
             continue
         a = Bars(code, gn)
         i1 = len(a) - 1
-        sig, watch, early = scan_stock(a, i1)
-        if not sig and not watch and not early:
+        sig = scan_entry(a, i1)
+        if not sig:
             continue
         n_ok += 1
         if args.verbose:
-            print('[e08] %s %s 命中%s' % (code, name,
-                  '信号' if sig else ('回踩池' if watch else '早鸟池')), flush=True)
+            print('[e08] %s %s 命中回踩第%d日买点'
+                  % (code, name, ENTRY_PULLBACK_DAYS), flush=True)
 
-        if sig:
-            i0, i1s = sig['i0'], sig['i1']
-            sig['code'], sig['name'], sig['industry'] = code, name or code, industry
-            sig['ma'] = ma_stack(a, i1)
-            sig['winner'] = winner_ratio(a, i1)
-            # 原始价口径（展示 + 交易指令；几何判定仍用前复权比值）
-            sig['t0_high_raw'] = float(a.h[i0])
-            sig['gap_top_raw'] = float(a.h[i0 - 1])                 # 缺口上沿 = High_T-1
-            sig['low_t0_raw'] = float(a.l[i0])
-            sig['close_min_raw'] = float(np.nanmin(a.c[i0 + 1:i1s]))  # 回踩期最低收盘（原始价，缺口防守）
-            sig['pullback_high_raw'] = float(np.nanmax(a.h[i0 + 1:i1s]))  # 回踩期最高（原始价）
-            sig['rb_close_raw'] = float(a.c[i1s])
-            sig['prior_high_raw'] = float(np.nanmax(a.h[i0:i1s]))
-            sig['body_mid_raw'] = float((a.o[i0] + a.c[i0]) / 2.0)   # T0 阳线实体半分位
-            sig['wave_raw'] = float(a.h[i0] - a.l[i0 - 1])           # 缺口浪高
-            sig['ma5_raw'] = float(np.nanmean(a.c[i1s - 4:i1s + 1])) if i1s >= 4 else None
-            sig['total_mv'] = (float(mv) if mv is not None else None)
-            hits = [t for t, _h in (theme_ctx['mapping'].get(code) or [])
-                    if theme_ctx.get('ready') and t in theme_ctx['top3_set']]
-            sig['theme_hit'] = hits
-            ok, desc = market_ctx(conn, date, code)
-            ctx = {'theme_ready': bool(theme_ctx.get('ready')), 'index_ok': ok, 'index_desc': desc}
-            score, grade, items = score_signal(sig, ctx)
-            plan = build_plan(sig, a)
-            sig['index_ok'], sig['index_desc'] = ok, desc
-            signals.append((sig, score, grade, items, plan))
-        if watch:
-            watch['code'], watch['name'], watch['industry'] = code, name or code, industry
-            wi0 = watch['i0']
-            watch['gap_top_raw'] = float(a.h[wi0 - 1])               # 缺口上沿（原始价）
-            watch['break_price_raw'] = float(a.h[wi0])               # T0 最高价（原始价）
-            watch['total_mv'] = (float(mv) if mv is not None else None)
-            watch['close_raw'] = float(a.c[i1])                      # 回踩日收盘（原始价，落库跟踪基准）
-            watch['pct_raw'] = float(a.pct[i1])                      # 回踩日涨跌幅（%）
-            watch_list.append(watch)
-        if early:
-            early['code'], early['name'], early['industry'] = code, name or code, industry
-            ei0 = early['i0']
-            early['gap_top_raw'] = float(a.h[ei0 - 1])               # 缺口上沿（原始价）
-            early['break_price_raw'] = float(a.h[ei0])               # T0 最高价（原始价）
-            early['total_mv'] = (float(mv) if mv is not None else None)
-            early['close_raw'] = float(a.c[i1])                      # 回踩日收盘（原始价，落库跟踪基准）
-            early['pct_raw'] = float(a.pct[i1])                      # 回踩日涨跌幅（%）
-            early_list.append(early)
+        i0 = sig['i0']
+        sig['code'], sig['name'], sig['industry'] = code, name or code, industry
+        sig['ma'] = ma_stack(a, i1)
+        sig['winner'] = winner_ratio(a, i1)
+        # 原始价口径（展示 + 交易指令；几何判定仍用前复权比值）
+        sig['t0_high_raw'] = float(a.h[i0])
+        sig['gap_top_raw'] = float(a.h[i0 - 1])                 # 缺口上沿 = High_T-1
+        sig['low_t0_raw'] = float(a.l[i0])
+        sig['close_min_raw'] = float(np.nanmin(a.c[i0 + 1:i1 + 1]))  # 回踩期最低收盘
+        sig['pb_high_raw'] = float(np.nanmax(a.h[i0 + 1:i1 + 1]))    # 回踩期最高
+        sig['wave_raw'] = float(a.h[i0] - a.l[i0 - 1])           # 缺口浪高
+        sig['ma5_raw'] = float(np.nanmean(a.c[i1 - 4:i1 + 1])) if i1 >= 4 else None
+        sig['entry_pct'] = float(a.pct[i1])
+        sig['total_mv'] = (float(mv) if mv is not None else None)
+        hits = [t for t, _h in (theme_ctx['mapping'].get(code) or [])
+                if theme_ctx.get('ready') and t in theme_ctx['top3_set']]
+        sig['theme_hit'] = hits
+        ok, desc = market_ctx(conn, date, code)
+        ctx = {'theme_ready': bool(theme_ctx.get('ready')), 'index_ok': ok, 'index_desc': desc}
+        score, grade, items = score_signal(sig, ctx)
+        plan = build_plan(sig, a)
+        sig['index_ok'], sig['index_desc'] = ok, desc
+        signals.append((sig, score, grade, items, plan))
 
     signals.sort(key=lambda x: -x[1])
-    watch_list.sort(key=lambda w: (w['days_pullback'], -w['t0_vol_mult']))
-    early_list.sort(key=lambda w: (w['days_pullback'], -w['t0_vol_mult']))
 
     meta = {
         'universe': universe, 'lookback': len(dates), 'now': time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -1074,7 +1026,7 @@ def main():
         'theme_reason': theme_ctx.get('reason', ''),
         'theme_top3': theme_ctx.get('top3') or [],
     }
-    text = render(signals, watch_list, early_list, date, meta)
+    text = render(signals, date, meta)
     output = os.path.abspath(args.output or os.path.join(OUTPUT_DIR, 'e08_scan_%s.md' % date))
     os.makedirs(os.path.dirname(output), exist_ok=True)
     with open(output, 'w', encoding='utf-8') as fh:
@@ -1083,40 +1035,26 @@ def main():
     payload = {
         'trade_date': date,
         'universe': universe,
+        'caliber': 'entry_d2',
+        'signal': PICK_SIGNAL,
         'signals': [{
             'code': s['code'], 'name': s['name'], 'industry': s['industry'],
             'grade': g, 'score': sc,
-            'date_t0': s['date_t0'], 'date_rb': s['date_rb'],
+            'date_t0': s['date_t0'], 'date_entry': s['date_entry'],
             'gap': round(s['gap'], 4), 'gap_top': round(s['gap_top_raw'], 3),
             'total_mv_wan': (round(s['total_mv'], 0) if s.get('total_mv') else None),
             't0_pct': round(s['t0_pct'], 2), 't0_vol_mult': round(s['t0_vol_mult'], 2),
             'n': s['n'], 'vol_avg_ratio': round(s['vol_avg_ratio'], 3),
             'vol_min_ratio': round(s['vol_min_ratio'], 3),
-            'rb_pct': round(s['rb_pct'], 2), 'rb_vol_mult': round(s['rb_vol_mult'], 2),
             'close': plan['close'], 'entry': [plan['entry_low'], plan['entry_high']],
-            'hard_stop': plan['hard_stop'], 'trail_stop': plan['trail_stop'],
+            'hard_stop': plan['hard_stop'],
             'target1': plan['target1'], 'target2': plan['target2'],
+            'time_stop_days': TIME_STOP_DAYS,
             'ma5': plan['ma5'], 'winner': (round(s['winner'], 4) if s['winner'] is not None else None),
             'ma_bullish': s['ma']['bullish'], 'theme_hit': s['theme_hit'],
             'index_ok': s['index_ok'],
             'dims': [{'name': n_, 'score': v_, 'why': w_} for n_, v_, w_ in items],
         } for s, sc, g, items, plan in signals],
-        'watch': [{
-            'code': w['code'], 'name': w['name'], 'date_t0': w['date_t0'],
-            'days_pullback': w['days_pullback'], 'gap': round(w['gap'], 4),
-            'gap_top': round(w['gap_top_raw'], 3), 'break_price': round(w['break_price_raw'], 3),
-            'total_mv_wan': (round(w['total_mv'], 0) if w.get('total_mv') else None),
-            'vol_avg_ratio': round(w['vol_avg_ratio'], 3),
-            'earliest_in': w['earliest_in'], 'latest_in': w['latest_in'],
-        } for w in watch_list],
-        'early': [{
-            'code': w['code'], 'name': w['name'], 'date_t0': w['date_t0'],
-            'days_pullback': w['days_pullback'], 'gap': round(w['gap'], 4),
-            'gap_top': round(w['gap_top_raw'], 3), 'break_price': round(w['break_price_raw'], 3),
-            'total_mv_wan': (round(w['total_mv'], 0) if w.get('total_mv') else None),
-            'vol_avg_ratio': round(w['vol_avg_ratio'], 3),
-            'earliest_in': w['earliest_in'], 'latest_in': w['latest_in'],
-        } for w in early_list],
     }
     jpath = os.path.join(os.path.dirname(output), 'e08_signals_%s.json' % date)
     with open(jpath, 'w', encoding='utf-8') as fh:
@@ -1127,19 +1065,18 @@ def main():
     db_n = 0
     if not args.no_db:
         try:
-            db_n = record_e08_picks(date, signals, watch_list, early_list)
+            db_n = record_e08_picks(date, signals)
         except Exception as exc:
             print('[e08-db] 落库异常: %s' % exc, flush=True)
 
     stats = {'date': date, 'universe': universe, 'hit': n_ok,
-             'signals': len(signals), 'watch': len(watch_list), 'early': len(early_list),
+             'signals': len(signals), 'signal': PICK_SIGNAL,
              'db_written': db_n,
              'output': output, 'json': jpath, 'elapsed_s': round(time.time() - t0, 1)}
 
     if args.push:
-        subject = '%s E08 日报 ｜ 信号%d ｜ 回踩池%d ｜ 早鸟池%d' % (
-            date, len(signals), len(watch_list), len(early_list))
-        subtitle = '跳空不补缺 → 缩量回踩 → 放量再突破'
+        subject = '%s E08 日报 ｜ 回踩第%d日买点 %d 只' % (date, ENTRY_PULLBACK_DAYS, len(signals))
+        subtitle = '跳空不补缺 → 回踩第 %d 日收盘埋伏（唯一买点）' % ENTRY_PULLBACK_DAYS
         stats['mail_to'] = args.mail_to
         stats['mail_ok'] = send_email(text, date, subject, subtitle, mail_to=args.mail_to)
 

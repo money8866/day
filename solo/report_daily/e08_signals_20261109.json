@@ -1,0 +1,1164 @@
+{
+ "trade_date": "20261109",
+ "universe": 1993,
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
+  {
+   "code": "301061.SZ",
+   "name": "匠心家居",
+   "industry": "家居用品",
+   "grade": "观察",
+   "score": 40.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0111,
+   "gap_top": 39.66,
+   "total_mv_wan": 1238069.0,
+   "t0_pct": 15.8,
+   "t0_vol_mult": 2.71,
+   "n": 2,
+   "vol_avg_ratio": 0.639,
+   "vol_min_ratio": 0.632,
+   "close": 43.32,
+   "entry": [
+    43.32,
+    43.32
+   ],
+   "hard_stop": 39.66,
+   "target1": 52.13,
+   "target2": 60.94,
+   "time_stop_days": 5,
+   "ma5": 42.61,
+   "winner": 0.8806,
+   "ma_bullish": true,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2458.56 低于 MA20 2623.00"
+    },
+    {
+     "name": "筹码结构",
+     "score": 15,
+     "why": "获利盘 88.1%（>85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.64×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 10,
+     "why": "MA5>MA10>MA20>MA60 标准多头排列"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.11%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 15.80%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "000426.SZ",
+   "name": "兴业银锡",
+   "industry": "铅锌",
+   "grade": "观察",
+   "score": 25.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0399,
+   "gap_top": 24.04,
+   "total_mv_wan": 4336103.0,
+   "t0_pct": 7.86,
+   "t0_vol_mult": 2.05,
+   "n": 2,
+   "vol_avg_ratio": 0.492,
+   "vol_min_ratio": 0.419,
+   "close": 24.42,
+   "entry": [
+    24.42,
+    24.42
+   ],
+   "hard_stop": 24.04,
+   "target1": 29.23,
+   "target2": 34.04,
+   "time_stop_days": 5,
+   "ma5": 24.2,
+   "winner": 0.043,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 4.3%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.49×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 10,
+     "why": "缺口幅度 3.99%（>3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 7.86%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "002409.SZ",
+   "name": "雅克科技",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 25.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0323,
+   "gap_top": 83.66,
+   "total_mv_wan": 4081555.0,
+   "t0_pct": 7.22,
+   "t0_vol_mult": 2.22,
+   "n": 2,
+   "vol_avg_ratio": 0.607,
+   "vol_min_ratio": 0.544,
+   "close": 85.76,
+   "entry": [
+    85.76,
+    85.76
+   ],
+   "hard_stop": 83.66,
+   "target1": 102.28,
+   "target2": 118.8,
+   "time_stop_days": 5,
+   "ma5": 84.17,
+   "winner": 0.0355,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 3.5%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.61×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 10,
+     "why": "缺口幅度 3.23%（>3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 7.22%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "600988.SH",
+   "name": "赤峰黄金",
+   "industry": "黄金",
+   "grade": "观察",
+   "score": 25.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.055,
+   "gap_top": 34.54,
+   "total_mv_wan": 8420683.0,
+   "t0_pct": 8.8,
+   "t0_vol_mult": 1.56,
+   "n": 2,
+   "vol_avg_ratio": 0.627,
+   "vol_min_ratio": 0.509,
+   "close": 38.08,
+   "entry": [
+    38.08,
+    38.08
+   ],
+   "hard_stop": 34.54,
+   "target1": 44.53,
+   "target2": 50.98,
+   "time_stop_days": 5,
+   "ma5": 35.8,
+   "winner": 0.5252,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 52.5%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.63×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 10,
+     "why": "缺口幅度 5.50%（>3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 8.80%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "300724.SZ",
+   "name": "捷佳伟创",
+   "industry": "专用机械",
+   "grade": "观察",
+   "score": 15.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0105,
+   "gap_top": 57.26,
+   "total_mv_wan": 2046564.0,
+   "t0_pct": 9.16,
+   "t0_vol_mult": 2.91,
+   "n": 2,
+   "vol_avg_ratio": 0.58,
+   "vol_min_ratio": 0.467,
+   "close": 58.76,
+   "entry": [
+    58.76,
+    58.76
+   ],
+   "hard_stop": 57.26,
+   "target1": 70.65,
+   "target2": 82.54,
+   "time_stop_days": 5,
+   "ma5": 58.32,
+   "winner": 0.4218,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2458.56 低于 MA20 2623.00"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 42.2%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.58×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.05%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 9.16%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "601021.SH",
+   "name": "春秋航空",
+   "industry": "空运",
+   "grade": "观察",
+   "score": 15.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.016,
+   "gap_top": 43.25,
+   "total_mv_wan": 4301732.0,
+   "t0_pct": 5.68,
+   "t0_vol_mult": 1.96,
+   "n": 2,
+   "vol_avg_ratio": 0.423,
+   "vol_min_ratio": 0.315,
+   "close": 43.97,
+   "entry": [
+    43.97,
+    43.97
+   ],
+   "hard_stop": 43.25,
+   "target1": 47.38,
+   "target2": 50.79,
+   "time_stop_days": 5,
+   "ma5": 43.83,
+   "winner": 0.2984,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 29.8%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 15,
+     "why": "回踩 2 日均量 0.42×T0量（<0.45×）"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.60%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 5.68%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "603061.SH",
+   "name": "金海通",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 15.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0143,
+   "gap_top": 228.69,
+   "total_mv_wan": 2029623.0,
+   "t0_pct": 7.35,
+   "t0_vol_mult": 2.02,
+   "n": 2,
+   "vol_avg_ratio": 0.467,
+   "vol_min_ratio": 0.376,
+   "close": 233.29,
+   "entry": [
+    233.29,
+    233.29
+   ],
+   "hard_stop": 228.69,
+   "target1": 288.86,
+   "target2": 344.43,
+   "time_stop_days": 5,
+   "ma5": 230.14,
+   "winner": 0.0439,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 4.4%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.47×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.43%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 7.35%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "688200.SH",
+   "name": "华峰测控",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 15.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0267,
+   "gap_top": 218.53,
+   "total_mv_wan": 4477074.0,
+   "t0_pct": 7.99,
+   "t0_vol_mult": 2.28,
+   "n": 2,
+   "vol_avg_ratio": 0.595,
+   "vol_min_ratio": 0.456,
+   "close": 222.61,
+   "entry": [
+    222.61,
+    222.61
+   ],
+   "hard_stop": 218.53,
+   "target1": 292.55,
+   "target2": 362.49,
+   "time_stop_days": 5,
+   "ma5": 217.41,
+   "winner": 0.0686,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2458.56 低于 MA20 2623.00"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 6.9%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.59×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.67%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 7.99%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "688361.SH",
+   "name": "中科飞测",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 15.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0105,
+   "gap_top": 246.74,
+   "total_mv_wan": 9039632.0,
+   "t0_pct": 9.02,
+   "t0_vol_mult": 2.32,
+   "n": 2,
+   "vol_avg_ratio": 0.573,
+   "vol_min_ratio": 0.421,
+   "close": 256.77,
+   "entry": [
+    256.77,
+    256.77
+   ],
+   "hard_stop": 246.74,
+   "target1": 352.0,
+   "target2": 447.23,
+   "time_stop_days": 5,
+   "ma5": 248.0,
+   "winner": 0.2802,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2458.56 低于 MA20 2623.00"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 28.0%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.57×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.05%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 15,
+     "why": "T0 涨停或涨幅 9.02%（≥7%）"
+    }
+   ]
+  },
+  {
+   "code": "000506.SZ",
+   "name": "招金黄金",
+   "industry": "黄金",
+   "grade": "观察",
+   "score": 10.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.035,
+   "gap_top": 13.41,
+   "total_mv_wan": 1315489.0,
+   "t0_pct": 6.86,
+   "t0_vol_mult": 2.13,
+   "n": 2,
+   "vol_avg_ratio": 0.559,
+   "vol_min_ratio": 0.424,
+   "close": 14.16,
+   "entry": [
+    14.16,
+    14.16
+   ],
+   "hard_stop": 13.41,
+   "target1": 16.53,
+   "target2": 18.9,
+   "time_stop_days": 5,
+   "ma5": 13.61,
+   "winner": 0.3365,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 33.6%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.56×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 10,
+     "why": "缺口幅度 3.50%（>3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 6.86%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "000975.SZ",
+   "name": "山金国际",
+   "industry": "黄金",
+   "grade": "观察",
+   "score": 10.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0312,
+   "gap_top": 23.08,
+   "total_mv_wan": 6931318.0,
+   "t0_pct": 5.03,
+   "t0_vol_mult": 1.59,
+   "n": 2,
+   "vol_avg_ratio": 0.603,
+   "vol_min_ratio": 0.47,
+   "close": 25.0,
+   "entry": [
+    25.0,
+    25.0
+   ],
+   "hard_stop": 23.08,
+   "target1": 28.74,
+   "target2": 32.48,
+   "time_stop_days": 5,
+   "ma5": 23.58,
+   "winner": 0.7185,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 71.8%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.60×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 10,
+     "why": "缺口幅度 3.12%（>3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 5.03%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "300058.SZ",
+   "name": "蓝色光标",
+   "industry": "广告包装",
+   "grade": "观察",
+   "score": 10.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0301,
+   "gap_top": 12.61,
+   "total_mv_wan": 4667288.0,
+   "t0_pct": 6.62,
+   "t0_vol_mult": 2.28,
+   "n": 2,
+   "vol_avg_ratio": 0.731,
+   "vol_min_ratio": 0.654,
+   "close": 13.0,
+   "entry": [
+    13.0,
+    13.0
+   ],
+   "hard_stop": 12.61,
+   "target1": 14.85,
+   "target2": 16.7,
+   "time_stop_days": 5,
+   "ma5": 12.81,
+   "winner": 0.2535,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2458.56 低于 MA20 2623.00"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 25.4%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.73×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 10,
+     "why": "缺口幅度 3.01%（>3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 6.62%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "002155.SZ",
+   "name": "湖南黄金",
+   "industry": "黄金",
+   "grade": "观察",
+   "score": 0.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0109,
+   "gap_top": 19.32,
+   "total_mv_wan": 3159681.0,
+   "t0_pct": 4.76,
+   "t0_vol_mult": 1.85,
+   "n": 2,
+   "vol_avg_ratio": 0.6,
+   "vol_min_ratio": 0.422,
+   "close": 20.22,
+   "entry": [
+    20.22,
+    20.22
+   ],
+   "hard_stop": 19.32,
+   "target1": 23.11,
+   "target2": 26.0,
+   "time_stop_days": 5,
+   "ma5": 19.49,
+   "winner": 0.066,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 6.6%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.60×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.09%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 4.76%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "002371.SZ",
+   "name": "北方华创",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 0.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0159,
+   "gap_top": 535.5,
+   "total_mv_wan": 39659651.0,
+   "t0_pct": 4.76,
+   "t0_vol_mult": 1.75,
+   "n": 2,
+   "vol_avg_ratio": 0.628,
+   "vol_min_ratio": 0.499,
+   "close": 544.81,
+   "entry": [
+    544.81,
+    544.81
+   ],
+   "hard_stop": 535.5,
+   "target1": 647.43,
+   "target2": 750.05,
+   "time_stop_days": 5,
+   "ma5": 537.63,
+   "winner": 0.0821,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 8.2%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.63×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.59%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 4.76%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "002928.SZ",
+   "name": "华夏航空",
+   "industry": "空运",
+   "grade": "观察",
+   "score": 0.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0223,
+   "gap_top": 6.72,
+   "total_mv_wan": 885821.0,
+   "t0_pct": 5.86,
+   "t0_vol_mult": 1.58,
+   "n": 2,
+   "vol_avg_ratio": 0.593,
+   "vol_min_ratio": 0.565,
+   "close": 6.93,
+   "entry": [
+    6.93,
+    6.93
+   ],
+   "hard_stop": 6.72,
+   "target1": 7.62,
+   "target2": 8.31,
+   "time_stop_days": 5,
+   "ma5": 6.83,
+   "winner": 0.588,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 58.8%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.59×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.23%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 5.86%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "601069.SH",
+   "name": "西部黄金",
+   "industry": "黄金",
+   "grade": "观察",
+   "score": 0.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0226,
+   "gap_top": 23.42,
+   "total_mv_wan": 2226482.0,
+   "t0_pct": 4.4,
+   "t0_vol_mult": 1.96,
+   "n": 2,
+   "vol_avg_ratio": 0.566,
+   "vol_min_ratio": 0.496,
+   "close": 24.44,
+   "entry": [
+    24.44,
+    24.44
+   ],
+   "hard_stop": 23.42,
+   "target1": 28.26,
+   "target2": 32.08,
+   "time_stop_days": 5,
+   "ma5": 23.54,
+   "winner": 0.2967,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3660.79 低于 MA20 3686.48"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 29.7%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.57×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.26%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 4.40%（<7%）"
+    }
+   ]
+  },
+  {
+   "code": "688409.SH",
+   "name": "富创精密",
+   "industry": "半导体",
+   "grade": "观察",
+   "score": 0.0,
+   "date_t0": "20261105",
+   "date_entry": "20261109",
+   "gap": 0.0149,
+   "gap_top": 121.2,
+   "total_mv_wan": 3825492.0,
+   "t0_pct": 4.79,
+   "t0_vol_mult": 1.97,
+   "n": 2,
+   "vol_avg_ratio": 0.596,
+   "vol_min_ratio": 0.463,
+   "close": 124.93,
+   "entry": [
+    124.93,
+    124.93
+   ],
+   "hard_stop": 121.2,
+   "target1": 157.69,
+   "target2": 190.45,
+   "time_stop_days": 5,
+   "ma5": 119.93,
+   "winner": 0.067,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "399006.SZ 2458.56 低于 MA20 2623.00"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 6.7%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.60×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 1.49%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 4.79%（<7%）"
+    }
+   ]
+  }
+ ]
+}

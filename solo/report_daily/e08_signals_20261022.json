@@ -1,87 +1,76 @@
 {
  "trade_date": "20261022",
  "universe": 1977,
- "signals": [],
- "watch": [
-  {
-   "code": "688385.SH",
-   "name": "复旦微电",
-   "date_t0": "20261016",
-   "days_pullback": 4,
-   "gap": 0.0159,
-   "gap_top": 48.4,
-   "break_price": 56.76,
-   "total_mv_wan": 4225680.0,
-   "vol_avg_ratio": 0.383,
-   "earliest_in": 1,
-   "latest_in": 3
-  }
- ],
- "early": [
-  {
-   "code": "600267.SH",
-   "name": "海正药业",
-   "date_t0": "20261021",
-   "days_pullback": 1,
-   "gap": 0.0136,
-   "gap_top": 13.27,
-   "break_price": 14.28,
-   "total_mv_wan": 1612252.0,
-   "vol_avg_ratio": 0.453,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "603341.SH",
-   "name": "龙旗科技",
-   "date_t0": "20261021",
-   "days_pullback": 1,
-   "gap": 0.0123,
-   "gap_top": 38.26,
-   "break_price": 40.86,
-   "total_mv_wan": 2095599.0,
-   "vol_avg_ratio": 0.645,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "002428.SZ",
-   "name": "云南锗业",
-   "date_t0": "20261021",
-   "days_pullback": 1,
-   "gap": 0.0322,
-   "gap_top": 80.0,
-   "break_price": 86.5,
-   "total_mv_wan": 5226266.0,
-   "vol_avg_ratio": 0.726,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
-  {
-   "code": "600888.SH",
-   "name": "新疆众和",
-   "date_t0": "20261021",
-   "days_pullback": 1,
-   "gap": 0.0114,
-   "gap_top": 8.81,
-   "break_price": 9.23,
-   "total_mv_wan": 1382246.0,
-   "vol_avg_ratio": 0.591,
-   "earliest_in": 2,
-   "latest_in": 6
-  },
+ "caliber": "entry_d2",
+ "signal": "E08_回踩2日",
+ "signals": [
   {
    "code": "603859.SH",
    "name": "能科科技",
+   "industry": "软件服务",
+   "grade": "观察",
+   "score": 0.0,
    "date_t0": "20261020",
-   "days_pullback": 2,
+   "date_entry": "20261022",
    "gap": 0.0201,
    "gap_top": 38.82,
-   "break_price": 41.8,
    "total_mv_wan": 1054940.0,
+   "t0_pct": 4.56,
+   "t0_vol_mult": 4.68,
+   "n": 2,
    "vol_avg_ratio": 0.8,
-   "earliest_in": 1,
-   "latest_in": 5
+   "vol_min_ratio": 0.632,
+   "close": 39.6,
+   "entry": [
+    39.6,
+    39.6
+   ],
+   "hard_stop": 38.82,
+   "target1": 46.7,
+   "target2": 53.8,
+   "time_stop_days": 5,
+   "ma5": 39.2,
+   "winner": 0.2086,
+   "ma_bullish": false,
+   "theme_hit": [],
+   "index_ok": false,
+   "dims": [
+    {
+     "name": "板块效应",
+     "score": 0,
+     "why": "未属 Top3 主线"
+    },
+    {
+     "name": "大盘环境",
+     "score": 0,
+     "why": "000001.SH 3658.03 低于 MA20 3813.14"
+    },
+    {
+     "name": "筹码结构",
+     "score": 0,
+     "why": "获利盘 20.9%（<85%）"
+    },
+    {
+     "name": "缩量极致",
+     "score": 0,
+     "why": "回踩 2 日均量 0.80×T0量"
+    },
+    {
+     "name": "均线多头",
+     "score": 0,
+     "why": "均线未完全多头"
+    },
+    {
+     "name": "缺口缓冲",
+     "score": 0,
+     "why": "缺口幅度 2.01%（<3%）"
+    },
+    {
+     "name": "T0 强度",
+     "score": 0,
+     "why": "T0 涨幅 4.56%（<7%）"
+    }
+   ]
   }
  ]
 }

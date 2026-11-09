@@ -155,6 +155,8 @@ def _record_picks_to_db(trade_date: str, report: dict):
         print(f'[RUN-PUSH] stock_pick_db 写入失败(不影响推送): {e}')
 
 
+# 20261107 停用：hvt_bull_fe 落库已关闭（见 main() 内说明），本函数保留仅供恢复时使用，
+# 当前不再被调用；其依赖的 _fe_gate_rows / _executable_rows 同样处于未调用状态。
 def _record_first_echelon_to_db(trade_date: str, report: dict):
     """第一梯队（PRIMARY_BUY 结构层）单独跟踪：按档位拆成两个 strategy_id，互不混档
 
@@ -188,9 +190,10 @@ def _record_first_echelon_to_db(trade_date: str, report: dict):
         pool = kept
         if PICK_DB_PATH:
             os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
+        # 20261107 停用 hvt_bull_fe_watch（第一梯队·结构观察档，横向对比超额 -2.12%）：
+        # 不再落库，库内历史信号已删除；仅保留可执行档 hvt_bull_fe。
         for sid, sname, rows in (
             ('hvt_bull_fe', 'HVT-BULL 第一梯队·可执行档', _executable_rows(pool)),
-            ('hvt_bull_fe_watch', 'HVT-BULL 第一梯队·结构观察档', _watch_rows(pool)),
         ):
             # 20261014：replace=True —— 门后池（含空池）完整替换当日记录，旧残留一并清除
             n = record_picks(sid, sname, rows, pick_date=trade_date, replace=True,
@@ -207,83 +210,8 @@ def _record_first_echelon_to_db(trade_date: str, report: dict):
         print(f'[RUN-PUSH] hvt_bull_fe 写入失败(不影响推送): {e}')
 
 
-def _record_right_bottom_to_db(trade_date: str, report: dict):
-    """右底低吸（全市场单列）独立落库：strategy_id=hvt_bull_rb
-
-    20261008 用户口径：删除 sli_v2 龙头池/热点主题扩池准入后对全市场扫描，独立成节
-    （报告「I. 右底低吸信号」）。该池当日收盘即低吸买点（现价即买区），故 action 统一记
-    'RIGHT_BOTTOM'；与前两池 hvt_bull_te（TE 执行池）/ hvt_bull_fe（第一梯队）互不混档。
-    stop_price 取结构失效位=左底（前低，收盘跌破即离场）；其余右底结构字段经 record_picks
-    自动打包进 indicators（不改表结构）。
-    """
-    if record_picks is None or not report:
-        return
-    try:
-        pool = report.get('rb_offpool_pool') or []
-        if not pool:
-            print('[RUN-PUSH] rb_offpool_pool 为空（当日无右底低吸），跳过落库')
-            return
-        rows = []
-        for i, it in enumerate(pool, 1):
-            try:
-                rise = float(it.get('rb_prior_rise') or 0.0) * 100
-                ratio = float(it.get('rb_ratio') or 0.0)
-                volr = float(it.get('volr') or 0.0)
-                mve = float(it.get('circ_mv') or 0.0) / 10000.0
-            except (TypeError, ValueError):
-                rise, ratio, volr, mve = 0.0, 0.0, 0.0, 0.0
-            rows.append(dict(it, rank_no=i, action='RIGHT_BOTTOM',
-                             stop_price=it.get('rb_left_low'),
-                             reason=(f"右底低吸：前波涨幅{rise:.1f}%、右底/左底{ratio:.3f}、"
-                                     f"缩量{volr:.2f}×20日均量、流通市值{mve:.1f}亿")))
-        if PICK_DB_PATH:
-            os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
-        n = record_picks('hvt_bull_rb', 'HVT-BULL 右底低吸（全市场单列）', rows,
-                         pick_date=trade_date)
-        print(f'[RUN-PUSH] stock_pick_db 写入 {n}/{len(rows)} 条 '
-              f'(strategy=hvt_bull_rb pick_date={trade_date})')
-    except Exception as e:
-        print(f'[RUN-PUSH] hvt_bull_rb 写入失败(不影响推送): {e}')
-
-
-def _record_midline_hold_to_db(trade_date: str, report: dict):
-    """中位低吸（全市场单列）独立落库：strategy_id=hvt_bull_mh
-
-    20261009 用户口径：HVT-BULL 新增「低吸分支」——与右底低吸并列的第二种低吸结构，
-    判定复用 W7 的 midline_hold（放量长阳 ≥7% + 其后缩量回踩不破半分位），全市场扫描、
-    流通市值≥50亿、且须基于 HVT 入选（近 40 个交易日内存在合格天量事件）。该池当日收盘
-    即低吸买点（现价即买区），故 action 统一记 'MIDLINE_HOLD'；与 hvt_bull_te（TE 执行池）/
-    hvt_bull_fe（第一梯队）/ hvt_bull_rb（右底低吸）互不混档。
-    stop_price 取结构失效位=长阳半分位（收盘跌破即离场）；其余中位低吸字段经 record_picks
-    自动打包进 indicators（不改表结构）。
-    """
-    if record_picks is None or not report:
-        return
-    try:
-        pool = report.get('mh_offpool_pool') or []
-        if not pool:
-            print('[RUN-PUSH] mh_offpool_pool 为空（当日无中位低吸），跳过落库')
-            return
-        rows = []
-        for i, it in enumerate(pool, 1):
-            try:
-                up = float(it.get('mid_day_pct') or 0.0)
-                volr = float(it.get('volr') or 0.0)
-                mve = float(it.get('circ_mv') or 0.0) / 10000.0
-            except (TypeError, ValueError):
-                up, volr, mve = 0.0, 0.0, 0.0
-            rows.append(dict(it, rank_no=i, action='MIDLINE_HOLD',
-                             stop_price=it.get('mid_line'),
-                             reason=(f"中位低吸：长阳日{it.get('mid_date')} 涨幅{up:.1f}%、"
-                                     f"缩量{volr:.2f}×长阳量、流通市值{mve:.1f}亿")))
-        if PICK_DB_PATH:
-            os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
-        n = record_picks('hvt_bull_mh', 'HVT-BULL 中位低吸（全市场单列）', rows,
-                         pick_date=trade_date)
-        print(f'[RUN-PUSH] stock_pick_db 写入 {n}/{len(rows)} 条 '
-              f'(strategy=hvt_bull_mh pick_date={trade_date})')
-    except Exception as e:
-        print(f'[RUN-PUSH] hvt_bull_mh 写入失败(不影响推送): {e}')
+# 20261107 停用 hvt_bull_rb（右底低吸）/ hvt_bull_mh（中位低吸）：横向对比均为负超额，
+# 库内历史信号已删除，落库函数与每日调用一并移除。
 
 
 def main():
@@ -298,9 +226,12 @@ def main():
     from hvt_bull.daily import run_daily
     report = run_daily(trade_date=trade_date)
     _record_picks_to_db(trade_date, report)
-    _record_first_echelon_to_db(trade_date, report)
-    _record_right_bottom_to_db(trade_date, report)
-    _record_midline_hold_to_db(trade_date, report)
+    # 20261107 停用 hvt_bull_fe（第一梯队·可执行档）落库：83 个交易日 105 条第一梯队样本中
+    # next_day_action=BUY 仅 1 条（20261106 智翔金泰，HVT-C 被质量门拦下），其余 96% 为
+    # WAIT/NO_CHASE/BUY_ON_CONFIRM/SKIP，该策略结构上不可能产生样本，每日仅做 0 条空转写入。
+    # 报告「★ 第一梯队重点解读」展示不变，仅停止落库；如需恢复取消下面一行注释即可。
+    # _record_first_echelon_to_db(trade_date, report)
+    # 20261107 停用：hvt_bull_rb（右底低吸）、hvt_bull_mh（中位低吸）不再落库
     push_daily_report(trade_date=trade_date)
 
 

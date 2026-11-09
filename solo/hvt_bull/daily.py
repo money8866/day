@@ -358,7 +358,9 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     except Exception as _imp_err:
         print(f"[HVT-BULL] 右底低吸判定不可用（{_imp_err}），跳过扫描")
         _w7_right_bottom = None
-    if _w7_right_bottom is not None:
+    # 20261107 停用 hvt_bull_rb（右底低吸）：横向对比超额 -5.84%、胜率 20.8%、盈亏比 0.08，
+    # 库内历史信号已删除，每日扫描 / 报告 I 节 / 邮件行一并下线；rb_extra 恒为空。
+    if False:  # was: if _w7_right_bottom is not None:
         RB_MIN_CIRC_MV = 500_000.0  # 万元：流通市值 ≥50亿，与 W7 MIN_CIRC_MV 同口径
         _n_rb_geo = 0   # 通过右底几何的标的数
         _n_rb_hvt = 0   # 其中进一步满足 HVT 天量入选的
@@ -437,7 +439,9 @@ def run_daily(trade_date: str = None, cfg: dict = None, top_n: int = None) -> di
     except Exception as _imp_err:
         print(f"[HVT-BULL] 中位低吸判定不可用（{_imp_err}），跳过扫描")
         _w7_midline_hold = None
-    if _w7_midline_hold is not None:
+    # 20261107 停用 hvt_bull_mh（中位低吸）：横向对比超额 +0.45% 但胜率仅 46.8%、绝对收益 -1.07%，
+    # 库内历史信号已删除，每日扫描 / 报告 J 节 / 邮件行一并下线；mh_extra 恒为空。
+    if False:  # was: if _w7_midline_hold is not None:
         MH_MIN_CIRC_MV = 500_000.0  # 万元：流通市值 ≥50亿，与 W7 / 右底低吸同口径
         _n_mh_geo = 0   # 通过中位低吸几何的标的数
         _n_mh_hvt = 0   # 其中进一步满足 HVT 天量入选的
@@ -945,11 +949,8 @@ def _render_md(result: dict, all_events, detail_events, theme_meta=None) -> str:
     # ========== H2. 热点主题新增跟踪（V2.4 热点主题扩池纳入，独立成节） ==========
     lines.extend(_render_theme_watch(result, all_events, theme_meta))
 
-    # ========== I. 右底低吸信号（20261002 单列·全市场，20261008 删除龙头池阀门） ==========
-    lines.extend(_render_right_bottom(result))
-
-    # ========== J. 中位低吸信号（20261009 单列·全市场） ==========
-    lines.extend(_render_midline_hold(result))
+    # ========== I/J. 右底低吸、中位低吸（20261107 停用：hvt_bull_rb / hvt_bull_mh 下线） ==========
+    # 报告 I. 右底低吸信号、J. 中位低吸信号 两节不再输出。
 
     # ========== 全部事件明细（含 V3 双评分分解） ==========
     lines.append('## 全部事件明细（按 TAIL > EXPANSION > ENTRY > HVT分 排序）')
