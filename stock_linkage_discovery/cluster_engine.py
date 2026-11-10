@@ -41,6 +41,13 @@ class History:
     clusters_10d: pd.DataFrame | None = None
     age: dict[str, int] = field(default_factory=dict)
     cluster_dates: dict[str, str] = field(default_factory=dict)
+    # 时间平滑图所需的历史边（decay, DataFrame），严格早于 asof
+    smooth_edges: list[tuple[float, pd.DataFrame]] = field(default_factory=list)
+    # 各历史群体 id 对应的关联边集合，用于边重叠身份匹配
+    cluster_edges: dict[str, set[tuple[str, str]]] = field(default_factory=dict)
+    prev_edge_pairs: set[tuple[str, str]] = field(default_factory=set)
+    # 群体稳定核心成员：在其存续快照中出现频率达到阈值的股票，作为身份锚点
+    core_members: dict[str, set[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -84,14 +91,29 @@ def _overlap(a: set[str], b: set[str]) -> float:
     return len(a & b) / max(1, len(a | b))
 
 
-def _match_identity(members: set[str], history: History, cfg: dict[str, Any]) -> tuple[str | None, list[str]]:
+def _pairset(edges: pd.DataFrame | None, members: set[str] | None = None) -> set[tuple[str, str]]:
+    if edges is None or not len(edges):
+        return set()
+    out: set[tuple[str, str]] = set()
+    for a, b in zip(edges["a"].astype(str), edges["b"].astype(str)):
+        if members is not None and (a not in members or b not in members):
+            continue
+        out.add((a, b) if a < b else (b, a))
+        out.add((b, a) if a < b else (a, b))
+    return out
+
+
+def _match_identity(members: set[str], cur_pairs: set[tuple[str, str]],
+                    history: History, cfg: dict[str, Any]) -> tuple[str | None, list[str]]:
     """与昨日/5日前/10日前群体匹配身份，避免同一群体每天被重新命名。
 
-    相似度 = 0.72 * 成员 Jaccard + 0.28 * 跨日稳定核心成员覆盖率。
-    核心成员取该历史 id 在多个快照中的成员交集，对成员部分换血更鲁棒。
+    相似度同时考虑：成员 Jaccard、跨日稳定核心成员覆盖率、关联边 Jaccard。
+    成员因市场轮动部分换血时，关联边重叠往往是更稳定的身份锚点。
     """
     from collections import defaultdict
-    thr = float(cfg["cluster"].get("identity_overlap", 0.30))
+    ccfg = cfg["cluster"]
+    thr = float(ccfg.get("identity_overlap", 0.30))
+    w = ccfg.get("identity_weights", {"member": 0.55, "core": 0.20, "edge": 0.25})
     by_cid: dict[str, list[set[str]]] = defaultdict(list)
     for frame in (history.prev_clusters, history.clusters_5d, history.clusters_10d):
         if frame is None or not len(frame):
@@ -104,7 +126,19 @@ def _match_identity(members: set[str], history: History, cfg: dict[str, Any]) ->
         core = set.intersection(*sets) if len(sets) >= 2 else old
         jac = _overlap(members, old)
         cov = len(members & core) / max(1, len(core))
-        score = 0.72 * jac + 0.28 * cov
+        old_pairs = history.cluster_edges.get(cid, set())
+        ejac = (len(cur_pairs & old_pairs) / max(1, len(cur_pairs | old_pairs))
+                if old_pairs else 0.0)
+        score = (float(w.get("member", 0.55)) * jac
+                 + float(w.get("core", 0.20)) * cov
+                 + float(w.get("edge", 0.25)) * ejac)
+        # 稳定核心锚点：群体轮动时成员可能大面积换血，但存续期高频出现的
+        # 核心股通常保留。共享 >=2 只核心股即可确认身份，避免每天 BIRTH。
+        anchor = history.core_members.get(cid, set())
+        n_anchor = len(members & anchor)
+        min_anchor = int(ccfg.get("identity_core_anchor", 2))
+        if n_anchor >= min_anchor and (jac > 0.10 or ejac > 0.10):
+            score = max(score, thr + 0.05 * min(n_anchor, 4) + 0.20 * jac)
         if score >= thr:
             hits[cid] = max(hits.get(cid, 0.0), score)
     if not hits:
@@ -216,7 +250,8 @@ def linkage_score(m: dict[str, Any], cfg: dict[str, Any], driver_conf: str = "UN
 def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[str, Any],
                       history: History, driver_map: dict[str, dict] | None = None) -> ClusterSet:
     ccfg, scfg, acfg = cfg["cluster"], cfg["scoring"], cfg["attribution"]
-    communities, algo = _communities(net.graphs["market"], cfg)
+    gkey = "market_smoothed" if "market_smoothed" in net.graphs else "market"
+    communities, algo = _communities(net.graphs[gkey], cfg)
     log.info("社区发现 (%s): %d 个原始社区", algo, len(communities))
     out = ClusterSet(asof=s.asof)
     edges = net.edges
@@ -249,7 +284,8 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
             rejected["weak_edges"] = rejected.get("weak_edges", 0) + 1
             continue
 
-        prev_id, merged = _match_identity(set(members), history, cfg)
+        cur_pairs = _pairset(sub)
+        prev_id, merged = _match_identity(set(members), cur_pairs, history, cfg)
         age = history.age.get(prev_id, 0) + 1 if prev_id else 1
         cid = prev_id if prev_id and prev_id not in used_ids else f"C{s.asof}-{raw_clusters:03d}"
         used_ids.add(cid)
@@ -271,12 +307,13 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
         mean_ret5 = float(np.mean(fs.l("ret_5")[js]))
         mean_excess5 = float(np.mean(fs.l("excess_mkt_5")[js]))
 
-        # 历史对比：20 日前是否已存在稳定关联
-        old_pairs: set[tuple[str, str]] = set()
-        if history.edges_20d is not None and len(history.edges_20d):
-            old_pairs = set(zip(history.edges_20d["a"], history.edges_20d["b"]))
-        cur_pairs = set(zip(sub["a"], sub["b"])) | set(zip(sub["b"], sub["a"]))
+        # 历史对比：20 日前是否已存在稳定关联（双向配对，避免系统性低估）
+        old_pairs = _pairset(history.edges_20d)
         pre_existing_ratio = len(cur_pairs & old_pairs) / max(1, len(cur_pairs))
+        prev_pairs_in = {p for p in history.prev_edge_pairs
+                         if p[0] in members and p[1] in members}
+        density_prev = 2.0 * len(prev_pairs_in) / max(1, n * (n - 1))
+        density_delta = density - density_prev
 
         prev_members: set[str] = set()
         if history.prev_clusters is not None and len(history.prev_clusters) and prev_id:
@@ -293,12 +330,32 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
         # 过热 / 衰减
         overheated = (mean_ret5 > float(ccfg.get("overheated_mean_ret_5", 0.30))
                       or mean_amt_ratio > float(ccfg.get("overheated_mean_amount_ratio", 3.0)))
-        decaying = (mean_delta < float(ccfg.get("decay_edge_delta", -0.08))
-                    or (prev_members and len(lost_members) >= max(2, len(prev_members) * 0.4))
-                    or float(np.mean(fs.l("resid_cum_5")[js] < 0)) > 0.7)
 
-        # 状态判定
-        # 「新增关联关系持续至少 2 个交易日」指的是新关系本身要被跨日确认，
+        # 可比边口径：新增边没有昨日基值（delta=0），若混入会把「联动增强」系统性稀释到
+        # 0.01 量级，使 0.05 阈值永远无法触发。只对昨日已存在的边衡量强度变化。
+        persisted = sub[~sub["is_new"].astype(bool)] if "is_new" in sub else sub
+        mean_delta_p = float(persisted["edge_delta"].mean()) if len(persisted) else 0.0
+        mean_corr_delta = (float(persisted["corr_delta"].mean())
+                           if "corr_delta" in persisted and len(persisted) else 0.0)
+        st_cfg = ccfg.get("strengthening", {})
+        gw = st_cfg.get("weights", {"edge_delta": 0.50, "corr_delta": 0.30, "density_delta": 0.20})
+        gn = st_cfg.get("normalizers", {"edge_delta": 0.025, "corr_delta": 0.05, "density_delta": 0.20})
+        go = st_cfg.get("offsets", {"edge_delta": 0.005, "corr_delta": 0.010, "density_delta": 0.050})
+        vals = {"edge_delta": mean_delta_p, "corr_delta": mean_corr_delta,
+                "density_delta": density_delta}
+        gain_score = clip01(sum(float(gw.get(k, 0.0)) *
+                               clip01((v + float(go.get(k, 0.0))) / max(1e-9, float(gn.get(k, 1.0))))
+                               for k, v in vals.items()))
+        neg_resid_ratio = float(np.mean(fs.l("resid_cum_5")[js] < 0))
+        lost_ratio = len(lost_members) / max(1, len(prev_members)) if prev_members else 0.0
+        decay_thr = float(ccfg.get("decay_edge_delta", -0.015))
+        # 衰减必须有「关联真实走弱」的证据，不再仅凭成员换血或整体残差为负就判 DECAY
+        decaying = bool(
+            mean_delta_p < decay_thr
+            or (lost_ratio >= 0.4 and density_delta < 0 and mean_delta_p < 0)
+            or (neg_resid_ratio > 0.75 and mean_delta_p < 0 and density_delta < 0))
+
+        # 「新增关联关系持续至少 2 个交易日」指新关系本身被跨日确认，
         # 不能等价于「簇内所有边都连续 2 日」——那会让新群体第一天永远无法成立。
         persisted_edges = int((sub["streak_days"] >= 2).sum()) if "streak_days" in sub else 0
         emerging_ok = (
@@ -310,23 +367,35 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
             and (age >= int(ccfg.get("persistence_days", 2)) or persisted_edges >= 2)
         )
         young = age <= int(ccfg.get("emerging_max_age", 5))
+
+        # 三类机会并非互斥：同一群体可同时是新形成 + 正在强化。
+        # signals 保留全部标签供回测分组，state 只取一个主状态供日报展示。
+        signals: list[str] = []
+        if emerging_ok and (prev_id is None or young):
+            signals.append("EMERGING_CLUSTER")
+        if (prev_members and len(new_members) >= int(ccfg.get("expansion_min_new_members", 1))
+                and leader in members):
+            signals.append("LEADER_EXPANSION")
+        has_persisted = (history.prev_edges is not None
+                         and len(persisted) >= int(ccfg.get("strengthening_min_persisted_edges", 2)))
+        if (age >= int(ccfg.get("strengthening_min_age", 1)) and has_persisted
+                and gain_score >= float(st_cfg.get("min_gain", 0.50)) and not decaying):
+            signals.append("CLUSTER_STRENGTHENING")
+        if decaying:
+            signals.append("DECAYING_CLUSTER")
+        if overheated:
+            signals.append("OVERHEATED_CLUSTER")
+        priority = ("DECAYING_CLUSTER", "OVERHEATED_CLUSTER", "EMERGING_CLUSTER",
+                    "LEADER_EXPANSION", "CLUSTER_STRENGTHENING")
         if not history.available:
             state = "BASELINE_FIRST_SNAPSHOT"
-        elif decaying:
-            state = "DECAYING_CLUSTER"
-        elif overheated:
-            state = "OVERHEATED_CLUSTER"
-        elif emerging_ok and (prev_id is None or young):
-            state = "EMERGING_CLUSTER"
-        elif len(new_members) >= int(ccfg.get("expansion_min_new_members", 1)) and leader:
-            state = "LEADER_EXPANSION"
-        elif mean_delta > float(ccfg.get("strengthening_edge_delta", 0.05)):
-            state = "CLUSTER_STRENGTHENING"
-        else:
+        elif not signals:
             state = "EXISTING_CLUSTER"
+        else:
+            state = next((s for s in priority if s in signals), "EXISTING_CLUSTER")
 
-        stage = ("EARLY_STRENGTHENING" if age <= 5 and mean_delta > 0
-                 else "MATURE_STRENGTHENING" if mean_delta > 0 else "STABLE")
+        stage = ("EARLY_STRENGTHENING" if age <= 5 and mean_delta_p > 0
+                 else "MATURE_STRENGTHENING" if mean_delta_p > 0 else "STABLE")
         if state == "DECAYING_CLUSTER":
             stage = "DECAY"
         if state == "OVERHEATED_CLUSTER":
@@ -356,16 +425,16 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
         m = {
             "mean_resid_corr": mean_corr, "mean_event_sync": mean_event,
             "mean_volume_sync": mean_vol, "mean_trend_similarity": mean_trend,
-            "mean_lead_lag": mean_ll, "mean_edge_delta": mean_delta,
+            "mean_lead_lag": mean_ll, "mean_edge_delta": mean_delta_p,
             "new_edge_ratio": new_edge_ratio, "freshness": freshness,
             "expansion_score": clip01(expansion),
         }
         ls = linkage_score(m, cfg, driver_conf)
         reliability = clip01(0.4 * float(sub["edge_reliability"].mean())
                              + 0.3 * density + 0.3 * clip01(len(sub) / (n * 2)))
-        strengthening = clip01((mean_delta + 0.05) / 0.20)
-        decay_risk = clip01((-mean_delta) / 0.20 + len(lost_members) / max(1, n)
-                            + 0.3 * float(np.mean(fs.l("resid_cum_5")[js] < 0)))
+        strengthening = gain_score
+        decay_risk = clip01(max(0.0, -mean_delta_p) / 0.20 + len(lost_members) / max(1, n)
+                            + 0.3 * neg_resid_ratio)
         sample_risk = clip01(0.6 * (4.0 / n)
                              + 0.4 * float((sub["sample_n"] < 20).mean() if "sample_n" in sub else 0.0))
 
@@ -379,6 +448,10 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
             "age_days": age, "birth_date": birth, "density": round(density, 4),
             "n_edges": int(len(sub)), "new_edges": int(sub["is_new"].sum()) if "is_new" in sub else len(sub),
             "new_edge_ratio": round(new_edge_ratio, 4), "mean_edge_delta": round(mean_delta, 4),
+            "mean_edge_delta_persisted": round(mean_delta_p, 4),
+            "mean_corr_delta": round(mean_corr_delta, 4),
+            "density_delta": round(density_delta, 4), "gain_score": round(gain_score, 4),
+            "signals": signals,
             "mean_resid_corr": round(mean_corr, 4), "positive_resid_stocks": pos_resid,
             "improving_stocks": improving, "mean_excess_5": round(mean_excess5, 4),
             "mean_ret_5": round(mean_ret5, 4), "mean_amount_ratio": round(mean_amt_ratio, 4),
@@ -425,12 +498,18 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
             if lost_members:
                 events.append({"asof": s.asof, "cluster_id": cid, "event_type": "SPLIT",
                                "detail": {"removed": lost_members}})
-            if mean_delta > ccfg.get("strengthening_edge_delta", 0.05):
-                events.append({"asof": s.asof, "cluster_id": cid, "event_type": "STRENGTHEN",
-                               "detail": {"mean_edge_delta": round(mean_delta, 4)}})
-            if mean_delta < ccfg.get("decay_edge_delta", -0.08):
-                events.append({"asof": s.asof, "cluster_id": cid, "event_type": "DECAY",
-                               "detail": {"mean_edge_delta": round(mean_delta, 4)}})
+        # 强化/衰减是关系层面的信号，不依赖群体 id 是否延续；即使是新建 id，
+        # 只要簇内已有昨日可比边，也应完整记录生命周期事件。
+        if "CLUSTER_STRENGTHENING" in signals:
+            events.append({"asof": s.asof, "cluster_id": cid, "event_type": "STRENGTHEN",
+                           "detail": {"mean_edge_delta_persisted": round(mean_delta_p, 4),
+                                      "mean_corr_delta": round(mean_corr_delta, 4),
+                                      "density_delta": round(density_delta, 4),
+                                      "gain_score": round(gain_score, 4)}})
+        if "DECAYING_CLUSTER" in signals:
+            events.append({"asof": s.asof, "cluster_id": cid, "event_type": "DECAY",
+                           "detail": {"mean_edge_delta_persisted": round(mean_delta_p, 4),
+                                      "density_delta": round(density_delta, 4)}})
 
     out.members = pd.DataFrame(member_rows)
     out.events = events
@@ -451,8 +530,11 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
     out.clusters.sort(key=lambda x: (x["rank"] or 999, -x["priority"]))
 
     counts: dict[str, int] = {}
+    sig_counts: dict[str, int] = {}
     for c in out.clusters:
         counts[c["state"]] = counts.get(c["state"], 0) + 1
+        for sg in c.get("signals", []):
+            sig_counts[sg] = sig_counts.get(sg, 0) + 1
     out.stats = {
         "raw_communities": raw_clusters,
         "valid_clusters": len(out.clusters),
@@ -460,10 +542,11 @@ def discover_clusters(net: NetworkResult, s: Slice, fs: FeatureSet, cfg: dict[st
         "algorithm": algo,
         "grade_counts": {g: sum(1 for c in out.clusters if c["grade"] == g) for g in "SABC"},
         "state_counts": counts,
-        "emerging_clusters": counts.get("EMERGING_CLUSTER", 0),
-        "expanding_clusters": counts.get("LEADER_EXPANSION", 0),
-        "strengthening_clusters": counts.get("CLUSTER_STRENGTHENING", 0),
-        "decaying_clusters": counts.get("DECAYING_CLUSTER", 0),
+        "signal_counts": sig_counts,
+        "emerging_clusters": sig_counts.get("EMERGING_CLUSTER", 0),
+        "expanding_clusters": sig_counts.get("LEADER_EXPANSION", 0),
+        "strengthening_clusters": sig_counts.get("CLUSTER_STRENGTHENING", 0),
+        "decaying_clusters": sig_counts.get("DECAYING_CLUSTER", 0),
         "pre_sector_clusters": sum(1 for c in out.clusters if c["pre_sector_emergence"]),
         "new_edges_today": int(net.stats.get("new_edges", 0)),
         "history_available": history.available,
@@ -489,7 +572,8 @@ def _grade_from_rec(rec: dict[str, Any], cfg: dict[str, Any]) -> str:
     if state == "BASELINE_FIRST_SNAPSHOT":
         # 无历史网络时无法证明"新形成/正在扩散/持续强化"，最高只给统计观察级
         return "B" if rec["linkage_score"] >= float(scfg.get("grade_b_min_score", 32)) else "C"
-    strengthening = (rec.get("mean_edge_delta", 0) > 0
+    strengthening = (rec.get("mean_edge_delta_persisted", 0) > 0
+                     or rec.get("gain_score", 0) >= 0.5
                      or rec.get("new_edge_ratio", 0) > 0.3)
     if (state in ("EMERGING_CLUSTER", "LEADER_EXPANSION")
             or rec.get("stage") == "EARLY_STRENGTHENING") \
@@ -504,7 +588,8 @@ def _grade_from_rec(rec: dict[str, Any], cfg: dict[str, Any]) -> str:
     # A 级必须真的有扩散/强化迹象，不能只因为历史数据多就长期占位
     has_expansion = (rec.get("expansion_score", 0) > 0
                      or rec.get("new_members", []) != []
-                     or rec.get("mean_edge_delta", 0) > 0)
+                     or rec.get("mean_edge_delta_persisted", 0) > 0
+                     or rec.get("gain_score", 0) >= 0.5)
     if (rec["leader"] in rec["members"]
             and len(followers) >= int(scfg.get("a_min_followers", 1))
             and has_expansion

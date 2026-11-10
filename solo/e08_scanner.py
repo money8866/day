@@ -8,8 +8,10 @@
   不再产出「放量再突破」「回踩中跟踪池」「早鸟池」等其它信号。
 
 买点硬性条件（数值阈值唯一来源见下方常量区）
-  ① T0      : Low_T0 > High_T-1 且缺口幅度 >=GAP_MIN；T0 为放量阳线(涨幅>=T0_MIN_PCT 或涨停，
-              量 >=T0_VOL_MULT×前T0_VOL_MA日均量)；位置为突破缺口(距LOW_WINDOW日低点涨幅 <RISE_FROM_LOW_MAX)
+  ① T0      : Low_T0 > High_T-1 且 GAP_MIN<=缺口幅度<=GAP_MAX；T0 为放量阳线(涨幅>=T0_MIN_PCT 或涨停，
+              量 >=T0_VOL_MULT×前T0_VOL_MA日均量)；位置为突破缺口(距LOW_WINDOW日低点涨幅 <RISE_FROM_LOW_MAX)；
+              T0 前一日须为阳线且涨幅>=PREV_PCT_MIN（中阳以上），若前一日为长阳(>=PREV_LONG_PCT)
+              则其量须>=PREV_LONG_VOL_MIN×前5日均量（缩量长阳剔除，20261110 R7 标定）
   ② T+1~T+2 : 回踩 2 日收盘价均 >= High_T-1（缺口未回补，允许盘中下影短暂破位）；
               回踩均量 <=ENTRY_VOL_AVG_MAX×Vol_T0；无大阴线(单日跌幅 >=PULLBACK_MAX_PCT_DOWN)；
               期间不创新高（<=High_T0×(1+PULLBACK_MAX_NEWHIGH)，排除连板）；
@@ -72,6 +74,14 @@ GEM_INDEX = "399006.SZ"      # 创业板指（双创口径）
 # ─────────────────────────────────────────────
 LOOKBACK_BARS = 150          # 载入窗口交易日数（需覆盖 60日均线 + 120日筹码近似）
 GAP_MIN = 0.010              # 阶段一：缺口幅度下限 1.0%
+GAP_MAX = 0.040              # 阶段一：缺口幅度上限 4%（20261110 R7 标定：缺口>=4% 时前一日形态优势衰减，
+                             #   中阳+缺口1~2% 回踩均值 +8.03%/胜69%，缺口>=4% 掉到 +2.84%/胜54%）
+PREV_PCT_MIN = 3.0           # 阶段一：T0 前一日涨幅下限（中阳以上）。20261110 R7 标定：
+                             #   前一日中阳(3~7%) 回踩 MA5 均值 +8.05%/中位 +4.91%/胜66%（n=336，最优）；
+                             #   前一日阴线组中位 -6.33%/胜40%（n=113），典型「破位后反抽式跳空」，直接排除
+PREV_LONG_PCT = 7.0          # 前一日视为长阳的涨幅线（长阳内部再按量能切分）
+PREV_LONG_VOL_MIN = 1.5      # 长阳日量能下限（相对其前 5 日均量，含当日）：缩量长阳回踩 -1.53%/超额 -5.19%，
+                             #   放量>=1.5x 才 +5.5%~+6.6%，故缩量长阳剔除
 T0_MIN_PCT = 3.0             # 阶段一：T0 涨幅下限 3%（或涨停）
 T0_VOL_MULT = 1.5            # 阶段一：T0 量 >= 1.5 × 前 N 日均量
 T0_VOL_MA = 5                # 阶段一：均量窗口（前 5 日，不含 T0，避免自抬基准）
@@ -273,15 +283,29 @@ class Bars:
 # 形态识别
 # ─────────────────────────────────────────────
 def _stage1(a, i0):
-    """阶段一：跳空突破日校验。返回 detail dict 或 None"""
+    """阶段一：跳空突破日校验。返回 detail dict 或 None
+
+    20261110 R7 新增前一日形态门槛（见 PREV_PCT_MIN / PREV_LONG_PCT / PREV_LONG_VOL_MIN）：
+      · T0 前一日须为阳线且涨幅 >= PREV_PCT_MIN（3%，中阳以上）
+      · 若前一日涨幅 >= PREV_LONG_PCT（7%，长阳），其量须 >= PREV_LONG_VOL_MIN × 其前5日均量
+      · 同时缺口幅度设上限 GAP_MAX（4%）
+    """
     if i0 - 1 - T0_VOL_MA < 0 or i0 < LOW_WINDOW:
         return None
     hp = a.qh[i0 - 1]                     # 缺口上沿 = 前一日最高价（前复权）
     if not np.isfinite(hp) or hp <= 0:
         return None
     gap = (a.ql[i0] - hp) / hp
-    if gap < GAP_MIN:
+    if gap < GAP_MIN or gap > GAP_MAX:
         return None
+    # 前一日形态门槛（R7）
+    p = i0 - 1
+    if not np.isfinite(a.pct[p]) or a.pct[p] < PREV_PCT_MIN:
+        return None
+    if a.pct[p] >= PREV_LONG_PCT:
+        pv5 = np.nanmean(a.vol[p - 4:p + 1])
+        if not (pv5 > 0) or not np.isfinite(a.vol[p]) or a.vol[p] < PREV_LONG_VOL_MIN * pv5:
+            return None
     if T0_MUST_BULLISH and a.c[i0] <= a.o[i0]:
         return None
     if not np.isfinite(a.pct[i0]) or a.pct[i0] < T0_MIN_PCT:

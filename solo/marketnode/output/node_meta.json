@@ -2441,5 +2441,12 @@
     "confirmed_date":"20261103",
     "invalidated_date":null,
     "trigger_reason":"ZT_LOW;DT_SURGE;PROMO_WEAK"
+  },
+  {
+    "node_type":"N2",
+    "first_detected":"20261110",
+    "confirmed_date":"20261110",
+    "invalidated_date":null,
+    "trigger_reason":"ICE_REPAIR;DT_DECREASE;ZT_SPREAD;BREADTH_RECOVER"
   }
 ]

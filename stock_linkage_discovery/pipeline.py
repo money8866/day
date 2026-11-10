@@ -20,12 +20,12 @@ from typing import Any
 from . import attribution_engine, cluster_engine, data_layer, feature_engine
 from . import linkage_engine, observation_engine, report_engine, residual_engine, snapshot_store
 from .common import Timings, get_logger, setup_logging
-from .config import ensure_dirs, load_config
+from .config import apply_overrides, ensure_dirs, load_config
 
 
 def run_day(cfg: dict[str, Any], panel: data_layer.Panel, asof: str,
             dates: list[str], resolver: data_layer.PITNameResolver,
-            tag_maps: dict, force: bool = False) -> dict[str, Any]:
+            tag_maps: dict, force: bool = False, fast: bool = False) -> dict[str, Any]:
     log = get_logger("pipeline")
     if snapshot_store.has_snapshot(cfg, asof) and not force:
         log.info("%s 快照已存在，跳过（增量模式）", asof)
@@ -55,7 +55,8 @@ def run_day(cfg: dict[str, Any], panel: data_layer.Panel, asof: str,
             net = linkage_engine.build_network(
                 s, fs, rr, cfg,
                 history_edges=hist.prev_edges,
-                history_edges_5d=hist.edges_5d)
+                history_edges_5d=hist.edges_5d,
+                smooth_history=hist.smooth_edges)
         with tm.measure("clusters"):
             cs = cluster_engine.discover_clusters(net, s, fs, cfg, hist)
         with tm.measure("attribution"):
@@ -77,12 +78,28 @@ def run_day(cfg: dict[str, Any], panel: data_layer.Panel, asof: str,
         def _total() -> float:
             return round(sum(v for k, v in tm.items.items() if k != "total"), 3)
         tm.items["total"] = _total()          # 报告页脚展示计算阶段耗时
-        with tm.measure("report"):
-            paths = report_engine.render(cfg, asof, cs, net, obs, quality, tm.as_dict())
+        if fast:
+            # 长历史回放只落快照，日报在需要时单独用 --date 重算
+            paths = {"markdown": ""}
+        else:
+            with tm.measure("report"):
+                paths = report_engine.render(cfg, asof, cs, net, obs, quality, tm.as_dict())
         with tm.measure("store"):
             snapshot_store.save_snapshot(cfg, asof, s, fs, net, cs, obs,
                                          tm.as_dict(), quality)
         tm.items["total"] = _total()          # 落库/日志里的完整总耗时
+        # 日报目录里的质量报告在渲染时写出，当时还没有 report/store 耗时；
+        # 落库完成后同步一次，保证与 run_log 的完整耗时一致。
+        qpath = Path(cfg["paths"]["output_dir"]) / asof / "data_quality.json"
+        if qpath.exists():
+            import json
+            from .common import write_json
+            try:
+                qdoc = json.loads(qpath.read_text(encoding="utf-8"))
+                qdoc["timings"] = tm.as_dict()
+                write_json(qpath, qdoc)
+            except (ValueError, OSError) as qe:
+                log.warning("质量报告耗时同步失败: %s", qe)
         snapshot_store.finish_run(cfg, asof, "OK", tm.as_dict(), quality, net.stats)
         log.info("[%s] 完成 %.1fs | 边 %d | 群体 %d | S/A=%d | %s",
                  asof, tm.total, len(net.edges), len(cs.clusters),
@@ -112,6 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--reset", action="store_true",
                     help="清空全部历史快照后重放（保留 PIT 简称库；口径变更后使用）")
     ap.add_argument("--config", help="指定 linkage_config.json")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="覆盖任意配置，可多次；如 --set linkage.corr_threshold_20=0.60")
+    ap.add_argument("--fast", action="store_true",
+                    help="长历史回放时跳过日报渲染，只落网络快照（日报用 --date 单独重算）")
     ap.add_argument("--log-level", default=None)
     ap.add_argument("--self-test", action="store_true", help="跑单元测试（合成数据，不写入日报）")
     ap.add_argument("--backtest", nargs=2, metavar=("START", "END"),
@@ -122,9 +143,8 @@ def main(argv: list[str] | None = None) -> int:
         from .tests.test_core import run_tests
         return run_tests()
 
-    cfg = load_config(args.config)
+    cfg = apply_overrides(load_config(args.config), args.set)
     ensure_dirs(cfg)
-    snapshot_store.init_db(cfg)
     level = args.log_level or cfg["runtime"].get("log_level", "INFO")
     setup_logging(cfg["paths"]["log_dir"], level)
     log = get_logger("pipeline")
@@ -138,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
                          ensure_ascii=False, indent=2, default=str))
         return 0 if res.get("status") == "OK" else 2
 
+    snapshot_store.init_db(cfg)
     if args.reset:
         snapshot_store.reset_snapshots(cfg)
         log.warning("已清空历史快照，开始完整重放（保留 PIT 简称库）")
@@ -164,7 +185,8 @@ def main(argv: list[str] | None = None) -> int:
 
     results = []
     for d in replay:
-        results.append(run_day(cfg, panel, d, all_dates, resolver, tag_maps, args.force))
+        results.append(run_day(cfg, panel, d, all_dates, resolver, tag_maps,
+                               args.force, args.fast))
     ok = [r for r in results if r["status"] == "OK"]
     skipped = [r for r in results if r["status"] == "SKIPPED"]
     failed = [r for r in results if r["status"] == "ERROR"]

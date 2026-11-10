@@ -12,18 +12,22 @@
     "grade_counts": {
       "S": 1,
       "A": 2,
-      "B": 3,
-      "C": 2
+      "B": 5,
+      "C": 0
     },
     "state_counts": {
       "EMERGING_CLUSTER": 5,
       "EXISTING_CLUSTER": 1,
-      "DECAYING_CLUSTER": 2
+      "CLUSTER_STRENGTHENING": 2
+    },
+    "signal_counts": {
+      "EMERGING_CLUSTER": 5,
+      "CLUSTER_STRENGTHENING": 4
     },
     "emerging_clusters": 5,
     "expanding_clusters": 0,
-    "strengthening_clusters": 0,
-    "decaying_clusters": 2,
+    "strengthening_clusters": 4,
+    "decaying_clusters": 0,
     "pre_sector_clusters": 1,
     "new_edges_today": 2906,
     "history_available": true,
@@ -81,7 +85,7 @@
       "freshness": 1.0,
       "reliability": 0.6405,
       "expansion_score": 0.0,
-      "strengthening_score": 0.3587,
+      "strengthening_score": 0.7294,
       "decay_risk": 0.0,
       "sample_risk": 0.6,
       "age_days": 1,
@@ -91,6 +95,14 @@
       "new_edges": 0,
       "new_edge_ratio": 0.0,
       "mean_edge_delta": 0.0217,
+      "mean_edge_delta_persisted": 0.0217,
+      "mean_corr_delta": 0.0199,
+      "density_delta": 0.0,
+      "gain_score": 0.7294,
+      "signals": [
+        "EMERGING_CLUSTER",
+        "CLUSTER_STRENGTHENING"
+      ],
       "mean_resid_corr": 0.7075,
       "positive_resid_stocks": 4,
       "improving_stocks": 3,
@@ -194,11 +206,11 @@
       "state": "EMERGING_CLUSTER",
       "stage": "EARLY_STRENGTHENING",
       "grade": "A",
-      "linkage_score": 70.97,
+      "linkage_score": 71.34,
       "freshness": 1.0,
       "reliability": 0.6499,
       "expansion_score": 0.0,
-      "strengthening_score": 0.4333,
+      "strengthening_score": 0.8647,
       "decay_risk": 0.0,
       "sample_risk": 0.6,
       "age_days": 1,
@@ -208,6 +220,14 @@
       "new_edges": 1,
       "new_edge_ratio": 0.3333,
       "mean_edge_delta": 0.0367,
+      "mean_edge_delta_persisted": 0.055,
+      "mean_corr_delta": 0.0175,
+      "density_delta": 0.1667,
+      "gain_score": 0.8647,
+      "signals": [
+        "EMERGING_CLUSTER",
+        "CLUSTER_STRENGTHENING"
+      ],
       "mean_resid_corr": 0.7125,
       "positive_resid_stocks": 4,
       "improving_stocks": 0,
@@ -233,7 +253,7 @@
       "driver_confidence": "LOW",
       "driver_label": "火力发电机组（弱证据）",
       "algorithm": "louvain",
-      "priority": 70.97,
+      "priority": 71.34,
       "rank": 2,
       "driver_evidence": [
         {
@@ -310,7 +330,7 @@
       "freshness": 0.2528,
       "reliability": 0.7439,
       "expansion_score": 0.0,
-      "strengthening_score": 0.2586,
+      "strengthening_score": 0.224,
       "decay_risk": 0.0,
       "sample_risk": 0.6,
       "age_days": 12,
@@ -320,13 +340,18 @@
       "new_edges": 0,
       "new_edge_ratio": 0.0,
       "mean_edge_delta": 0.0017,
+      "mean_edge_delta_persisted": 0.0017,
+      "mean_corr_delta": 0.0049,
+      "density_delta": -0.1667,
+      "gain_score": 0.224,
+      "signals": [],
       "mean_resid_corr": 0.8759,
       "positive_resid_stocks": 4,
       "improving_stocks": 1,
       "mean_excess_5": 0.065,
       "mean_ret_5": 0.1105,
       "mean_amount_ratio": 1.5348,
-      "pre_existing_edge_ratio_20d": 0.25,
+      "pre_existing_edge_ratio_20d": 0.5,
       "leader": "002928.SZ",
       "roles": {
         "002928.SZ": "LEADER",
@@ -431,8 +456,8 @@
       "freshness": 1.0,
       "reliability": 0.6007,
       "expansion_score": 0.0,
-      "strengthening_score": 0.2507,
-      "decay_risk": 0.085,
+      "strengthening_score": 0.2856,
+      "decay_risk": 0.0857,
       "sample_risk": 0.3429,
       "age_days": 1,
       "birth_date": "20261106",
@@ -441,13 +466,20 @@
       "new_edges": 1,
       "new_edge_ratio": 0.1667,
       "mean_edge_delta": 0.0001,
+      "mean_edge_delta_persisted": 0.0002,
+      "mean_corr_delta": 0.012,
+      "density_delta": 0.0,
+      "gain_score": 0.2856,
+      "signals": [
+        "EMERGING_CLUSTER"
+      ],
       "mean_resid_corr": 0.8375,
       "positive_resid_stocks": 5,
       "improving_stocks": 0,
       "mean_excess_5": -0.0261,
       "mean_ret_5": 0.0194,
       "mean_amount_ratio": 0.5887,
-      "pre_existing_edge_ratio_20d": 0.0833,
+      "pre_existing_edge_ratio_20d": 0.1667,
       "leader": "600758.SH",
       "roles": {
         "002040.SZ": "LAGGARD",
@@ -549,12 +581,12 @@
       "state": "EMERGING_CLUSTER",
       "stage": "STABLE",
       "grade": "B",
-      "linkage_score": 78.67,
+      "linkage_score": 78.63,
       "freshness": 1.0,
       "reliability": 0.7417,
       "expansion_score": 0.0,
-      "strengthening_score": 0.2205,
-      "decay_risk": 0.1045,
+      "strengthening_score": 0.2122,
+      "decay_risk": 0.1143,
       "sample_risk": 0.6,
       "age_days": 1,
       "birth_date": "20261106",
@@ -563,13 +595,20 @@
       "new_edges": 1,
       "new_edge_ratio": 0.25,
       "mean_edge_delta": -0.0059,
+      "mean_edge_delta_persisted": -0.0079,
+      "mean_corr_delta": -0.008,
+      "density_delta": 0.1667,
+      "gain_score": 0.2122,
+      "signals": [
+        "EMERGING_CLUSTER"
+      ],
       "mean_resid_corr": 0.71,
       "positive_resid_stocks": 3,
       "improving_stocks": 1,
       "mean_excess_5": 0.034,
       "mean_ret_5": 0.0794,
       "mean_amount_ratio": 0.8785,
-      "pre_existing_edge_ratio_20d": 0.125,
+      "pre_existing_edge_ratio_20d": 0.25,
       "leader": "688062.SH",
       "roles": {
         "688062.SH": "LEADER",
@@ -588,7 +627,7 @@
       "driver_confidence": "HIGH",
       "driver_label": "单抗",
       "algorithm": "louvain",
-      "priority": 78.67,
+      "priority": 78.63,
       "rank": 5,
       "driver_evidence": [
         {
@@ -665,15 +704,15 @@
         "603866.SH"
       ],
       "n_members": 7,
-      "state": "DECAYING_CLUSTER",
-      "stage": "DECAY",
-      "grade": "C",
-      "linkage_score": 77.37,
+      "state": "CLUSTER_STRENGTHENING",
+      "stage": "EARLY_STRENGTHENING",
+      "grade": "B",
+      "linkage_score": 77.43,
       "freshness": 1.0,
       "reliability": 0.6322,
       "expansion_score": 0.0,
-      "strengthening_score": 0.2889,
-      "decay_risk": 0.1754,
+      "strengthening_score": 0.7562,
+      "decay_risk": 0.2143,
       "sample_risk": 0.3429,
       "age_days": 1,
       "birth_date": "20261106",
@@ -682,6 +721,13 @@
       "new_edges": 2,
       "new_edge_ratio": 0.2857,
       "mean_edge_delta": 0.0078,
+      "mean_edge_delta_persisted": 0.0109,
+      "mean_corr_delta": 0.0389,
+      "density_delta": 0.0952,
+      "gain_score": 0.7562,
+      "signals": [
+        "CLUSTER_STRENGTHENING"
+      ],
       "mean_resid_corr": 0.787,
       "positive_resid_stocks": 2,
       "improving_stocks": 0,
@@ -710,7 +756,7 @@
       "driver_confidence": "HIGH",
       "driver_label": "食品饮料",
       "algorithm": "louvain",
-      "priority": 77.37,
+      "priority": 77.43,
       "rank": 0,
       "driver_evidence": [
         {
@@ -799,8 +845,8 @@
       "freshness": 1.0,
       "reliability": 0.6257,
       "expansion_score": 0.0,
-      "strengthening_score": 0.2485,
-      "decay_risk": 0.0765,
+      "strengthening_score": 0.3576,
+      "decay_risk": 0.0772,
       "sample_risk": 0.6,
       "age_days": 1,
       "birth_date": "20261106",
@@ -809,6 +855,13 @@
       "new_edges": 1,
       "new_edge_ratio": 0.3333,
       "mean_edge_delta": -0.0003,
+      "mean_edge_delta_persisted": -0.0004,
+      "mean_corr_delta": 0.0011,
+      "density_delta": 0.1667,
+      "gain_score": 0.3576,
+      "signals": [
+        "EMERGING_CLUSTER"
+      ],
       "mean_resid_corr": 0.797,
       "positive_resid_stocks": 3,
       "improving_stocks": 0,
@@ -909,15 +962,15 @@
         "601988.SH"
       ],
       "n_members": 7,
-      "state": "DECAYING_CLUSTER",
-      "stage": "DECAY",
-      "grade": "C",
+      "state": "CLUSTER_STRENGTHENING",
+      "stage": "EARLY_STRENGTHENING",
+      "grade": "B",
       "linkage_score": 75.26,
       "freshness": 0.6873,
       "reliability": 0.8897,
       "expansion_score": 0.0,
-      "strengthening_score": 0.46,
-      "decay_risk": 0.0471,
+      "strengthening_score": 0.5453,
+      "decay_risk": 0.2571,
       "sample_risk": 0.3429,
       "age_days": 4,
       "birth_date": "20261103",
@@ -926,13 +979,20 @@
       "new_edges": 0,
       "new_edge_ratio": 0.0,
       "mean_edge_delta": 0.042,
+      "mean_edge_delta_persisted": 0.042,
+      "mean_corr_delta": -0.0028,
+      "density_delta": -0.0476,
+      "gain_score": 0.5453,
+      "signals": [
+        "CLUSTER_STRENGTHENING"
+      ],
       "mean_resid_corr": 0.7535,
       "positive_resid_stocks": 1,
       "improving_stocks": 0,
       "mean_excess_5": -0.0616,
       "mean_ret_5": -0.0161,
       "mean_amount_ratio": 0.9214,
-      "pre_existing_edge_ratio_20d": 0.3214,
+      "pre_existing_edge_ratio_20d": 0.6429,
       "leader": "601939.SH",
       "roles": {
         "002303.SZ": "FOLLOWER",
@@ -1710,6 +1770,7 @@
       "edge_score": 0.5396993573199378,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1736,6 +1797,7 @@
       "edge_score": 0.48372250130624855,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1762,6 +1824,7 @@
       "edge_score": 0.47560544298205637,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1788,6 +1851,7 @@
       "edge_score": 0.46144096755021097,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1814,6 +1878,7 @@
       "edge_score": 0.590463112861906,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1840,6 +1905,7 @@
       "edge_score": 0.4954340398540855,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1866,6 +1932,7 @@
       "edge_score": 0.6072995321107959,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1892,6 +1959,7 @@
       "edge_score": 0.559253046731268,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1918,6 +1986,7 @@
       "edge_score": 0.6066755940712548,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1944,6 +2013,7 @@
       "edge_score": 0.5540584573354944,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1970,6 +2040,7 @@
       "edge_score": 0.5965812529469957,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -1996,6 +2067,7 @@
       "edge_score": 0.6695472105327018,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -2022,6 +2094,7 @@
       "edge_score": 0.5324726685020186,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2048,6 +2121,7 @@
       "edge_score": 0.5497254946329097,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2074,6 +2148,7 @@
       "edge_score": 0.4604886958056924,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2100,6 +2175,7 @@
       "edge_score": 0.5521043453359586,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2126,6 +2202,7 @@
       "edge_score": 0.5820780544185045,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2152,6 +2229,7 @@
       "edge_score": 0.5550396680853883,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2178,6 +2256,7 @@
       "edge_score": 0.4762703456262153,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2204,6 +2283,7 @@
       "edge_score": 0.5591818694371087,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2230,6 +2310,7 @@
       "edge_score": 0.49176525871998916,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -2256,6 +2337,7 @@
       "edge_score": 0.47850147283560834,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2282,6 +2364,7 @@
       "edge_score": 0.48749105211057536,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2308,6 +2391,7 @@
       "edge_score": 0.5134086015735739,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2334,6 +2418,7 @@
       "edge_score": 0.5611344413652523,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2360,6 +2445,7 @@
       "edge_score": 0.47930017657426577,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2386,6 +2472,7 @@
       "edge_score": 0.5205000993044668,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2412,6 +2499,7 @@
       "edge_score": 0.5237597641125936,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2438,6 +2526,7 @@
       "edge_score": 0.5294740145358394,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2464,6 +2553,7 @@
       "edge_score": 0.5797599401343454,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2490,6 +2580,7 @@
       "edge_score": 0.5166668501934708,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2516,6 +2607,7 @@
       "edge_score": 0.5472577441480959,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2542,6 +2634,7 @@
       "edge_score": 0.5691575116099742,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2568,6 +2661,7 @@
       "edge_score": 0.5649663369984433,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2594,6 +2688,7 @@
       "edge_score": 0.5625472827328232,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2620,6 +2715,7 @@
       "edge_score": 0.603656194692974,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2646,6 +2742,7 @@
       "edge_score": 0.5411817395187,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2672,6 +2769,7 @@
       "edge_score": 0.4978279118784792,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2698,6 +2796,7 @@
       "edge_score": 0.5370770898213235,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2724,6 +2823,7 @@
       "edge_score": 0.4669985676841164,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2750,6 +2850,7 @@
       "edge_score": 0.49669657869172507,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2776,6 +2877,7 @@
       "edge_score": 0.5610128791739522,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2802,6 +2904,7 @@
       "edge_score": 0.560554736594095,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2828,6 +2931,7 @@
       "edge_score": 0.46372966027993684,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2854,6 +2958,7 @@
       "edge_score": 0.6239012406427296,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2880,6 +2985,7 @@
       "edge_score": 0.47591860158281946,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2906,6 +3012,7 @@
       "edge_score": 0.49687182338217645,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2932,6 +3039,7 @@
       "edge_score": 0.5072004956735858,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2958,6 +3066,7 @@
       "edge_score": 0.6165326749198329,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -2984,6 +3093,7 @@
       "edge_score": 0.5161555619336464,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3010,6 +3120,7 @@
       "edge_score": 0.45941530919703066,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3036,6 +3147,7 @@
       "edge_score": 0.495812860166122,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3062,6 +3174,7 @@
       "edge_score": 0.5225880995587165,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3088,6 +3201,7 @@
       "edge_score": 0.49481536253629244,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3114,6 +3228,7 @@
       "edge_score": 0.5836639040008484,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3140,6 +3255,7 @@
       "edge_score": 0.545232986957249,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -3166,6 +3282,7 @@
       "edge_score": 0.5693239275931677,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3192,6 +3309,7 @@
       "edge_score": 0.6285888867263338,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3218,6 +3336,7 @@
       "edge_score": 0.5724645030442925,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -3244,6 +3363,7 @@
       "edge_score": 0.472180055116824,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3270,6 +3390,7 @@
       "edge_score": 0.5291587152724447,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3296,6 +3417,7 @@
       "edge_score": 0.5028155048145042,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3322,6 +3444,7 @@
       "edge_score": 0.4511807652533607,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3348,6 +3471,7 @@
       "edge_score": 0.5390133165418813,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3374,6 +3498,7 @@
       "edge_score": 0.5566624801451261,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3400,6 +3525,7 @@
       "edge_score": 0.5954693157421482,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3426,6 +3552,7 @@
       "edge_score": 0.6498576420803097,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3452,6 +3579,7 @@
       "edge_score": 0.5867172508466628,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -3478,6 +3606,7 @@
       "edge_score": 0.6266808161548276,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3504,6 +3633,7 @@
       "edge_score": 0.5783159903895024,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3530,6 +3660,7 @@
       "edge_score": 0.5253843491919268,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3556,6 +3687,7 @@
       "edge_score": 0.5280002756104664,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3582,6 +3714,7 @@
       "edge_score": 0.6077441486960966,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3608,6 +3741,7 @@
       "edge_score": 0.6063612008379852,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3634,6 +3768,7 @@
       "edge_score": 0.4939452136138387,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -3660,6 +3795,7 @@
       "edge_score": 0.510096675533196,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -3686,6 +3822,7 @@
       "edge_score": 0.5906503880430702,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3712,6 +3849,7 @@
       "edge_score": 0.6558208648360362,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3738,6 +3876,7 @@
       "edge_score": 0.5557388172162284,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3764,6 +3903,7 @@
       "edge_score": 0.46764770748928286,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3790,6 +3930,7 @@
       "edge_score": 0.48356725968637254,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3816,6 +3957,7 @@
       "edge_score": 0.4674511016647497,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3842,6 +3984,7 @@
       "edge_score": 0.5536271077193393,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3868,6 +4011,7 @@
       "edge_score": 0.45117613422170466,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3894,6 +4038,7 @@
       "edge_score": 0.5251836495522202,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3920,6 +4065,7 @@
       "edge_score": 0.4930290840189259,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3946,6 +4092,7 @@
       "edge_score": 0.5424764134207108,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3972,6 +4119,7 @@
       "edge_score": 0.525198239254061,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -3998,6 +4146,7 @@
       "edge_score": 0.48515885319630064,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4024,6 +4173,7 @@
       "edge_score": 0.5251130053206555,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4050,6 +4200,7 @@
       "edge_score": 0.6540878278383454,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -4076,6 +4227,7 @@
       "edge_score": 0.5161656606989526,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4102,6 +4254,7 @@
       "edge_score": 0.5319482365147634,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4128,6 +4281,7 @@
       "edge_score": 0.4512510768123246,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4154,6 +4308,7 @@
       "edge_score": 0.5888897849306963,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -4180,6 +4335,7 @@
       "edge_score": 0.5121085770626747,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4206,6 +4362,7 @@
       "edge_score": 0.5262698996078047,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4232,6 +4389,7 @@
       "edge_score": 0.5786224697148817,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4258,6 +4416,7 @@
       "edge_score": 0.4685917127591653,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4284,6 +4443,7 @@
       "edge_score": 0.4985737797310529,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4310,6 +4470,7 @@
       "edge_score": 0.49553587588235265,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4336,6 +4497,7 @@
       "edge_score": 0.4908354318274537,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4362,6 +4524,7 @@
       "edge_score": 0.5815126933444346,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -4388,6 +4551,7 @@
       "edge_score": 0.5028850549631524,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4414,6 +4578,7 @@
       "edge_score": 0.5921586211505556,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4440,6 +4605,7 @@
       "edge_score": 0.6148020826950136,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4466,6 +4632,7 @@
       "edge_score": 0.4822584849201018,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4492,6 +4659,7 @@
       "edge_score": 0.48246658941323123,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4518,6 +4686,7 @@
       "edge_score": 0.5038148175036841,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4544,6 +4713,7 @@
       "edge_score": 0.4800735020589487,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -4570,6 +4740,7 @@
       "edge_score": 0.49249564961187287,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4596,6 +4767,7 @@
       "edge_score": 0.46635501698089027,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4622,6 +4794,7 @@
       "edge_score": 0.5644939861806537,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4648,6 +4821,7 @@
       "edge_score": 0.5225202730965017,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4674,6 +4848,7 @@
       "edge_score": 0.4919862025166083,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4700,6 +4875,7 @@
       "edge_score": 0.524493602137402,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4726,6 +4902,7 @@
       "edge_score": 0.5848726617341248,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4752,6 +4929,7 @@
       "edge_score": 0.5896814783606087,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4778,6 +4956,7 @@
       "edge_score": 0.6249648477371949,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4804,6 +4983,7 @@
       "edge_score": 0.6864039979821225,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4830,6 +5010,7 @@
       "edge_score": 0.4953865981136067,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4856,6 +5037,7 @@
       "edge_score": 0.46321502131273257,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4882,6 +5064,7 @@
       "edge_score": 0.5955323555905375,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -4908,6 +5091,7 @@
       "edge_score": 0.5388483240818439,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4934,6 +5118,7 @@
       "edge_score": 0.605317875168739,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4960,6 +5145,7 @@
       "edge_score": 0.4687097392664316,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -4986,6 +5172,7 @@
       "edge_score": 0.6084010168064301,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5012,6 +5199,7 @@
       "edge_score": 0.6483265901355569,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5038,6 +5226,7 @@
       "edge_score": 0.6060626080419399,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5064,6 +5253,7 @@
       "edge_score": 0.47370938192579054,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -5090,6 +5280,7 @@
       "edge_score": 0.5381735311163853,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5116,6 +5307,7 @@
       "edge_score": 0.5983067825329108,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5142,6 +5334,7 @@
       "edge_score": 0.46390144760211216,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5168,6 +5361,7 @@
       "edge_score": 0.5059288151382431,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5194,6 +5388,7 @@
       "edge_score": 0.5415954386480126,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5220,6 +5415,7 @@
       "edge_score": 0.4631754407931181,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5246,6 +5442,7 @@
       "edge_score": 0.5414038250521568,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5272,6 +5469,7 @@
       "edge_score": 0.5041489784226428,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5298,6 +5496,7 @@
       "edge_score": 0.47084816319361766,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5324,6 +5523,7 @@
       "edge_score": 0.4746705073638511,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5350,6 +5550,7 @@
       "edge_score": 0.5223882193386966,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -5376,6 +5577,7 @@
       "edge_score": 0.47419741146878813,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -5402,6 +5604,7 @@
       "edge_score": 0.5142476445164401,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5428,6 +5631,7 @@
       "edge_score": 0.5433517785602134,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5454,6 +5658,7 @@
       "edge_score": 0.5466996714007157,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5480,6 +5685,7 @@
       "edge_score": 0.5809840518878528,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5506,6 +5712,7 @@
       "edge_score": 0.5252213319458242,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5532,6 +5739,7 @@
       "edge_score": 0.4844592477277483,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5558,6 +5766,7 @@
       "edge_score": 0.5712292293156497,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5584,6 +5793,7 @@
       "edge_score": 0.46670912452267976,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5610,6 +5820,7 @@
       "edge_score": 0.5173033678783239,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5636,6 +5847,7 @@
       "edge_score": 0.45732959026270525,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5662,6 +5874,7 @@
       "edge_score": 0.5744056158125813,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5688,6 +5901,7 @@
       "edge_score": 0.5418777018181591,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5714,6 +5928,7 @@
       "edge_score": 0.4938387568886357,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5740,6 +5955,7 @@
       "edge_score": 0.5039945885083561,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5766,6 +5982,7 @@
       "edge_score": 0.45332539589668736,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -5792,6 +6009,7 @@
       "edge_score": 0.5862830405322786,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5818,6 +6036,7 @@
       "edge_score": 0.6648371146009221,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -5844,6 +6063,7 @@
       "edge_score": 0.5016722112644034,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5870,6 +6090,7 @@
       "edge_score": 0.47782865528377455,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5896,6 +6117,7 @@
       "edge_score": 0.47005394197447514,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -5922,6 +6144,7 @@
       "edge_score": 0.4541002401327688,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -5948,6 +6171,7 @@
       "edge_score": 0.5831831124340207,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -5974,6 +6198,7 @@
       "edge_score": 0.5653004872877506,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6000,6 +6225,7 @@
       "edge_score": 0.5679476334519834,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6026,6 +6252,7 @@
       "edge_score": 0.5360372573397277,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -6052,6 +6279,7 @@
       "edge_score": 0.5189139090593771,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6078,6 +6306,7 @@
       "edge_score": 0.4552734459395679,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6104,6 +6333,7 @@
       "edge_score": 0.4612294700154708,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6130,6 +6360,7 @@
       "edge_score": 0.47510775680074446,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6156,6 +6387,7 @@
       "edge_score": 0.4582256218988639,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6182,6 +6414,7 @@
       "edge_score": 0.5828350585574963,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -6208,6 +6441,7 @@
       "edge_score": 0.5389841730113683,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6234,6 +6468,7 @@
       "edge_score": 0.5923700431080378,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6260,6 +6495,7 @@
       "edge_score": 0.45717360754771186,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6286,6 +6522,7 @@
       "edge_score": 0.5066107613742266,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6312,6 +6549,7 @@
       "edge_score": 0.4768298996697694,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6338,6 +6576,7 @@
       "edge_score": 0.5117373482637658,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6364,6 +6603,7 @@
       "edge_score": 0.5194567841650636,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6390,6 +6630,7 @@
       "edge_score": 0.49555738747932077,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6416,6 +6657,7 @@
       "edge_score": 0.5431696680364846,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6442,6 +6684,7 @@
       "edge_score": 0.5788383221661499,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6468,6 +6711,7 @@
       "edge_score": 0.6694478674160896,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6494,6 +6738,7 @@
       "edge_score": 0.47858073526186734,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6520,6 +6765,7 @@
       "edge_score": 0.617186908853621,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -6546,6 +6792,7 @@
       "edge_score": 0.5815590974183507,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6572,6 +6819,7 @@
       "edge_score": 0.5830943729746334,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6598,6 +6846,7 @@
       "edge_score": 0.5900039937287787,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6624,6 +6873,7 @@
       "edge_score": 0.4962988311808378,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6650,6 +6900,7 @@
       "edge_score": 0.4565267739198396,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6676,6 +6927,7 @@
       "edge_score": 0.6307410130615126,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -6702,6 +6954,7 @@
       "edge_score": 0.5181657854708707,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": true
     },
@@ -6728,6 +6981,7 @@
       "edge_score": 0.5010504421493004,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6754,6 +7008,7 @@
       "edge_score": 0.5637491862068245,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6780,6 +7035,7 @@
       "edge_score": 0.48511910241469053,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6806,6 +7062,7 @@
       "edge_score": 0.5882755267489753,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6832,6 +7089,7 @@
       "edge_score": 0.4876407630063994,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6858,6 +7116,7 @@
       "edge_score": 0.6076987264224499,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     },
@@ -6884,6 +7143,7 @@
       "edge_score": 0.517125262989542,
       "is_new": true,
       "edge_delta": 0.0,
+      "corr_delta": 0.0,
       "streak_days": 1,
       "persisted_5d": false
     }
@@ -6923,13 +7183,13 @@
       "ts_code": "601939.SH",
       "stock_name": "建设银行",
       "role": "LEADER",
-      "linkage_state": "DECAYING_CLUSTER",
+      "linkage_state": "CLUSTER_STRENGTHENING",
       "HVT-BULL": "",
       "W7": "",
       "E08": "",
       "VSW": "",
-      "conclusion": "LINKAGE_INVALID",
-      "note": "联动衰减/过热或群体失效，不进入观察池"
+      "conclusion": "LINKAGE_SETUP",
+      "note": "联动有效且技术形态改善，等待既有策略确认"
     },
     {
       "asof": "20261106",
@@ -6937,13 +7197,13 @@
       "ts_code": "002303.SZ",
       "stock_name": "美盈森",
       "role": "FOLLOWER",
-      "linkage_state": "DECAYING_CLUSTER",
+      "linkage_state": "CLUSTER_STRENGTHENING",
       "HVT-BULL": "",
       "W7": "",
       "E08": "",
       "VSW": "",
-      "conclusion": "LINKAGE_INVALID",
-      "note": "联动衰减/过热或群体失效，不进入观察池"
+      "conclusion": "LINKAGE_SETUP",
+      "note": "联动有效且技术形态改善，等待既有策略确认"
     },
     {
       "asof": "20261106",
@@ -6951,13 +7211,13 @@
       "ts_code": "601658.SH",
       "stock_name": "邮储银行",
       "role": "LAGGARD",
-      "linkage_state": "DECAYING_CLUSTER",
+      "linkage_state": "CLUSTER_STRENGTHENING",
       "HVT-BULL": "",
       "W7": "",
       "E08": "",
       "VSW": "",
-      "conclusion": "LINKAGE_INVALID",
-      "note": "联动衰减/过热或群体失效，不进入观察池"
+      "conclusion": "LINKAGE_SETUP",
+      "note": "联动有效且技术形态改善，等待既有策略确认"
     },
     {
       "asof": "20261106",
@@ -6993,13 +7253,13 @@
       "ts_code": "300997.SZ",
       "stock_name": "欢乐家",
       "role": "LEADER",
-      "linkage_state": "DECAYING_CLUSTER",
+      "linkage_state": "CLUSTER_STRENGTHENING",
       "HVT-BULL": "",
       "W7": "",
       "E08": "",
       "VSW": "",
-      "conclusion": "LINKAGE_INVALID",
-      "note": "联动衰减/过热或群体失效，不进入观察池"
+      "conclusion": "LINKAGE_SETUP",
+      "note": "联动有效且技术形态改善，等待既有策略确认"
     },
     {
       "asof": "20261106",
@@ -7007,13 +7267,13 @@
       "ts_code": "002251.SZ",
       "stock_name": "步步高",
       "role": "LAGGARD",
-      "linkage_state": "DECAYING_CLUSTER",
+      "linkage_state": "CLUSTER_STRENGTHENING",
       "HVT-BULL": "",
       "W7": "",
       "E08": "",
       "VSW": "",
-      "conclusion": "LINKAGE_INVALID",
-      "note": "联动衰减/过热或群体失效，不进入观察池"
+      "conclusion": "LINKAGE_SETUP",
+      "note": "联动有效且技术形态改善，等待既有策略确认"
     },
     {
       "asof": "20261106",
@@ -7288,18 +7548,22 @@
       "grade_counts": {
         "S": 1,
         "A": 2,
-        "B": 3,
-        "C": 2
+        "B": 5,
+        "C": 0
       },
       "state_counts": {
         "EMERGING_CLUSTER": 5,
         "EXISTING_CLUSTER": 1,
-        "DECAYING_CLUSTER": 2
+        "CLUSTER_STRENGTHENING": 2
+      },
+      "signal_counts": {
+        "EMERGING_CLUSTER": 5,
+        "CLUSTER_STRENGTHENING": 4
       },
       "emerging_clusters": 5,
       "expanding_clusters": 0,
-      "strengthening_clusters": 0,
-      "decaying_clusters": 2,
+      "strengthening_clusters": 4,
+      "decaying_clusters": 0,
       "pre_sector_clusters": 1,
       "new_edges_today": 2906,
       "history_available": true
@@ -7308,17 +7572,17 @@
     "synthetic_data": false
   },
   "timings": {
-    "universe": 0.0168,
-    "slice": 0.1255,
-    "residual": 0.3793,
-    "features": 4.0488,
-    "history": 0.9646,
-    "network": 6.2027,
-    "clusters": 0.5774,
-    "attribution": 0.0569,
-    "observation": 0.0232,
-    "total": 12.395
+    "universe": 0.0297,
+    "slice": 0.3085,
+    "residual": 0.9207,
+    "features": 9.6559,
+    "history": 3.7729,
+    "network": 14.4532,
+    "clusters": 1.4647,
+    "attribution": 0.1414,
+    "observation": 0.0664,
+    "total": 30.813
   },
-  "config_hash": "e9812773e469af8e",
+  "config_hash": "164d91af687915fa",
   "disclaimer": "联动强度不等于买入信号；不修改既有策略逻辑；无未来数据；无模拟数据冒充实盘结果"
 }

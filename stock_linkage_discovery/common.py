@@ -55,7 +55,7 @@ class Timings:
 
     @property
     def total(self) -> float:
-        return round(sum(self.items.values()), 4)
+        return round(sum(v for k, v in self.items.items() if k != "total"), 4)
 
 
 def finite(x: Any, default: float = 0.0) -> float:

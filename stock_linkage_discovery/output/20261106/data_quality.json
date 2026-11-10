@@ -126,18 +126,22 @@
       "grade_counts": {
         "S": 1,
         "A": 2,
-        "B": 3,
-        "C": 2
+        "B": 5,
+        "C": 0
       },
       "state_counts": {
         "EMERGING_CLUSTER": 5,
         "EXISTING_CLUSTER": 1,
-        "DECAYING_CLUSTER": 2
+        "CLUSTER_STRENGTHENING": 2
+      },
+      "signal_counts": {
+        "EMERGING_CLUSTER": 5,
+        "CLUSTER_STRENGTHENING": 4
       },
       "emerging_clusters": 5,
       "expanding_clusters": 0,
-      "strengthening_clusters": 0,
-      "decaying_clusters": 2,
+      "strengthening_clusters": 4,
+      "decaying_clusters": 0,
       "pre_sector_clusters": 1,
       "new_edges_today": 2906,
       "history_available": true
@@ -146,15 +150,17 @@
     "synthetic_data": false
   },
   "timings": {
-    "universe": 0.0168,
-    "slice": 0.1255,
-    "residual": 0.3793,
-    "features": 4.0488,
-    "history": 0.9646,
-    "network": 6.2027,
-    "clusters": 0.5774,
-    "attribution": 0.0569,
-    "observation": 0.0232,
-    "total": 12.395
+    "universe": 0.0297,
+    "slice": 0.3085,
+    "residual": 0.9207,
+    "features": 9.6559,
+    "history": 3.7729,
+    "network": 14.4532,
+    "clusters": 1.4647,
+    "attribution": 0.1414,
+    "observation": 0.0664,
+    "total": 35.971,
+    "report": 0.5834,
+    "store": 4.5737
   }
 }

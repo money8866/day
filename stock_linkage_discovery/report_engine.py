@@ -94,6 +94,9 @@ def render(cfg: dict[str, Any], asof: str, cs: ClusterSet, net: NetworkResult,
         ["社区发现算法", st.get("algorithm", "-")],
     ]))
     L.append("")
+    L.append("> 群体主状态互斥；EMERGING / 扩散 / 强化三项计数来自不互斥的信号标签，"
+             "同一群体可同时计入多类。")
+    L.append("")
     L.append("## 2. 最值得关注的群体")
     L.append("")
     L.append(_table(

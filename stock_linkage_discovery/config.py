@@ -44,10 +44,39 @@ def load_config(path: str | os.PathLike | None = None) -> dict[str, Any]:
         raise ValueError(f"scoring.weights 必须合计为 100，当前 {sum(sw.values()):.2f}")
 
     cfg["_config_path"] = str(p)
-    cfg["_config_hash"] = hashlib.sha256(
+    cfg["_config_hash"] = fingerprint(cfg)
+    return cfg
+
+
+def fingerprint(cfg: dict[str, Any]) -> str:
+    """配置指纹：写入每条边与每个群体，用于验证样本外区间参数是否冻结。"""
+    return hashlib.sha256(
         json.dumps({k: v for k, v in cfg.items() if not k.startswith("_")},
                    sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()[:16]
+
+
+def apply_overrides(cfg: dict[str, Any], pairs: list[str] | None) -> dict[str, Any]:
+    """支持 --set section.key=value（可多次），用于稳健性网格与独立快照库。
+
+    值优先按 JSON 解析（数字/布尔/数组），失败则按字符串处理。
+    """
+    for item in pairs or []:
+        if "=" not in item:
+            raise ValueError(f"--set 需要 section.key=value 格式: {item}")
+        key, raw = item.split("=", 1)
+        parts = [p.strip() for p in key.strip().split(".")]
+        try:
+            val: Any = json.loads(raw)
+        except (ValueError, TypeError):
+            val = raw
+        cur = cfg
+        for p in parts[:-1]:
+            if not isinstance(cur.get(p), dict):
+                cur[p] = {}
+            cur = cur[p]
+        cur[parts[-1]] = val
+    cfg["_config_hash"] = fingerprint(cfg)
     return cfg
 
 

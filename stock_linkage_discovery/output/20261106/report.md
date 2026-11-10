@@ -9,8 +9,8 @@
 | 有效群体数 | 8 |
 | 新联动群体 (EMERGING) | 5 |
 | 正在扩散 (LEADER_EXPANSION) | 0 |
-| 联动强化 (STRENGTHENING) | 0 |
-| 衰减群体 (DECAYING) | 2 |
+| 联动强化 (STRENGTHENING) | 4 |
+| 衰减群体 (DECAYING) | 0 |
 | 板块前置联动 (PRE_SECTOR) | 1 |
 | 全市场有效关联边 | 17154 |
 | 今日新增关联边 | 2906 |
@@ -18,15 +18,17 @@
 | 社区发现算法 | louvain |
 
 
+> 群体主状态互斥；EMERGING / 扩散 / 强化三项计数来自不互斥的信号标签，同一群体可同时计入多类。
+
 ## 2. 最值得关注的群体
 
 | 排名 | 群体 | 股票数 | 状态 | LinkageScore | 新鲜度 | 共同驱动 |
 |---|---|---|---|---|---|---|
 | 1 | C20261106-003 建筑与工程 | 4 | EMERGING_CLUSTER | 77.4 | 1.00 | HIGH / 建筑与工程 |
-| 2 | C20261106-021 火力发电机组（弱证据） | 4 | EMERGING_CLUSTER | 71.0 | 1.00 | LOW / 火力发电机组（弱证据） |
+| 2 | C20261106-021 火力发电机组（弱证据） | 4 | EMERGING_CLUSTER | 71.3 | 1.00 | LOW / 火力发电机组（弱证据） |
 | 3 | C20261016-057 航空客运 | 4 | EXISTING_CLUSTER | 78.3 | 0.25 | HIGH / 航空客运 |
 | 4 | C20261106-063 炼焦煤 | 7 | EMERGING_CLUSTER | 82.2 | 1.00 | HIGH / 炼焦煤 |
-| 5 | C20261106-067 单抗 | 4 | EMERGING_CLUSTER | 78.7 | 1.00 | HIGH / 单抗 |
+| 5 | C20261106-067 单抗 | 4 | EMERGING_CLUSTER | 78.6 | 1.00 | HIGH / 单抗 |
 
 
 ## 3. 群体内部股票
@@ -122,13 +124,13 @@
 |---|---|---|---|---|---|---|---|---|
 | C20261016-057 | 002928.SZ 华夏航空 | LEADER | EXISTING_CLUSTER | - | - | - | - | LINKAGE_SETUP |
 | C20261016-057 | 600029.SH 南方航空 | LAGGARD | EXISTING_CLUSTER | - | - | - | - | LINKAGE_SETUP |
-| C20261103-049 | 601939.SH 建设银行 | LEADER | DECAYING_CLUSTER | - | - | - | - | LINKAGE_INVALID |
-| C20261103-049 | 002303.SZ 美盈森 | FOLLOWER | DECAYING_CLUSTER | - | - | - | - | LINKAGE_INVALID |
-| C20261103-049 | 601658.SH 邮储银行 | LAGGARD | DECAYING_CLUSTER | - | - | - | - | LINKAGE_INVALID |
+| C20261103-049 | 601939.SH 建设银行 | LEADER | CLUSTER_STRENGTHENING | - | - | - | - | LINKAGE_SETUP |
+| C20261103-049 | 002303.SZ 美盈森 | FOLLOWER | CLUSTER_STRENGTHENING | - | - | - | - | LINKAGE_SETUP |
+| C20261103-049 | 601658.SH 邮储银行 | LAGGARD | CLUSTER_STRENGTHENING | - | - | - | - | LINKAGE_SETUP |
 | C20261106-003 | 002307.SZ 北新路桥 | LEADER | EMERGING_CLUSTER | - | - | - | - | LINKAGE_SETUP |
 | C20261106-003 | 002051.SZ 中工国际 | LAGGARD | EMERGING_CLUSTER | - | - | - | - | LINKAGE_SETUP |
-| C20261106-017 | 300997.SZ 欢乐家 | LEADER | DECAYING_CLUSTER | - | - | - | - | LINKAGE_INVALID |
-| C20261106-017 | 002251.SZ 步步高 | LAGGARD | DECAYING_CLUSTER | - | - | - | - | LINKAGE_INVALID |
+| C20261106-017 | 300997.SZ 欢乐家 | LEADER | CLUSTER_STRENGTHENING | - | - | - | - | LINKAGE_SETUP |
+| C20261106-017 | 002251.SZ 步步高 | LAGGARD | CLUSTER_STRENGTHENING | - | - | - | - | LINKAGE_SETUP |
 | C20261106-021 | 600452.SH 涪陵电力 | LEADER | EMERGING_CLUSTER | - | - | - | - | LINKAGE_SETUP |
 | C20261106-021 | 002015.SZ 协鑫能科 | LAGGARD | EMERGING_CLUSTER | - | - | - | - | LINKAGE_SETUP |
 | C20261106-039 | 600482.SH 中国动力 | LEADER | EMERGING_CLUSTER | - | - | - | - | LINKAGE_SETUP |
@@ -141,13 +143,13 @@
 
 - **002928.SZ 华夏航空**（LEADER）：联动有效且技术形态改善，等待既有策略确认
 - **600029.SH 南方航空**（LAGGARD）：联动有效且技术形态改善，等待既有策略确认
-- **601939.SH 建设银行**（LEADER）：联动衰减/过热或群体失效，不进入观察池
-- **002303.SZ 美盈森**（FOLLOWER）：联动衰减/过热或群体失效，不进入观察池
-- **601658.SH 邮储银行**（LAGGARD）：联动衰减/过热或群体失效，不进入观察池
+- **601939.SH 建设银行**（LEADER）：联动有效且技术形态改善，等待既有策略确认
+- **002303.SZ 美盈森**（FOLLOWER）：联动有效且技术形态改善，等待既有策略确认
+- **601658.SH 邮储银行**（LAGGARD）：联动有效且技术形态改善，等待既有策略确认
 - **002307.SZ 北新路桥**（LEADER）：联动有效且技术形态改善，等待既有策略确认
 - **002051.SZ 中工国际**（LAGGARD）：联动有效且技术形态改善，等待既有策略确认
-- **300997.SZ 欢乐家**（LEADER）：联动衰减/过热或群体失效，不进入观察池
-- **002251.SZ 步步高**（LAGGARD）：联动衰减/过热或群体失效，不进入观察池
+- **300997.SZ 欢乐家**（LEADER）：联动有效且技术形态改善，等待既有策略确认
+- **002251.SZ 步步高**（LAGGARD）：联动有效且技术形态改善，等待既有策略确认
 - **600452.SH 涪陵电力**（LEADER）：联动有效且技术形态改善，等待既有策略确认
 - **002015.SZ 协鑫能科**（LAGGARD）：联动有效且技术形态改善，等待既有策略确认
 - **600482.SH 中国动力**（LEADER）：联动有效且技术形态改善，等待既有策略确认
@@ -170,4 +172,4 @@
 - 涨跌停为板块阈值近似（无 stk_limit 表），仅作行为特征。
 
 ---
-计算耗时 12.39s · 配置指纹 e9812773e469af8e · 严格 as-of（无未来数据） · 数据源 cache_daily/stock_data.db
+计算耗时 30.81s · 配置指纹 164d91af687915fa · 严格 as-of（无未来数据） · 数据源 cache_daily/stock_data.db

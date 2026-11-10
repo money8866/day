@@ -120,6 +120,12 @@
     "min_mean_edge_score": 0.50,
     "identity_overlap": 0.30,
     "_identity_overlap_note": "与昨日/5日前/10日前群体做成员+边重叠匹配，避免同一群体每天改名",
+    "identity_weights": {"member": 0.55, "core": 0.20, "edge": 0.25},
+    "identity_core_anchor": 2,
+    "core_member_min_ratio": 0.60,
+    "_core_anchor_note": "群体存续期内出现频率 >=60% 的股票视为稳定核心；共享 >=2 只核心且有一定重叠即可延续身份，避免每日 BIRTH/TERMINATION",
+    "temporal_smoothing": {"enabled": false, "decay": [0.45, 0.25, 0.12]},
+    "_temporal_smoothing_note": "实验开关：实测叠加历史边会放大社区规模、使有效群体数下降甚至为 0，默认关闭；保留能力用于后续消融实验。当日网络快照与所有指标始终基于未平滑的当日边",
     "persistence_days": 2,
     "emerging_history_days": 20,
     "emerging_new_edge_ratio": 0.35,
@@ -127,8 +133,18 @@
     "emerging_max_age": 5,
     "_emerging_max_age_note": "群体形成后 5 日内仍视为早期，可判 EMERGING_CLUSTER；避免成熟群体长期占坑",
     "expansion_min_new_members": 1,
-    "strengthening_edge_delta": 0.05,
-    "decay_edge_delta": -0.08,
+    "strengthening_min_age": 1,
+    "strengthening_min_persisted_edges": 2,
+    "_strengthening_evidence_note": "以簇内昨日已存在的可比边数量证明关系已建立，不依赖易断裂的群体 id 年龄",
+    "strengthening": {
+      "min_gain": 0.50,
+      "weights": {"edge_delta": 0.50, "corr_delta": 0.30, "density_delta": 0.20},
+      "normalizers": {"edge_delta": 0.025, "corr_delta": 0.050, "density_delta": 0.200},
+      "offsets": {"edge_delta": 0.005, "corr_delta": 0.010, "density_delta": 0.050},
+      "_note": "仅对昨日已存在的可比边计算强度/相关/密度变化；新增边无昨日基值，混入会把增强幅度系统性稀释"
+    },
+    "decay_edge_delta": -0.015,
+    "_decay_note": "衰减必须有联动真实走弱的证据，不再仅凭成员换血或整体残差为负判定",
     "freshness_halflife": 8.0,
     "overheated_mean_ret_5": 0.30,
     "overheated_mean_amount_ratio": 3.0
@@ -193,5 +209,26 @@
     "strict_no_future_data": true,
     "allow_synthetic_in_report": false,
     "_allow_synthetic_note": "合成数据仅允许出现在 tests/ 单元测试中，永不得进入日报"
+  },
+
+  "validation": {
+    "train_fraction": 0.60,
+    "_train_fraction_note": "按独立形成日排序做严格时间切分：前段样本内，后段样本外；样本外参数必须冻结（比对 config_hash）",
+    "min_holdout_formation_days": 20,
+    "min_events_per_segment": 20,
+    "bootstrap_draws": 2000,
+    "bootstrap_block": "formation_day",
+    "_bootstrap_note": "按形成日分块重采样，避免同日多事件相关导致 t 值虚高",
+    "fdr_alpha": 0.10,
+    "trim_top_stock": true,
+    "threshold_grid": [
+      {"name": "baseline", "corr_threshold_20": 0.55, "min_edge_score": 0.45, "q_alpha": 0.05},
+      {"name": "strict_corr", "corr_threshold_20": 0.62, "min_edge_score": 0.45, "q_alpha": 0.05},
+      {"name": "strict_score", "corr_threshold_20": 0.55, "min_edge_score": 0.55, "q_alpha": 0.05},
+      {"name": "strict_fdr", "corr_threshold_20": 0.55, "min_edge_score": 0.45, "q_alpha": 0.01},
+      {"name": "strict_all", "corr_threshold_20": 0.62, "min_edge_score": 0.55, "q_alpha": 0.01}
+    ],
+    "sensitivity_days": 12,
+    "_sensitivity_note": "阈值敏感性在已落库的边集合内重筛并重跑社区发现，只能验证【更严格】阈值的稳定性，不能外推到更宽松阈值（那些股票对上游预筛已丢弃）"
   }
 }

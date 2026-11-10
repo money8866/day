@@ -33,7 +33,7 @@ EDGE_COLS = [
     "rank_corr", "corr_stability", "corr_dual", "raw_corr", "same_industry",
     "event_sync", "volume_sync", "trend_similarity", "lead_lag_score",
     "lead_lag_best", "sample_n", "p_value", "q_value", "edge_reliability",
-    "edge_score", "is_new", "edge_delta", "streak_days",
+    "edge_score", "is_new", "edge_delta", "corr_delta", "streak_days",
 ]
 
 
@@ -283,9 +283,39 @@ def _batch_corr_aligned(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.nan_to_num(np.clip((a * b).sum(axis=0) / den, -1, 1), nan=0.0)
 
 
+def _smoothed_graph(e: pd.DataFrame, smooth_history: list[tuple[float, pd.DataFrame]],
+                    nodes: list[str]) -> nx.Graph:
+    """时间平滑图：仅用截至今日的历史边（严格 as-of），按衰减权重叠加。
+
+    用途仅限社区发现的「时间连续性约束」，缓解每日独立 Louvain 划分造成的
+    群体身份断裂；当日真实网络快照仍是未经平滑的 e，不写入历史边。
+    """
+    # 只保留两端都在「当日有边节点」内的历史边：既不放大图规模，
+    # 也避免把早已退网的孤立节点重新拉回社区发现。
+    active = set(e["a"]) | set(e["b"])
+    w: dict[tuple[str, str], float] = {}
+    for a, b, sc in zip(e["a"], e["b"], e["edge_score"]):
+        w[(a, b) if a < b else (b, a)] = 1.0 * float(sc)
+    for decay, hist in smooth_history:
+        if hist is None or not len(hist):
+            continue
+        for a, b, sc in zip(hist["a"].astype(str), hist["b"].astype(str),
+                            hist["edge_score"]):
+            if a not in active or b not in active:
+                continue
+            k = (a, b) if a < b else (b, a)
+            w[k] = w.get(k, 0.0) + decay * float(sc)
+    G = nx.Graph()
+    G.add_nodes_from(active)
+    for (a, b), v in w.items():
+        G.add_edge(a, b, weight=float(v))
+    return G
+
+
 def build_network(s: Slice, fs: FeatureSet, resid, cfg: dict[str, Any],
                   history_edges: pd.DataFrame | None = None,
-                  history_edges_5d: pd.DataFrame | None = None) -> NetworkResult:
+                  history_edges_5d: pd.DataFrame | None = None,
+                  smooth_history: list[tuple[float, pd.DataFrame]] | None = None) -> NetworkResult:
     lcfg = cfg["linkage"]
     W = int(lcfg.get("long_window", 60))
     X = np.asarray(resid.resid_mkt[-W:], dtype=np.float32)
@@ -370,16 +400,20 @@ def build_network(s: Slice, fs: FeatureSet, resid, cfg: dict[str, Any],
 
     # 与历史快照对比：新增边、强度变化、连续维持天数
     e["is_new"] = True
-    e["edge_delta"] = 0.0
+    e["edge_delta"] = 0.0      # 当日 edge_score - 昨日 edge_score（新边无基值，记 0）
+    e["corr_delta"] = 0.0      # 当日 20日残差相关 - 昨日值（衡量联动是否真的在增强）
     e["streak_days"] = 1
     if history_edges is not None and len(history_edges) and len(e):
-        prev = {(r.a, r.b): r for r in history_edges.itertuples(index=False)}
+        prev = {((r.a, r.b) if r.a < r.b else (r.b, r.a)): r
+                for r in history_edges.itertuples(index=False)}
         for k, row in e.iterrows():
             key = (row["a"], row["b"]) if row["a"] < row["b"] else (row["b"], row["a"])
             p = prev.get(key)
             if p is not None:
                 e.at[k, "is_new"] = False
                 e.at[k, "edge_delta"] = round(float(row["edge_score"]) - float(getattr(p, "edge_score", 0)), 4)
+                e.at[k, "corr_delta"] = round(
+                    float(row["residual_corr_20"]) - float(getattr(p, "residual_corr_20", 0)), 4)
                 e.at[k, "streak_days"] = int(getattr(p, "streak_days", 1)) + 1
     if history_edges_5d is not None and len(history_edges_5d) and len(e):
         old = set(zip(history_edges_5d["a"], history_edges_5d["b"]))
@@ -405,6 +439,13 @@ def build_network(s: Slice, fs: FeatureSet, resid, cfg: dict[str, Any],
     for r in d.itertuples(index=False):
         G2.add_edge(r.a, r.b, weight=float(r.corr_dual))
     graphs["market_industry"] = G2
+    sm = cfg["cluster"].get("temporal_smoothing", {})
+    if sm.get("enabled", False) and smooth_history:
+        graphs["market_smoothed"] = _smoothed_graph(e, smooth_history, s.codes)
+        stats["temporal_smoothing"] = {
+            "decays": [round(float(d), 3) for d, _ in smooth_history],
+            "edges": graphs["market_smoothed"].number_of_edges(),
+        }
     stats.update({
         "graph_nodes_market": G.number_of_nodes(),
         "graph_edges_market": G.number_of_edges(),

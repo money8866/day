@@ -229,6 +229,7 @@ def save_snapshot(cfg: dict[str, Any], asof: str, s: Slice, fs: FeatureSet,
                     "corr_dual": round(float(r.corr_dual), 4),
                     "sample_n": int(r.sample_n),
                     "q_value": round(float(r.q_value), 6),
+                    "corr_delta": round(float(getattr(r, "corr_delta", 0.0)), 4),
                     "null_method": net.stats.get("null_method", "fisher_z_permutation_calibrated"),
                     "null_z_mean": net.stats.get("null_z_mean"),
                     "null_z_sd": net.stats.get("null_z_sd"),
@@ -352,6 +353,49 @@ def load_history(cfg: dict[str, Any], dates: list[str], asof_idx: int) -> Histor
             ).fetchall()
             h.age = {str(cid): int(n) for cid, n, _ in rows}
             h.cluster_dates = {str(cid): str(first) for cid, _, first in rows}
+            freq = con.execute(
+                "SELECT cluster_id, ts_code, COUNT(*) n FROM cluster_members "
+                "WHERE asof < ? GROUP BY cluster_id, ts_code", (cur,)
+            ).fetchall()
+            min_ratio = float(cfg["cluster"].get("core_member_min_ratio", 0.60))
+            for cid, code, n in freq:
+                days = h.age.get(str(cid), 0)
+                if days >= 1 and int(n) / days >= min_ratio:
+                    h.core_members.setdefault(str(cid), set()).add(str(code))
+        # 时间平滑图：只用严格早于 asof 的历史边，禁止引入未来快照
+        sm = cfg["cluster"].get("temporal_smoothing", {})
+        if sm.get("enabled", False):
+            for k, decay in enumerate(sm.get("decay", [0.45, 0.25, 0.12]), start=1):
+                ed = _edges(con, d(k))
+                if len(ed):
+                    h.smooth_edges.append((float(decay), ed))
+        # 群体身份的历史边锚点：把两端都在同一群体成员集内的当日边归属该 id
+        for mdate, medges in ((prev, h.prev_edges), (d5, h.edges_5d),
+                              (d10, _edges(con, d10))):
+            if mdate is None or medges is None or not len(medges):
+                continue
+            frame = _clusters(con, mdate)
+            if not len(frame):
+                continue
+            # 一次遍历所有边：用「股票 -> 所属群体」映射求交集归属，
+            # 避免 群体数 × 边数 的 Python 双重循环拖慢每日回放。
+            code2cid: dict[str, set[str]] = {}
+            for cid, code in zip(frame["cluster_id"].astype(str),
+                                 frame["ts_code"].astype(str)):
+                code2cid.setdefault(code, set()).add(cid)
+            for a, b in zip(medges["a"].astype(str), medges["b"].astype(str)):
+                common = code2cid.get(a, set()) & code2cid.get(b, set())
+                if not common:
+                    continue
+                k = (a, b) if a < b else (b, a)
+                for cid in common:
+                    bucket = h.cluster_edges.setdefault(cid, set())
+                    bucket.add(k)
+                    bucket.add((k[1], k[0]))
+        if h.prev_edges is not None and len(h.prev_edges):
+            h.prev_edge_pairs = {(a, b) if a < b else (b, a)
+                                 for a, b in zip(h.prev_edges["a"].astype(str),
+                                                 h.prev_edges["b"].astype(str))}
         h.prev_edges = h.prev_edges if len(h.prev_edges) else None
         h.edges_5d = h.edges_5d if len(h.edges_5d) else None
         h.edges_20d = h.edges_20d if len(h.edges_20d) else None
