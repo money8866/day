@@ -1,0 +1,207 @@
+{
+  "quality": {
+    "panel": {
+      "trade_days": 200,
+      "raw_codes": 5604,
+      "date_from": "20260112",
+      "date_to": "20261110",
+      "adj_factor_missing_cells": 15065,
+      "market_source": "ALL_A_EQUAL_WEIGHT",
+      "market_benchmark_days": 0,
+      "market_fallback_days": 200,
+      "industry_count": 111,
+      "industry_small_groups": 1,
+      "benchmark_index_days": 0,
+      "quote_coverage": 0.983,
+      "pit_name_coverage": 0.7967,
+      "read_mode": "ro"
+    },
+    "universe": {
+      "asof": "20261109",
+      "candidate_codes": 5604,
+      "final": 4715,
+      "rejections": {
+        "board_or_bj": 356,
+        "st_or_delisting_pit": 213,
+        "listed_lt_60d": 0,
+        "no_quote_on_asof": 15,
+        "low_liquidity": 268,
+        "suspended": 9,
+        "incomplete_history": 28,
+        "invalid_amount": 0
+      },
+      "pit_st_names": true,
+      "pit_name_coverage": 0.7967,
+      "filters": {
+        "min_listed_trade_days": 60,
+        "min_avg_amount_20_thousand_cny": 30000,
+        "max_suspension_days_20": 4,
+        "min_valid_ratio_60d": 0.9
+      },
+      "no_future_data": true
+    },
+    "residual": {
+      "lookback": 60,
+      "min_obs": 40,
+      "usable_days": 199,
+      "beta_market_mean": 1.0233,
+      "beta_industry_mean": 1.0444,
+      "market_explained_var_mean": 0.2558,
+      "primary_network": "market",
+      "causal_beta": true,
+      "no_future_data": true
+    },
+    "features": {
+      "asof": "20261109",
+      "T": 199,
+      "N": 4715,
+      "event_types": [
+        "VOL_UP",
+        "VOL_DOWN",
+        "BREAKOUT",
+        "PULLBACK",
+        "REBOUND",
+        "RELATIVE_STRENGTH",
+        "LIMIT_UP",
+        "LIMIT_DOWN"
+      ],
+      "event_rows": 27956,
+      "events_by_type": {
+        "VOL_UP": 39398,
+        "VOL_DOWN": 14428,
+        "BREAKOUT": 43312,
+        "PULLBACK": 52229,
+        "REBOUND": 65613,
+        "RELATIVE_STRENGTH": 61808,
+        "LIMIT_UP": 13766,
+        "LIMIT_DOWN": 4023
+      },
+      "feature_count": 40,
+      "no_future_data": true
+    },
+    "network": {
+      "universe_pairs": 11113255,
+      "candidate_pairs": 400000,
+      "candidate_ratio": 0.03599,
+      "prescreen_topk": 30,
+      "prescreen_method": "residual_corr_matrix + behavior_cosine_topk",
+      "full_metric_pairs": 400000,
+      "pairs_corr_gate": 296870,
+      "rejected_by_condition": {
+        "corr_gate": 103130,
+        "not_market_driven_pseudo": 18683,
+        "not_industry_explained": 8589,
+        "dual_network_corr": 191837,
+        "long_window_corr": 25417,
+        "corr_stability": 686,
+        "min_effective_sample": 0,
+        "min_edge_score": 14431,
+        "min_reliability": 0,
+        "fdr": 18305
+      },
+      "rejected_market_driven_pseudo": 18683,
+      "rejected_industry_explained": 8831,
+      "kept_edges": 18922,
+      "graph_nodes_market": 4715,
+      "graph_edges_market": 18922,
+      "graph_edges_dual": 18922,
+      "new_edges": 5006,
+      "mean_edge_score": 0.5583,
+      "perm_null_abs_corr_p95": 0.5081,
+      "null_method": "fisher_z_permutation_calibrated",
+      "null_z_mean": -0.0084,
+      "null_z_sd": 1.1733,
+      "permutation_pairs": 4800
+    },
+    "clusters": {
+      "raw_communities": 55,
+      "valid_clusters": 3,
+      "rejected": {
+        "oversize": 17,
+        "small": 31,
+        "low_density": 3,
+        "weak_edges": 1
+      },
+      "algorithm": "louvain",
+      "grade_counts": {
+        "S": 0,
+        "A": 0,
+        "B": 2,
+        "C": 1
+      },
+      "state_counts": {
+        "EXISTING_CLUSTER": 1,
+        "CLUSTER_STRENGTHENING": 1,
+        "DECAYING_CLUSTER": 1
+      },
+      "signal_counts": {
+        "CLUSTER_STRENGTHENING": 1,
+        "DECAYING_CLUSTER": 1
+      },
+      "emerging_clusters": 0,
+      "expanding_clusters": 0,
+      "strengthening_clusters": 1,
+      "decaying_clusters": 1,
+      "pre_sector_clusters": 0,
+      "new_edges_today": 5006,
+      "history_available": true,
+      "move_state_counts": {
+        "DEEP_PULLBACK": 0,
+        "PULLBACK": 2,
+        "FLAT": 0,
+        "EARLY_MOVE": 1,
+        "EXTENDED": 0
+      },
+      "move_confirmed_clusters": 0,
+      "move_extended_clusters": 0,
+      "move_healthy_clusters": 3,
+      "move_strict_filter": false,
+      "move_strict_would_drop": 0,
+      "wave2_status_counts": {
+        "WAVE2_READY": 0,
+        "WAVE2_WAIT": 1,
+        "WAVE2_BROKEN": 0,
+        "WAVE2_EXPIRED": 0,
+        "NOT_CONFIRMED": 2,
+        "NO_DATA": 0
+      },
+      "wave2_ready_clusters": 0
+    },
+    "momentum": {
+      "config": "D:\\mystock\\stock_linkage_discovery\\momentum_config.json",
+      "enabled": true,
+      "strict_filter": false
+    },
+    "wave2": {
+      "config": "D:\\mystock\\stock_linkage_discovery\\wave2_config.json",
+      "enabled": true,
+      "strict_filter": false,
+      "status_counts": {
+        "WAVE2_READY": 0,
+        "WAVE2_WAIT": 1,
+        "WAVE2_BROKEN": 0,
+        "WAVE2_EXPIRED": 0,
+        "NOT_CONFIRMED": 2,
+        "NO_DATA": 0
+      }
+    },
+    "no_future_data": true,
+    "synthetic_data": false
+  },
+  "timings": {
+    "universe": 0.015,
+    "slice": 0.1143,
+    "residual": 0.4435,
+    "features": 2.9315,
+    "history": 0.449,
+    "network": 7.196,
+    "clusters": 0.4594,
+    "attribution": 0.0204,
+    "momentum": 0.0083,
+    "wave2": 0.0099,
+    "observation": 0.0151,
+    "total": 14.361,
+    "report": 0.2697,
+    "store": 2.4286
+  }
+}

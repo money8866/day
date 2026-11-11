@@ -1,0 +1,589 @@
+{
+  "asof": "20261103",
+  "sector_keyword": "光伏",
+  "pool": "intersection",
+  "pool_sizes": {
+    "concept": 706,
+    "chain": 461,
+    "intersection": 327,
+    "union": 840
+  },
+  "strong_only": false,
+  "config_hash": "164d91af687915fa",
+  "universe": {
+    "final": 4711,
+    "sector_members_in_universe": 290,
+    "sector_members_dropped": 37
+  },
+  "network": {
+    "universe_pairs": 11094405,
+    "candidate_pairs": 400000,
+    "candidate_cap": 400000,
+    "candidate_ratio": 0.03605,
+    "null_z_sd": 1.143,
+    "null_abs_corr_p95": 0.4992,
+    "kept_edges_total": 19944
+  },
+  "sector": {
+    "n_members": 290,
+    "n_internal_pairs": 41905,
+    "funnel": {
+      "板块内配对(universe内)": 41905,
+      "进入候选集": 2387,
+      "corr_gate": 1798,
+      "not_market_driven_pseudo": 1729,
+      "not_industry_explained": 1660,
+      "dual_network_corr": 565,
+      "long_window_corr": 428,
+      "corr_stability": 423,
+      "min_effective_sample": 423,
+      "min_edge_score": 317,
+      "min_reliability": 317,
+      "fdr": 197
+    },
+    "first_fail": {
+      "dual_network_corr": 1095,
+      "fdr": 120,
+      "corr_gate": 589,
+      "long_window_corr": 137,
+      "not_market_driven_pseudo": 69,
+      "not_industry_explained": 69,
+      "min_edge_score": 106,
+      "corr_stability": 5
+    },
+    "final_internal_edges": 197,
+    "final_edges_touching_sector": 2234,
+    "largest_connected_components": [
+      71,
+      18,
+      7,
+      5,
+      5,
+      4,
+      4,
+      3
+    ],
+    "same_industry_pair_ratio": 0.1709,
+    "metrics_all_evaluated": {
+      "residual_corr_20": 0.4414,
+      "residual_corr_60": 0.2756,
+      "corr_dual": 0.2736,
+      "raw_corr": 0.5928,
+      "corr_stability": 0.8111,
+      "edge_score": 0.4277,
+      "q_value": 0.2499
+    },
+    "metrics_passed_corr_gate": {
+      "residual_corr_20": 0.4835,
+      "residual_corr_60": 0.3053,
+      "corr_dual": 0.3038,
+      "raw_corr": 0.6194,
+      "corr_stability": 0.8081,
+      "edge_score": 0.4458,
+      "q_value": 0.2072
+    },
+    "metrics_rejected_dual": {
+      "residual_corr_20": 0.3799,
+      "residual_corr_60": 0.2364,
+      "corr_dual": 0.1616,
+      "raw_corr": 0.5566,
+      "corr_stability": 0.8214,
+      "edge_score": 0.4113,
+      "q_value": 0.3106
+    }
+  },
+  "cross_section": {
+    "sector_mean_pct_chg": -0.512,
+    "sector_up_ratio": 0.5,
+    "market_mean_pct_chg": -1.179,
+    "market_up_ratio": 0.379,
+    "n_strong": 19
+  },
+  "community": {
+    "algorithm": "louvain",
+    "n_communities": 51,
+    "n_communities_with_sector": 20,
+    "rejection_of_sector_communities": {
+      "oversize": 14,
+      "low_density": 2,
+      "small": 4
+    },
+    "top_communities": [
+      {
+        "size": 518,
+        "sector_members": 52,
+        "sector_ratio": 0.1,
+        "inner_edges": 2772,
+        "density": 0.0207,
+        "mean_edge_score": 0.531,
+        "reject": "oversize",
+        "sector_names": [
+          "南玻A",
+          "深圳能源",
+          "建投能源",
+          "甘肃能源",
+          "电投绿能",
+          "中广核技",
+          "湖北能源",
+          "电投产融"
+        ]
+      },
+      {
+        "size": 709,
+        "sector_members": 43,
+        "sector_ratio": 0.061,
+        "inner_edges": 2811,
+        "density": 0.0112,
+        "mean_edge_score": 0.559,
+        "reject": "oversize",
+        "sector_names": [
+          "特发信息",
+          "大族激光",
+          "苏州固锝",
+          "正泰电源",
+          "科华数据",
+          "科士达",
+          "双星新材",
+          "可立克"
+        ]
+      },
+      {
+        "size": 400,
+        "sector_members": 26,
+        "sector_ratio": 0.065,
+        "inner_edges": 1288,
+        "density": 0.0161,
+        "mean_edge_score": 0.559,
+        "reject": "oversize",
+        "sector_names": [
+          "方大集团",
+          "海螺新材",
+          "上峰材料",
+          "东南网架",
+          "摩恩电气",
+          "海源复材",
+          "明牌珠宝",
+          "闽发铝业"
+        ]
+      },
+      {
+        "size": 153,
+        "sector_members": 19,
+        "sector_ratio": 0.124,
+        "inner_edges": 258,
+        "density": 0.0222,
+        "mean_edge_score": 0.55,
+        "reject": "oversize",
+        "sector_names": [
+          "东方盛虹",
+          "美利云",
+          "银星能源",
+          "豫能控股",
+          "协鑫能科",
+          "黔源电力",
+          "星光股份",
+          "*ST聆达"
+        ]
+      },
+      {
+        "size": 250,
+        "sector_members": 18,
+        "sector_ratio": 0.072,
+        "inner_edges": 1419,
+        "density": 0.0456,
+        "mean_edge_score": 0.551,
+        "reject": "oversize",
+        "sector_names": [
+          "华菱线缆",
+          "拓日新能",
+          "中超控股",
+          "钧达股份",
+          "宇晶股份",
+          "振邦智能",
+          "乾照光电",
+          "长荣股份"
+        ]
+      },
+      {
+        "size": 106,
+        "sector_members": 16,
+        "sector_ratio": 0.151,
+        "inner_edges": 279,
+        "density": 0.0501,
+        "mean_edge_score": 0.552,
+        "reject": "oversize",
+        "sector_names": [
+          "漳州发展",
+          "金杯电工",
+          "通达股份",
+          "德力股份",
+          "中能电气",
+          "和顺电气",
+          "新特电气",
+          "双良节能"
+        ]
+      },
+      {
+        "size": 427,
+        "sector_members": 16,
+        "sector_ratio": 0.037,
+        "inner_edges": 2025,
+        "density": 0.0223,
+        "mean_edge_score": 0.578,
+        "reject": "oversize",
+        "sector_names": [
+          "英威腾",
+          "旷达科技",
+          "领益智造",
+          "埃斯顿",
+          "泰嘉股份",
+          "润建股份",
+          "华昌达",
+          "双杰电气"
+        ]
+      },
+      {
+        "size": 168,
+        "sector_members": 16,
+        "sector_ratio": 0.095,
+        "inner_edges": 501,
+        "density": 0.0357,
+        "mean_edge_score": 0.54,
+        "reject": "oversize",
+        "sector_names": [
+          "TCL科技",
+          "绿发电力",
+          "太阳能",
+          "赣能股份",
+          "立新能源",
+          "珈伟新能",
+          "西昌电力",
+          "华银电力"
+        ]
+      },
+      {
+        "size": 444,
+        "sector_members": 15,
+        "sector_ratio": 0.034,
+        "inner_edges": 1913,
+        "density": 0.0195,
+        "mean_edge_score": 0.555,
+        "reject": "oversize",
+        "sector_names": [
+          "湖南发展",
+          "三和管桩",
+          "阳光电源",
+          "晶盛机电",
+          "朗新科技",
+          "锦浪科技",
+          "苏文电能",
+          "鑫宏业"
+        ]
+      },
+      {
+        "size": 68,
+        "sector_members": 12,
+        "sector_ratio": 0.176,
+        "inner_edges": 179,
+        "density": 0.0786,
+        "mean_edge_score": 0.584,
+        "reject": "oversize",
+        "sector_names": [
+          "露笑科技",
+          "远程股份",
+          "联泓新科",
+          "金刚光伏",
+          "天能重工",
+          "铭利达",
+          "快可电子",
+          "泽润新能"
+        ]
+      },
+      {
+        "size": 221,
+        "sector_members": 10,
+        "sector_ratio": 0.045,
+        "inner_edges": 1074,
+        "density": 0.0442,
+        "mean_edge_score": 0.56,
+        "reject": "oversize",
+        "sector_names": [
+          "现代投资",
+          "中利集团",
+          "中来股份",
+          "必创科技",
+          "永福股份",
+          "上海艾录",
+          "华阳股份",
+          "和邦生物"
+        ]
+      },
+      {
+        "size": 308,
+        "sector_members": 6,
+        "sector_ratio": 0.019,
+        "inner_edges": 1146,
+        "density": 0.0242,
+        "mean_edge_score": 0.577,
+        "reject": "oversize",
+        "sector_names": [
+          "国际实业",
+          "电投能源",
+          "云意电气",
+          "先导智能",
+          "通灵股份",
+          "恒尚节能"
+        ]
+      }
+    ]
+  },
+  "bypass_raw_corr": {
+    "note": "不剔市场/行业共同因子的原始 20 日收益相关（仅用于对照，不写回引擎）",
+    "strong": {
+      "0.45": {
+        "n_stocks": 19,
+        "n_pairs": 171,
+        "n_edges": 101,
+        "density": 0.5906,
+        "largest_components": [
+          19
+        ],
+        "mean_raw_corr": 0.474,
+        "ratio_ge_thr": 0.5906
+      },
+      "0.55": {
+        "n_stocks": 19,
+        "n_pairs": 171,
+        "n_edges": 55,
+        "density": 0.3216,
+        "largest_components": [
+          19
+        ],
+        "mean_raw_corr": 0.474,
+        "ratio_ge_thr": 0.3216
+      },
+      "0.65": {
+        "n_stocks": 19,
+        "n_pairs": 171,
+        "n_edges": 33,
+        "density": 0.193,
+        "largest_components": [
+          17,
+          1,
+          1
+        ],
+        "mean_raw_corr": 0.474,
+        "ratio_ge_thr": 0.193
+      }
+    },
+    "all_members": {
+      "0.55": {
+        "n_stocks": 290,
+        "n_pairs": 41905,
+        "n_edges": 10303,
+        "density": 0.2459,
+        "largest_components": [
+          285,
+          1,
+          1,
+          1,
+          1
+        ],
+        "mean_raw_corr": 0.3439,
+        "ratio_ge_thr": 0.2459
+      }
+    }
+  },
+  "quote_top": [
+    {
+      "ts_code": "688556.SH",
+      "name": "高测股份",
+      "industry": "专用机械",
+      "pct_chg": 11.61,
+      "amount_ratio_20": 3.79
+    },
+    {
+      "ts_code": "000591.SZ",
+      "name": "太阳能",
+      "industry": "新型电力",
+      "pct_chg": 10.07,
+      "amount_ratio_20": 4.33
+    },
+    {
+      "ts_code": "603381.SH",
+      "name": "永臻股份",
+      "industry": "电气设备",
+      "pct_chg": 10.03,
+      "amount_ratio_20": 1.97
+    },
+    {
+      "ts_code": "002692.SZ",
+      "name": "远程股份",
+      "industry": "电气设备",
+      "pct_chg": 10.0,
+      "amount_ratio_20": 0.19
+    },
+    {
+      "ts_code": "002578.SZ",
+      "name": "闽发铝业",
+      "industry": "铝",
+      "pct_chg": 9.94,
+      "amount_ratio_20": 2.32
+    },
+    {
+      "ts_code": "688299.SH",
+      "name": "长阳科技",
+      "industry": "元器件",
+      "pct_chg": 6.53,
+      "amount_ratio_20": 3.65
+    },
+    {
+      "ts_code": "300274.SZ",
+      "name": "阳光电源",
+      "industry": "电气设备",
+      "pct_chg": 5.84,
+      "amount_ratio_20": 2.1
+    },
+    {
+      "ts_code": "301046.SZ",
+      "name": "能辉科技",
+      "industry": "建筑工程",
+      "pct_chg": 4.32,
+      "amount_ratio_20": 1.14
+    },
+    {
+      "ts_code": "688472.SH",
+      "name": "阿特斯",
+      "industry": "电气设备",
+      "pct_chg": 4.31,
+      "amount_ratio_20": 1.56
+    },
+    {
+      "ts_code": "300118.SZ",
+      "name": "东方日升",
+      "industry": "电气设备",
+      "pct_chg": 4.26,
+      "amount_ratio_20": 3.12
+    },
+    {
+      "ts_code": "688408.SH",
+      "name": "中信博",
+      "industry": "电气设备",
+      "pct_chg": 4.21,
+      "amount_ratio_20": 1.33
+    },
+    {
+      "ts_code": "601222.SH",
+      "name": "林洋能源",
+      "industry": "新型电力",
+      "pct_chg": 4.0,
+      "amount_ratio_20": 1.85
+    },
+    {
+      "ts_code": "301658.SZ",
+      "name": "首航新能",
+      "industry": "电气设备",
+      "pct_chg": 3.98,
+      "amount_ratio_20": 0.95
+    },
+    {
+      "ts_code": "000100.SZ",
+      "name": "TCL科技",
+      "industry": "元器件",
+      "pct_chg": 3.88,
+      "amount_ratio_20": 1.49
+    },
+    {
+      "ts_code": "300450.SZ",
+      "name": "先导智能",
+      "industry": "专用机械",
+      "pct_chg": 3.81,
+      "amount_ratio_20": 0.93
+    },
+    {
+      "ts_code": "603628.SH",
+      "name": "清源股份",
+      "industry": "电气设备",
+      "pct_chg": 3.74,
+      "amount_ratio_20": 6.11
+    },
+    {
+      "ts_code": "000966.SZ",
+      "name": "长源电力",
+      "industry": "火力发电",
+      "pct_chg": 3.54,
+      "amount_ratio_20": 1.25
+    },
+    {
+      "ts_code": "601877.SH",
+      "name": "正泰电器",
+      "industry": "电气设备",
+      "pct_chg": 3.47,
+      "amount_ratio_20": 1.53
+    },
+    {
+      "ts_code": "301275.SZ",
+      "name": "汉朔科技",
+      "industry": "元器件",
+      "pct_chg": 3.4,
+      "amount_ratio_20": 1.6
+    },
+    {
+      "ts_code": "601615.SH",
+      "name": "明阳智能",
+      "industry": "电气设备",
+      "pct_chg": 3.33,
+      "amount_ratio_20": 1.57
+    },
+    {
+      "ts_code": "688223.SH",
+      "name": "晶科能源",
+      "industry": "电气设备",
+      "pct_chg": 3.3,
+      "amount_ratio_20": 1.61
+    },
+    {
+      "ts_code": "603556.SH",
+      "name": "海兴电力",
+      "industry": "电器仪表",
+      "pct_chg": 3.25,
+      "amount_ratio_20": 1.52
+    },
+    {
+      "ts_code": "605117.SH",
+      "name": "德业股份",
+      "industry": "电气设备",
+      "pct_chg": 3.05,
+      "amount_ratio_20": 2.01
+    },
+    {
+      "ts_code": "600502.SH",
+      "name": "安徽建工",
+      "industry": "建筑工程",
+      "pct_chg": 2.99,
+      "amount_ratio_20": 1.53
+    },
+    {
+      "ts_code": "600089.SH",
+      "name": "特变电工",
+      "industry": "电气设备",
+      "pct_chg": 2.92,
+      "amount_ratio_20": 1.59
+    }
+  ],
+  "thresholds": {
+    "corr_threshold_20": 0.55,
+    "corr_threshold_10": 0.6,
+    "min_dual_network_corr": 0.45,
+    "min_long_window_corr": 0.25,
+    "min_corr_stability": 0.55,
+    "min_edge_score": 0.45,
+    "fdr_alpha": 0.05,
+    "max_candidates_per_stock": 30,
+    "max_candidate_pairs": 400000,
+    "min_cluster_size": 4,
+    "max_cluster_size": 60,
+    "min_density": 0.28,
+    "min_mean_edge_score": 0.5
+  }
+}

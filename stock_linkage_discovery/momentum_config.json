@@ -1,0 +1,33 @@
+{
+  "_note": "联动个股涨幅幅度引擎的独立配置。只影响幅度标签、观察池与日报展示，不影响关联网络/群体发现，故不纳入 linkage_config.json 的发现参数指纹。所有阈值均在此配置。",
+  "version": "1.0",
+  "enabled": true,
+
+  "min_member_move_5": 0.05,
+  "min_member_move_10": 0.08,
+  "_min_member_note": "个股「已有一定涨幅」的下限：5日累计涨幅>=5% 或 10日累计涨幅>=8%（复权收益，小数口径）",
+  "min_moved_stocks": 3,
+  "min_moved_ratio": 0.50,
+  "min_cluster_mean_move_5": 0.03,
+  "min_leader_follower_gap_5": 0.03,
+  "_gap_note": "领涨股 5 日涨幅至少领先其余成员 3 个百分点，避免整组齐涨只是板块指数行情",
+
+  "extended_mean_move_5": 0.05,
+  "max_healthy_mean_move_20": 0.30,
+  "extended_member_move_20": 0.60,
+  "extended_leader_move_20": 0.80,
+  "_extended_note": "涨幅已透支：群体 5 日均值>=5% / 20 日均值>=30%，或成员 20 日涨幅>=60%、领涨股>=80%",
+
+  "min_healthy_mean_move_5": -0.10,
+  "max_healthy_mean_move_5": 0.03,
+  "early_move_min_5": 0.02,
+  "flat_max_5": 0.02,
+  "_healthy_note": "位置健康区间（实证）：群体 5 日平均涨幅 -10% ~ +3%，且 20 日平均涨幅 <=30%；该区间内 T+10 超额为正",
+
+  "strict_filter": false,
+  "strict_demote_grade_to": "B",
+  "strict_exclude_from_watch": true,
+  "_strict_note": "默认关闭：87 个交易日 507 个事件实测，按『有幅度』硬过滤会把 T+10 超额从 +1.30% 打到 -2.03%。开启后未通过幅度确认的 S/A 群体降级且退出观察池，属非默认口径，日报会显著标注。",
+
+  "_empirical_note": "2026-07-01~11-06 分层检验：群体 5 日平均涨幅分桶，<-10% T+10=-3.77%、-10~-5% +2.92%、-5~-2% +2.73%、0~2% +1.24%、2~5% -1.00%、8~15% -3.19%、>15% -2.64%；Spearman(mean5, T+10)=-0.184 (p=0.0002, 样本内)，样本外方向一致。涨幅是位置/风险标签，不是越大越好。"
+}

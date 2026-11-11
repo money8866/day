@@ -22,6 +22,7 @@ STRATEGIES = ("HVT-BULL", "W7", "E08", "VSW")
 EMPTY = pd.DataFrame(columns=[
     "asof", "cluster_id", "ts_code", "stock_name", "role", "linkage_state",
     "HVT-BULL", "W7", "E08", "VSW", "conclusion", "note",
+    "move_5", "move_10", "move_20", "move_tag", "move_state",
 ])
 
 
@@ -71,12 +72,17 @@ def _pick_watch(members: pd.DataFrame, max_n: int) -> list[dict]:
         if len(sub):
             picked.append(sub.iloc[0].to_dict())
             break
-    fol = members[members["role"] == "FOLLOWER"].sort_values("resid_corr_20", ascending=False)
+    fol = members[members["role"] == "FOLLOWER"].copy()
+    lag = members[members["role"] == "LAGGARD"].copy()
     if len(fol):
-        picked.append(fol.iloc[0].to_dict())
-    lag = members[members["role"] == "LAGGARD"].sort_values("amount_ratio", ascending=False)
+        # 位置优先：涨幅已透支的跟随股排在尚未充分释放的股票之后
+        fol["_ext"] = (fol.get("move_tag", pd.Series("", index=fol.index)) == "EXTENDED").astype(int)
+        picked.append(fol.sort_values(["_ext", "resid_corr_20"],
+                                      ascending=[True, False]).iloc[0].to_dict())
     if len(lag):
-        picked.append(lag.iloc[0].to_dict())
+        lag["_ext"] = (lag.get("move_tag", pd.Series("", index=lag.index)) == "EXTENDED").astype(int)
+        picked.append(lag.sort_values(["_ext", "amount_ratio"],
+                                      ascending=[True, False]).iloc[0].to_dict())
     seen, out = set(), []
     for p in picked:
         if p["ts_code"] in seen:
@@ -91,6 +97,7 @@ def _pick_watch(members: pd.DataFrame, max_n: int) -> list[dict]:
 def cross_validate(cs: ClusterSet, cfg: dict[str, Any], asof: str,
                    dates: list[str]) -> pd.DataFrame:
     ocfg = cfg["observation"]
+    mcfg = cfg.get("_momentum") or {}
     if not ocfg.get("enabled", True):
         return EMPTY.copy()
     signals = _load_signals(cfg, asof, dates)
@@ -107,14 +114,27 @@ def cross_validate(cs: ClusterSet, cfg: dict[str, Any], asof: str,
             grade = c.get("grade", "C")
             improving = ("修复" in str(p.get("trend", "")) or "多头" in str(p.get("trend", ""))
                          or float(p.get("excess_mkt_5", 0)) > 0)
+            tag = str(p.get("move_tag", ""))
+            move5 = float(p.get("move_5", 0) or 0)
+            move_state = str(c.get("move_state", ""))
+            strict_miss = (bool(mcfg.get("strict_filter", False))
+                           and not c.get("move_confirmed", True)
+                           and bool(mcfg.get("strict_exclude_from_watch", True)))
             if grade == "C" or state in ("DECAYING_CLUSTER", "OVERHEATED_CLUSTER"):
                 conclusion, note = "LINKAGE_INVALID", "联动衰减/过热或群体失效，不进入观察池"
+            elif strict_miss:
+                conclusion, note = "LINKAGE_INVALID", "严格幅度口径：群体未达到启动幅度确认，退出观察池"
+            elif tag == "EXTENDED":
+                conclusion, note = "LINKAGE_WATCH", (
+                    "个股涨幅已透支（20日涨幅过大 / 领涨已过热），不升级为买点，仅保留位置观察")
             elif has_recent:
                 conclusion, note = "LINKAGE_ENTRY", "联动与既有买点同时满足；仍须遵守原策略止损与风控"
             elif improving:
                 conclusion, note = "LINKAGE_SETUP", "联动有效且技术形态改善，等待既有策略确认"
             else:
                 conclusion, note = "LINKAGE_WATCH", "仅联动观察，等待回踩或策略信号"
+            if move_state == "EXTENDED" and conclusion not in ("LINKAGE_INVALID", "LINKAGE_WATCH"):
+                note += "；所在群体整体涨幅已透支，需防追高"
             rows.append({
                 "asof": asof, "cluster_id": cid, "ts_code": code,
                 "stock_name": p.get("stock_name", ""), "role": p.get("role", ""),
@@ -122,6 +142,9 @@ def cross_validate(cs: ClusterSet, cfg: dict[str, Any], asof: str,
                 "HVT-BULL": sig.get("HVT-BULL", ""), "W7": sig.get("W7", ""),
                 "E08": sig.get("E08", ""), "VSW": sig.get("VSW", ""),
                 "conclusion": conclusion, "note": note,
+                "move_5": round(move5, 4), "move_10": round(float(p.get("move_10", 0) or 0), 4),
+                "move_20": round(float(p.get("move_20", 0) or 0), 4),
+                "move_tag": tag, "move_state": move_state,
             })
     out = pd.DataFrame(rows) if rows else EMPTY.copy()
     log.info("策略交叉: %d 只观察股, 命中既有信号 %d 只",

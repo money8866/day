@@ -1,0 +1,931 @@
+{
+  "status": "OK",
+  "verdict": "NOT_SUPPORTED",
+  "reason": "『缩量即买点』未成立：二波 T+10 超额 -0.004773（样本外 0.020007，但仅 10 个样本外触发事件且与该段 T0 大盘级超额 0.019271 基本持平），胜率 0.4098，剔除最高收益股后 -0.023888，相对等长纯等待的配对差 0.005451（CI 跨 0），相对同日随机选股 -0.019575。未通过项：全样本 T+10 超额 > 0；样本内方向一致；剔除最高收益股后仍为正；30bp 成本后仍为正；跑赢等长纯等待（固定 k=5 日）。但命题的前半段被支持：后续出现缩量回踩的群体在确认日更热（5日涨幅 0.026907 vs 0.001472），T0 入场 T+10 超额 -0.033808 vs 0.009053，同一批事件二波−第一波配对差 0.029698。所以结论是『不该追第一波』成立，『等缩量买』未被验证为可盈利的入场规则。",
+  "events": 507,
+  "triggered_events": 62,
+  "trigger_rate": 0.1223,
+  "mean_wait_days": 6.0,
+  "matched_fixed_delay": 5,
+  "no_trigger_events": 445,
+  "split_note": "沿用主回测 events.csv 的严格时间切分（前段样本内 / 后段样本外）",
+  "config": {
+    "max_wait_days": 10,
+    "min_wait_days": 2,
+    "shrink_abs": 0.8,
+    "shrink_vs_first_wave": 0.65,
+    "shrink_confirm_days": 2,
+    "first_wave_vr": 1.3,
+    "max_range_3": 0.05,
+    "max_pullback": 0.1,
+    "max_rebound": 0.06,
+    "ma_window": 10,
+    "require_two_day_shrink": false,
+    "entry_mode": "SHRINK_DAY"
+  },
+  "checks": {
+    "触发样本充足": true,
+    "全样本 T+10 超额 > 0": false,
+    "样本外 T+10 超额 > 0": true,
+    "样本内方向一致": false,
+    "样本外 bootstrap 95% 下界 > 0": true,
+    "样本外 BH-FDR q <= 0.1": true,
+    "剔除最高收益股后仍为正": false,
+    "30bp 成本后仍为正": false,
+    "跑赢 T0 第一波入场": true,
+    "跑赢等长纯等待（固定 k=5 日）": false,
+    "跑赢同日随机选股": false,
+    "敏感性网格方向不全为负": false
+  },
+  "failed_checks": [
+    "全样本 T+10 超额 > 0",
+    "样本内方向一致",
+    "剔除最高收益股后仍为正",
+    "30bp 成本后仍为正",
+    "跑赢等长纯等待（固定 k=5 日）",
+    "跑赢同日随机选股",
+    "敏感性网格方向不全为负"
+  ],
+  "by_segment": {
+    "ALL": {
+      "T0_FIRST_WAVE": {
+        "n": 490,
+        "mean": 0.00363,
+        "win_rate": 0.5,
+        "median": -0.000103,
+        "tstat": 1.122,
+        "bootstrap": {
+          "n_days": 74,
+          "mean": 0.004902,
+          "ci95_low": -0.003953,
+          "ci95_high": 0.011755,
+          "p_two_sided": 0.374,
+          "q_bh_fdr": 0.51
+        },
+        "h5": 0.002554,
+        "h20": 0.006187
+      },
+      "WAVE2_SHRINK": {
+        "n": 61,
+        "mean": -0.004773,
+        "win_rate": 0.4098,
+        "median": -0.006808,
+        "tstat": -0.84,
+        "bootstrap": {
+          "n_days": 32,
+          "mean": -0.00199,
+          "ci95_low": -0.016011,
+          "ci95_high": 0.007177,
+          "p_two_sided": 0.423,
+          "q_bh_fdr": 0.52875
+        },
+        "h5": -0.008167,
+        "h20": 0.000602,
+        "trimmed_h10": -0.023888,
+        "after_cost_h10": -0.007773,
+        "same_day_random_h10": 0.014802
+      },
+      "NO_TRIGGER": {
+        "n": 428,
+        "mean": 0.009053,
+        "win_rate": 0.5327,
+        "median": 0.005033,
+        "tstat": 2.568,
+        "bootstrap": {
+          "n_days": 74,
+          "mean": 0.007897,
+          "ci95_low": 0.000925,
+          "ci95_high": 0.017531,
+          "p_two_sided": 0.028,
+          "q_bh_fdr": null
+        },
+        "h5": 0.00546,
+        "h20": 0.008827
+      },
+      "FIXED_DELAY_1": {
+        "n": 490,
+        "mean": 0.002117,
+        "win_rate": 0.5,
+        "median": -0.000192,
+        "tstat": 0.657,
+        "bootstrap": {
+          "n_days": 74,
+          "mean": 0.002485,
+          "ci95_low": -0.005132,
+          "ci95_high": 0.009869,
+          "p_two_sided": 0.575,
+          "q_bh_fdr": null
+        },
+        "h5": 0.004338,
+        "h20": null
+      },
+      "FIXED_DELAY_3": {
+        "n": 489,
+        "mean": 0.001879,
+        "win_rate": 0.4969,
+        "median": -0.000428,
+        "tstat": 0.59,
+        "bootstrap": {
+          "n_days": 73,
+          "mean": 0.001833,
+          "ci95_low": -0.005364,
+          "ci95_high": 0.009017,
+          "p_two_sided": 0.601,
+          "q_bh_fdr": null
+        },
+        "h5": 0.003048,
+        "h20": null
+      },
+      "FIXED_DELAY_5": {
+        "n": 484,
+        "mean": 0.002404,
+        "win_rate": 0.5207,
+        "median": 0.001002,
+        "tstat": 0.83,
+        "bootstrap": {
+          "n_days": 71,
+          "mean": -3.2e-05,
+          "ci95_low": -0.004105,
+          "ci95_high": 0.008891,
+          "p_two_sided": 0.442,
+          "q_bh_fdr": null
+        },
+        "h5": 0.001118,
+        "h20": null
+      },
+      "FIXED_DELAY_8": {
+        "n": 476,
+        "mean": 0.002995,
+        "win_rate": 0.4895,
+        "median": -0.001343,
+        "tstat": 1.014,
+        "bootstrap": {
+          "n_days": 68,
+          "mean": 0.000301,
+          "ci95_low": -0.003896,
+          "ci95_high": 0.009602,
+          "p_two_sided": 0.393,
+          "q_bh_fdr": null
+        },
+        "h5": -0.001491,
+        "h20": null
+      }
+    },
+    "IN_SAMPLE": {
+      "T0_FIRST_WAVE": {
+        "n": 404,
+        "mean": 0.000301,
+        "win_rate": 0.4728,
+        "median": -0.005355,
+        "tstat": 0.083,
+        "bootstrap": {
+          "n_days": 49,
+          "mean": 0.001225,
+          "ci95_low": -0.007788,
+          "ci95_high": 0.009615,
+          "p_two_sided": 0.884,
+          "q_bh_fdr": 0.884
+        },
+        "h5": 0.001485,
+        "h20": 0.001617
+      },
+      "WAVE2_SHRINK": {
+        "n": 52,
+        "mean": -0.009062,
+        "win_rate": 0.3462,
+        "median": -0.016103,
+        "tstat": -1.438,
+        "bootstrap": {
+          "n_days": 25,
+          "mean": -0.008085,
+          "ci95_low": -0.021077,
+          "ci95_high": 0.003372,
+          "p_two_sided": 0.148,
+          "q_bh_fdr": 0.246667
+        },
+        "h5": -0.009204,
+        "h20": -0.007483,
+        "trimmed_h10": -0.027575,
+        "after_cost_h10": -0.012062,
+        "same_day_random_h10": 0.016294
+      },
+      "NO_TRIGGER": {
+        "n": 352,
+        "mean": 0.006684,
+        "win_rate": 0.5142,
+        "median": 0.002115,
+        "tstat": 1.699,
+        "bootstrap": {
+          "n_days": 49,
+          "mean": 0.005642,
+          "ci95_low": -0.002172,
+          "ci95_high": 0.016006,
+          "p_two_sided": 0.149,
+          "q_bh_fdr": null
+        },
+        "h5": 0.004918,
+        "h20": 0.004578
+      },
+      "FIXED_DELAY_1": {
+        "n": 404,
+        "mean": -0.000169,
+        "win_rate": 0.4827,
+        "median": -0.003782,
+        "tstat": -0.047,
+        "bootstrap": {
+          "n_days": 49,
+          "mean": 0.000135,
+          "ci95_low": -0.008702,
+          "ci95_high": 0.008762,
+          "p_two_sided": 0.968,
+          "q_bh_fdr": null
+        },
+        "h5": 0.003402,
+        "h20": null
+      },
+      "FIXED_DELAY_3": {
+        "n": 404,
+        "mean": -0.000165,
+        "win_rate": 0.4629,
+        "median": -0.003649,
+        "tstat": -0.046,
+        "bootstrap": {
+          "n_days": 49,
+          "mean": -0.001472,
+          "ci95_low": -0.007897,
+          "ci95_high": 0.007946,
+          "p_two_sided": 0.988,
+          "q_bh_fdr": null
+        },
+        "h5": 0.000961,
+        "h20": null
+      },
+      "FIXED_DELAY_5": {
+        "n": 404,
+        "mean": 0.000544,
+        "win_rate": 0.4926,
+        "median": -0.001972,
+        "tstat": 0.166,
+        "bootstrap": {
+          "n_days": 49,
+          "mean": -0.000542,
+          "ci95_low": -0.006326,
+          "ci95_high": 0.007433,
+          "p_two_sided": 0.877,
+          "q_bh_fdr": null
+        },
+        "h5": -0.001609,
+        "h20": null
+      },
+      "FIXED_DELAY_8": {
+        "n": 404,
+        "mean": 0.000767,
+        "win_rate": 0.4678,
+        "median": -0.003911,
+        "tstat": 0.237,
+        "bootstrap": {
+          "n_days": 49,
+          "mean": -0.001742,
+          "ci95_low": -0.007057,
+          "ci95_high": 0.008572,
+          "p_two_sided": 0.855,
+          "q_bh_fdr": null
+        },
+        "h5": -0.00138,
+        "h20": null
+      }
+    },
+    "OUT_OF_SAMPLE": {
+      "T0_FIRST_WAVE": {
+        "n": 86,
+        "mean": 0.019271,
+        "win_rate": 0.6279,
+        "median": 0.012311,
+        "tstat": 2.71,
+        "bootstrap": {
+          "n_days": 25,
+          "mean": 0.01211,
+          "ci95_low": 0.005883,
+          "ci95_high": 0.032794,
+          "p_two_sided": 0.012,
+          "q_bh_fdr": 0.036
+        },
+        "h5": 0.007149,
+        "h20": 0.033334
+      },
+      "WAVE2_SHRINK": {
+        "n": 9,
+        "mean": 0.020007,
+        "win_rate": 0.7778,
+        "median": 0.020763,
+        "tstat": 2.132,
+        "bootstrap": {
+          "n_days": 7,
+          "mean": 0.019777,
+          "ci95_low": 0.003239,
+          "ci95_high": 0.037874,
+          "p_two_sided": 0.024,
+          "q_bh_fdr": 0.06
+        },
+        "h5": -0.002771,
+        "h20": 0.060661,
+        "trimmed_h10": -0.002586,
+        "after_cost_h10": 0.017007,
+        "same_day_random_h10": 0.006177
+      },
+      "NO_TRIGGER": {
+        "n": 76,
+        "mean": 0.020025,
+        "win_rate": 0.6184,
+        "median": 0.012311,
+        "tstat": 2.561,
+        "bootstrap": {
+          "n_days": 25,
+          "mean": 0.012317,
+          "ci95_low": 0.004553,
+          "ci95_high": 0.034283,
+          "p_two_sided": 0.013,
+          "q_bh_fdr": null
+        },
+        "h5": 0.00773,
+        "h20": 0.034173
+      },
+      "FIXED_DELAY_1": {
+        "n": 86,
+        "mean": 0.01286,
+        "win_rate": 0.5814,
+        "median": 0.00433,
+        "tstat": 1.835,
+        "bootstrap": {
+          "n_days": 25,
+          "mean": 0.00709,
+          "ci95_low": -0.002111,
+          "ci95_high": 0.025505,
+          "p_two_sided": 0.083,
+          "q_bh_fdr": null
+        },
+        "h5": 0.008495,
+        "h20": null
+      },
+      "FIXED_DELAY_3": {
+        "n": 85,
+        "mean": 0.011597,
+        "win_rate": 0.6588,
+        "median": 0.012151,
+        "tstat": 1.922,
+        "bootstrap": {
+          "n_days": 24,
+          "mean": 0.008582,
+          "ci95_low": -0.001462,
+          "ci95_high": 0.02251,
+          "p_two_sided": 0.086,
+          "q_bh_fdr": null
+        },
+        "h5": 0.012627,
+        "h20": null
+      },
+      "FIXED_DELAY_5": {
+        "n": 80,
+        "mean": 0.011799,
+        "win_rate": 0.6625,
+        "median": 0.016114,
+        "tstat": 2.027,
+        "bootstrap": {
+          "n_days": 22,
+          "mean": 0.001104,
+          "ci95_low": -0.002939,
+          "ci95_high": 0.022744,
+          "p_two_sided": 0.113,
+          "q_bh_fdr": null
+        },
+        "h5": 0.013926,
+        "h20": null
+      },
+      "FIXED_DELAY_8": {
+        "n": 72,
+        "mean": 0.0155,
+        "win_rate": 0.6111,
+        "median": 0.012717,
+        "tstat": 2.226,
+        "bootstrap": {
+          "n_days": 19,
+          "mean": 0.00557,
+          "ci95_low": 0.001449,
+          "ci95_high": 0.026364,
+          "p_two_sided": 0.03,
+          "q_bh_fdr": null
+        },
+        "h5": -0.002015,
+        "h20": null
+      }
+    }
+  },
+  "paired": {
+    "paired_vs_t0": {
+      "ALL": {
+        "n": 61,
+        "mean": 0.029698,
+        "win_rate": 0.6885,
+        "median": 0.031094,
+        "tstat": 4.558,
+        "bootstrap": {
+          "n_days": 32,
+          "mean": 0.025631,
+          "ci95_low": 0.015181,
+          "ci95_high": 0.04494,
+          "p_two_sided": 0.0005,
+          "q_bh_fdr": 0.00375
+        }
+      },
+      "IN_SAMPLE": {
+        "n": 52,
+        "mean": 0.03385,
+        "win_rate": 0.6923,
+        "median": 0.032904,
+        "tstat": 5.077,
+        "bootstrap": {
+          "n_days": 25,
+          "mean": 0.029406,
+          "ci95_low": 0.019579,
+          "ci95_high": 0.048919,
+          "p_two_sided": 0.0005,
+          "q_bh_fdr": 0.00375
+        }
+      },
+      "OUT_OF_SAMPLE": {
+        "n": 9,
+        "mean": 0.005708,
+        "win_rate": 0.6667,
+        "median": 0.019471,
+        "tstat": 0.273,
+        "bootstrap": {
+          "n_days": 7,
+          "mean": 0.012148,
+          "ci95_low": -0.026075,
+          "ci95_high": 0.047704,
+          "p_two_sided": 0.751,
+          "q_bh_fdr": 0.804643
+        }
+      }
+    },
+    "paired_vs_fixed": {
+      "ALL": {
+        "n": 61,
+        "mean": 0.005451,
+        "win_rate": 0.4426,
+        "median": 0.0,
+        "tstat": 1.543,
+        "bootstrap": {
+          "n_days": 32,
+          "mean": 0.00795,
+          "ci95_low": -0.000482,
+          "ci95_high": 0.01257,
+          "p_two_sided": 0.067,
+          "q_bh_fdr": 0.143571
+        }
+      },
+      "IN_SAMPLE": {
+        "n": 52,
+        "mean": 0.005039,
+        "win_rate": 0.4423,
+        "median": 0.0,
+        "tstat": 1.395,
+        "bootstrap": {
+          "n_days": 25,
+          "mean": 0.006761,
+          "ci95_low": -0.001012,
+          "ci95_high": 0.011648,
+          "p_two_sided": 0.092,
+          "q_bh_fdr": 0.1725
+        }
+      },
+      "OUT_OF_SAMPLE": {
+        "n": 9,
+        "mean": 0.007828,
+        "win_rate": 0.4444,
+        "median": -0.002274,
+        "tstat": 0.634,
+        "bootstrap": {
+          "n_days": 7,
+          "mean": 0.012194,
+          "ci95_low": -0.00988,
+          "ci95_high": 0.036262,
+          "p_two_sided": 0.465,
+          "q_bh_fdr": 0.536538
+        }
+      }
+    },
+    "paired_vs_random": {
+      "ALL": {
+        "n": 61,
+        "mean": -0.019575,
+        "win_rate": 0.3115,
+        "median": -0.016367,
+        "tstat": -2.348,
+        "bootstrap": {
+          "n_days": 32,
+          "mean": -0.018121,
+          "ci95_low": -0.035147,
+          "ci95_high": -0.006085,
+          "p_two_sided": 0.009,
+          "q_bh_fdr": 0.03375
+        }
+      },
+      "IN_SAMPLE": {
+        "n": 52,
+        "mean": -0.025356,
+        "win_rate": 0.2692,
+        "median": -0.022734,
+        "tstat": -2.734,
+        "bootstrap": {
+          "n_days": 25,
+          "mean": -0.026786,
+          "ci95_low": -0.041267,
+          "ci95_high": -0.009969,
+          "p_two_sided": 0.001,
+          "q_bh_fdr": 0.005
+        }
+      },
+      "OUT_OF_SAMPLE": {
+        "n": 9,
+        "mean": 0.01383,
+        "win_rate": 0.5556,
+        "median": 0.007682,
+        "tstat": 0.976,
+        "bootstrap": {
+          "n_days": 7,
+          "mean": 0.012826,
+          "ci95_low": -0.011036,
+          "ci95_high": 0.036183,
+          "p_two_sided": 0.251,
+          "q_bh_fdr": 0.3765
+        }
+      }
+    }
+  },
+  "diagnostics": {
+    "t0_h10_triggered": -0.033808,
+    "t0_h10_no_trigger": 0.009053,
+    "t0_h10_n_triggered": 62,
+    "t0_h10_n_no_trigger": 428,
+    "t0_mean_move5_triggered": 0.026907,
+    "t0_mean_move5_no_trigger": 0.001472,
+    "t0_extended_share_triggered": 0.3226,
+    "t0_extended_share_no_trigger": 0.1955,
+    "triggered_by_month": {
+      "202607": 13,
+      "202608": 38,
+      "202609": 9,
+      "202610": 2
+    },
+    "reading": "出现缩量回踩的群体在确认日就已明显更热（5日涨幅更高、EXTENDED 占比更高），其 T0 入场的 T+10 超额显著低于未触发群体；这说明『第一波追涨』确实有代价，但该代价是事后用回踩路径识别出来的，不能在 T0 提前知道。"
+  },
+  "cross_layer": {
+    "POSITION_HEALTHY": {
+      "wave2_h10": {
+        "n": 30,
+        "mean": 0.003848,
+        "win_rate": 0.5333,
+        "median": 0.002579,
+        "tstat": 0.459,
+        "bootstrap": {
+          "n_days": 20,
+          "mean": 0.007521,
+          "ci95_low": -0.013666,
+          "ci95_high": 0.024506,
+          "p_two_sided": 0.679
+        }
+      },
+      "t0_h10": {
+        "n": 31,
+        "mean": -0.011032,
+        "win_rate": 0.4516,
+        "median": -0.013808,
+        "tstat": -1.386,
+        "bootstrap": {
+          "n_days": 21,
+          "mean": -0.004174,
+          "ci95_low": -0.025115,
+          "ci95_high": 0.005654,
+          "p_two_sided": 0.195
+        }
+      },
+      "fixed5_h10": {
+        "n": 31,
+        "mean": -0.001157,
+        "win_rate": 0.4516,
+        "median": -0.003124,
+        "tstat": -0.155,
+        "bootstrap": {
+          "n_days": 21,
+          "mean": 2.4e-05,
+          "ci95_low": -0.017415,
+          "ci95_high": 0.018453,
+          "p_two_sided": 0.912
+        }
+      },
+      "same_day_random_h10": {
+        "n": 30,
+        "mean": 0.012329,
+        "win_rate": 0.6,
+        "median": 0.004175,
+        "tstat": 1.325,
+        "bootstrap": {
+          "n_days": 20,
+          "mean": 0.01517,
+          "ci95_low": -0.001643,
+          "ci95_high": 0.030014,
+          "p_two_sided": 0.106
+        }
+      },
+      "wave2_h10_trimmed": {
+        "n": 30,
+        "mean": -0.016884,
+        "win_rate": 0.2667,
+        "median": -0.011899,
+        "tstat": -2.246,
+        "bootstrap": {
+          "n_days": 20,
+          "mean": -0.014982,
+          "ci95_low": -0.031127,
+          "ci95_high": 0.001176,
+          "p_two_sided": 0.068
+        }
+      },
+      "wave2_h10_after_cost": {
+        "n": 30,
+        "mean": 0.000848,
+        "win_rate": 0.5,
+        "median": -0.000421,
+        "tstat": 0.101,
+        "bootstrap": {
+          "n_days": 20,
+          "mean": 0.004521,
+          "ci95_low": -0.016495,
+          "ci95_high": 0.021339,
+          "p_two_sided": 0.922
+        }
+      },
+      "n_oos": 6,
+      "h10_oos": 0.017384
+    },
+    "POSITION_EXTENDED": {
+      "wave2_h10": {
+        "n": 30,
+        "mean": -0.012274,
+        "win_rate": 0.3,
+        "median": -0.02033,
+        "tstat": -1.587,
+        "bootstrap": {
+          "n_days": 17,
+          "mean": -0.01023,
+          "ci95_low": -0.025319,
+          "ci95_high": 0.001904,
+          "p_two_sided": 0.091
+        }
+      },
+      "t0_h10": {
+        "n": 30,
+        "mean": -0.056642,
+        "win_rate": 0.1,
+        "median": -0.064785,
+        "tstat": -7.705,
+        "bootstrap": {
+          "n_days": 17,
+          "mean": -0.052315,
+          "ci95_low": -0.072477,
+          "ci95_high": -0.039746,
+          "p_two_sided": 0.0005
+        }
+      },
+      "fixed5_h10": {
+        "n": 30,
+        "mean": -0.019782,
+        "win_rate": 0.2333,
+        "median": -0.020416,
+        "tstat": -2.744,
+        "bootstrap": {
+          "n_days": 17,
+          "mean": -0.019615,
+          "ci95_low": -0.03405,
+          "ci95_high": -0.005712,
+          "p_two_sided": 0.001
+        }
+      },
+      "same_day_random_h10": {
+        "n": 30,
+        "mean": 0.018716,
+        "win_rate": 0.6,
+        "median": 0.010177,
+        "tstat": 1.894,
+        "bootstrap": {
+          "n_days": 17,
+          "mean": 0.020489,
+          "ci95_low": 0.001919,
+          "ci95_high": 0.040887,
+          "p_two_sided": 0.027
+        }
+      },
+      "wave2_h10_trimmed": {
+        "n": 30,
+        "mean": -0.030165,
+        "win_rate": 0.2333,
+        "median": -0.032508,
+        "tstat": -4.681,
+        "bootstrap": {
+          "n_days": 17,
+          "mean": -0.026756,
+          "ci95_low": -0.041425,
+          "ci95_high": -0.018563,
+          "p_two_sided": 0.0005
+        }
+      },
+      "wave2_h10_after_cost": {
+        "n": 30,
+        "mean": -0.015274,
+        "win_rate": 0.2667,
+        "median": -0.02333,
+        "tstat": -1.975,
+        "bootstrap": {
+          "n_days": 17,
+          "mean": -0.01323,
+          "ci95_low": -0.027524,
+          "ci95_high": -0.001963,
+          "p_two_sided": 0.028
+        }
+      },
+      "n_oos": 4,
+      "h10_oos": 0.023286
+    },
+    "_reading": "未透支位置(FLAT/PULLBACK)的二波入场方向好于已启动/透支位置，但两者样本都只有约 30 个、bootstrap CI 均跨 0，剔除最高收益股后仍未转正；只能作为风险分层，不足以升级为买点规则。"
+  },
+  "diagnosis_supported": true,
+  "multiple_testing": {
+    "method": "BH-FDR",
+    "alpha": 0.1,
+    "n_tests": 15,
+    "q_values": {
+      "IN_SAMPLE:T0_FIRST_WAVE": 0.884,
+      "OUT_OF_SAMPLE:paired_vs_t0": 0.804643,
+      "OUT_OF_SAMPLE:paired_vs_fixed": 0.536538,
+      "ALL:WAVE2_SHRINK": 0.52875,
+      "ALL:T0_FIRST_WAVE": 0.51,
+      "OUT_OF_SAMPLE:paired_vs_random": 0.3765,
+      "IN_SAMPLE:WAVE2_SHRINK": 0.246667,
+      "IN_SAMPLE:paired_vs_fixed": 0.1725,
+      "ALL:paired_vs_fixed": 0.143571,
+      "OUT_OF_SAMPLE:WAVE2_SHRINK": 0.06,
+      "OUT_OF_SAMPLE:T0_FIRST_WAVE": 0.036,
+      "ALL:paired_vs_random": 0.03375,
+      "IN_SAMPLE:paired_vs_random": 0.005,
+      "IN_SAMPLE:paired_vs_t0": 0.00375,
+      "ALL:paired_vs_t0": 0.00375
+    }
+  },
+  "sensitivity": [
+    {
+      "name": "baseline",
+      "shrink_abs": 0.8,
+      "max_wait_days": 10,
+      "max_range_3": 0.05,
+      "require_two_day_shrink": false,
+      "triggered": 61,
+      "trigger_rate": 0.1203,
+      "mean_wait": 5.92,
+      "h10_all": -0.004773,
+      "h10_oos": 0.020007,
+      "n_oos": 9
+    },
+    {
+      "name": "shrink_tight",
+      "shrink_abs": 0.65,
+      "max_wait_days": 10,
+      "max_range_3": 0.05,
+      "require_two_day_shrink": false,
+      "triggered": 14,
+      "trigger_rate": 0.0276,
+      "mean_wait": 7.5,
+      "h10_all": -0.011726,
+      "h10_oos": null,
+      "n_oos": 0
+    },
+    {
+      "name": "shrink_loose",
+      "shrink_abs": 0.95,
+      "max_wait_days": 10,
+      "max_range_3": 0.05,
+      "require_two_day_shrink": false,
+      "triggered": 106,
+      "trigger_rate": 0.2091,
+      "mean_wait": 5.83,
+      "h10_all": -0.006916,
+      "h10_oos": 0.012108,
+      "n_oos": 14
+    },
+    {
+      "name": "wait_short",
+      "shrink_abs": 0.8,
+      "max_wait_days": 5,
+      "max_range_3": 0.05,
+      "require_two_day_shrink": false,
+      "triggered": 29,
+      "trigger_rate": 0.0572,
+      "mean_wait": 3.62,
+      "h10_all": -0.013071,
+      "h10_oos": 0.008601,
+      "n_oos": 2
+    },
+    {
+      "name": "wait_long",
+      "shrink_abs": 0.8,
+      "max_wait_days": 15,
+      "max_range_3": 0.05,
+      "require_two_day_shrink": false,
+      "triggered": 97,
+      "trigger_rate": 0.1913,
+      "mean_wait": 8.43,
+      "h10_all": -6.8e-05,
+      "h10_oos": 0.016673,
+      "n_oos": 13
+    },
+    {
+      "name": "range_tight",
+      "shrink_abs": 0.8,
+      "max_wait_days": 10,
+      "max_range_3": 0.03,
+      "require_two_day_shrink": false,
+      "triggered": 57,
+      "trigger_rate": 0.1124,
+      "mean_wait": 6.12,
+      "h10_all": -0.006432,
+      "h10_oos": 0.016957,
+      "n_oos": 9
+    },
+    {
+      "name": "range_loose",
+      "shrink_abs": 0.8,
+      "max_wait_days": 10,
+      "max_range_3": 0.08,
+      "require_two_day_shrink": false,
+      "triggered": 61,
+      "trigger_rate": 0.1203,
+      "mean_wait": 5.89,
+      "h10_all": -0.004347,
+      "h10_oos": 0.020007,
+      "n_oos": 9
+    },
+    {
+      "name": "two_day",
+      "shrink_abs": 0.8,
+      "max_wait_days": 10,
+      "max_range_3": 0.05,
+      "require_two_day_shrink": true,
+      "triggered": 29,
+      "trigger_rate": 0.0572,
+      "mean_wait": 6.9,
+      "h10_all": -0.008568,
+      "h10_oos": -0.010662,
+      "n_oos": 2
+    },
+    {
+      "name": "single_day_shrink",
+      "shrink_abs": 0.8,
+      "max_wait_days": 10,
+      "max_range_3": 0.05,
+      "min_wait_days": 1,
+      "shrink_confirm_days": 1,
+      "triggered": 98,
+      "trigger_rate": 0.1933,
+      "mean_wait": 5.19,
+      "h10_all": -0.006929,
+      "h10_oos": 0.03234,
+      "n_oos": 13
+    },
+    {
+      "name": "rebound_confirm",
+      "shrink_abs": 0.8,
+      "max_wait_days": 10,
+      "max_range_3": 0.05,
+      "require_two_day_shrink": false,
+      "entry_mode": "REBOUND_CONFIRM",
+      "triggered": 19,
+      "trigger_rate": 0.0375,
+      "mean_wait": 7.95,
+      "h10_all": -0.021516,
+      "h10_oos": 0.028512,
+      "n_oos": 2
+    }
+  ],
+  "wait_distribution": {
+    "2.0": 5,
+    "3.0": 10,
+    "4.0": 5,
+    "5.0": 9,
+    "6.0": 6,
+    "7.0": 6,
+    "8.0": 10,
+    "9.0": 5,
+    "10.0": 6
+  },
+  "disclaimer": "本验证为事后评估，实时链路仍严格 as-of：入场日只由当日及之前的量价决定，按时间顺序取第一个合格缩量日，绝不事后挑收益最高的一天。T0 基线、对照基准、30bp 成本口径复用主回测 events.csv，成员来自已存档快照。固定延迟对照用于区分『二波条件有效』与『只是晚买几天』；同日随机对照为随机选股组合，与 4-8 只集中组合不完全可比。身份追踪仍有断裂，事件已按成员重叠去重；单次前后切分不是多折滚动样本外；最近事件 T+20 右删失；阈值敏感性只改二波判定，不重跑关联网络。WAVE2_READY 是结构观察标签，不是 BUY 信号，结论不构成买入建议。"
+}

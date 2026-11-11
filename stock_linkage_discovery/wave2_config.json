@@ -1,0 +1,79 @@
+{
+  "_note": "二波介入（确认联动后等待震荡缩量）独立配置。只影响状态标签、日报展示与事后验证，不改变关联网络、社区发现、群体成员、LinkageScore 与评级，故不纳入 linkage_config.json 的发现参数指纹。所有业务阈值均在此文件，代码内不硬编码。",
+  "version": "1.0",
+  "enabled": true,
+
+  "confirmation_tags": ["EMERGING_CLUSTER", "LEADER_EXPANSION", "CLUSTER_STRENGTHENING"],
+  "_confirmation_note": "「联动已确认」= 群体主状态或 signals 命中三类机会标签之一；EXISTING_CLUSTER 只表示群体仍在，不作为新的确认事件。",
+  "max_wait_days": 10,
+  "_max_wait_note": "确认日 T0 之后最多等待 10 个交易日；超时未出现缩量震荡即标记 EXPIRED，不无限期挂单等待。",
+  "min_wait_days": 2,
+  "_min_wait_note": "至少等 2 个交易日。冒烟测试发现：若允许 T0+1，放量次日单日缩量就会被当成『震荡缩量』，那只是量能回落而非洗盘平台。",
+
+  "volume_baseline_days": 20,
+  "min_valid_member_ratio": 0.60,
+  "shrink_abs": 0.80,
+  "shrink_vs_first_wave": 0.65,
+  "shrink_confirm_days": 2,
+  "_shrink_confirm_note": "入场日与前一日量比都必须低于缩量门槛、且都低于第一波峰值的 65%，要求缩量是持续状态而非单日脉冲。",
+  "first_wave_vr": 1.30,
+  "first_wave_lookback_before_t0": 2,
+  "_volume_note": "个股量比 vr = 当日成交额 / 前20日均额（严格 shift(1)，不含当日）；群体取成员中位数。要求入场日 vr<=0.80、且 <= 第一波峰值的 65%，同时确认日前后确实出现过 vr>=1.30 的放量第一波，避免把从未启动的冷门群体当作『缩量』。停牌/无成交额日记为无效，成员有效比例不足 60% 的日期不判定。",
+
+  "consolidation_days": 3,
+  "max_range_3": 0.05,
+  "_range_note": "震荡：群体等权指数最近 3 日 (最高/最低-1) <= 5%，价格横住而非单边下杀或继续拉升。",
+  "max_pullback": 0.10,
+  "max_rebound": 0.06,
+  "_retrace_note": "相对 T0 收盘的回撤不得超过 10%（结构破坏），也不得已再涨超 6%（否则又是追第一波/追二波末端）。",
+  "ma_window": 10,
+  "ma_tolerance": 0.02,
+  "max_entry_day_drop": 0.03,
+  "_trend_note": "入场日收盘仍在 10 日均价 2% 以内，且当日群体跌幅不超过 3%，避免买在破位当天。",
+
+  "break_on_deep_pullback": true,
+  "_break_note": "等待期内若先跌破 -10% 回撤上限，直接判结构破坏、停止扫描；不允许破位后反抽再补一个『缩量买点』。",
+  "require_two_day_shrink": false,
+  "_two_day_note": "可选严格口径：入场日与前一交易日都必须满足全部条件（前一日判定只用 <= 前一日的数据，仍然 as-of）。",
+  "entry_mode": "SHRINK_DAY",
+  "_entry_mode_note": "SHRINK_DAY = 缩量震荡当日收盘为观察介入点；REBOUND_CONFIRM = 缩量后再等 1~3 日放量转强才介入。默认前者，后者仅作敏感性对照。",
+  "rebound_min_vr": 1.00,
+  "rebound_min_ret": 0.00,
+  "rebound_max_lookahead": 3,
+
+  "strict_filter": false,
+  "_strict_note": "默认关闭。二波状态一律只作标签/风险提示，不修改 grade、不修改既有策略信号、不产生 BUY。开启后仅把非 READY 群体从『二波观察』清单中排除，仍不修改原评级。",
+
+  "validation": {
+    "warmup_start": "20260301",
+    "bootstrap_draws": 2000,
+    "fdr_alpha": 0.10,
+    "fixed_delays": [1, 3, 5, 8],
+    "_fixed_delay_note": "纯等待对照：不看量价条件，确认后固定第 k 日入场。用于区分『二波有效』与『只是晚买几天躲过第一波回撤』。",
+    "random_control": true,
+    "sensitivity_grid": [
+      {"name": "baseline", "shrink_abs": 0.80, "max_wait_days": 10, "max_range_3": 0.05, "require_two_day_shrink": false},
+      {"name": "shrink_tight", "shrink_abs": 0.65, "max_wait_days": 10, "max_range_3": 0.05, "require_two_day_shrink": false},
+      {"name": "shrink_loose", "shrink_abs": 0.95, "max_wait_days": 10, "max_range_3": 0.05, "require_two_day_shrink": false},
+      {"name": "wait_short", "shrink_abs": 0.80, "max_wait_days": 5, "max_range_3": 0.05, "require_two_day_shrink": false},
+      {"name": "wait_long", "shrink_abs": 0.80, "max_wait_days": 15, "max_range_3": 0.05, "require_two_day_shrink": false},
+      {"name": "range_tight", "shrink_abs": 0.80, "max_wait_days": 10, "max_range_3": 0.03, "require_two_day_shrink": false},
+      {"name": "range_loose", "shrink_abs": 0.80, "max_wait_days": 10, "max_range_3": 0.08, "require_two_day_shrink": false},
+      {"name": "two_day", "shrink_abs": 0.80, "max_wait_days": 10, "max_range_3": 0.05, "require_two_day_shrink": true},
+      {"name": "single_day_shrink", "shrink_abs": 0.80, "max_wait_days": 10, "max_range_3": 0.05,
+       "min_wait_days": 1, "shrink_confirm_days": 1},
+      {"name": "rebound_confirm", "shrink_abs": 0.80, "max_wait_days": 10, "max_range_3": 0.05,
+       "require_two_day_shrink": false, "entry_mode": "REBOUND_CONFIRM"}
+    ],
+    "_sensitivity_note": "只改动二波判定阈值，不重跑关联网络；用于检验结论是否只由某一组阈值支撑。"
+  },
+
+  "WAVE2_STATUS": {
+    "WAVE2_READY": "确认后已出现震荡缩量，进入二波观察窗口（不是买入信号）",
+    "WAVE2_WAIT": "联动已确认，第一波放量后仍在等待缩量震荡",
+    "WAVE2_BROKEN": "等待期内回撤超过上限 / 跌破结构，二波逻辑失效",
+    "WAVE2_EXPIRED": "超过最大等待日仍未出现符合条件的缩量震荡",
+    "NOT_CONFIRMED": "当前不是新确认的联动事件（存量群体），不计第二波计时",
+    "NO_DATA": "行情窗口不足或成员无效数据过多"
+  }
+}

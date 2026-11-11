@@ -632,6 +632,12 @@ def apply_driver_scores(cs: ClusterSet, driver_map: dict[str, dict], cfg: dict[s
         c["linkage_score"] = linkage_score(c["metrics"], cfg, conf)
         c["grade"] = _grade_from_rec(c, cfg)
         c["priority"] = round(c["linkage_score"] * (0.65 + 0.35 * c["freshness"]), 3)
+    _rerank(cs, cfg)
+    return cs
+
+
+def _rerank(cs: ClusterSet, cfg: dict[str, Any]) -> None:
+    """按等级优先、优先级次之重排展示顺序，并刷新 TODAY_NO_VALID_CLUSTER。"""
     ranked = sorted([c for c in cs.clusters if c["grade"] in ("S", "A", "B")],
                     key=lambda x: ({"S": 0, "A": 1, "B": 2, "C": 3}[x["grade"]],
                                    -x["priority"]))
@@ -642,5 +648,24 @@ def apply_driver_scores(cs: ClusterSet, driver_map: dict[str, dict], cfg: dict[s
     cs.clusters.sort(key=lambda x: (x["rank"] or 999, -x["priority"]))
     cs.stats["grade_counts"] = {g: sum(1 for c in cs.clusters if c["grade"] == g)
                                 for g in "SABC"}
-    cs.flags["TODAY_NO_VALID_CLUSTER"] = cs.stats["grade_counts"]["S"] + cs.stats["grade_counts"]["A"] == 0
+    cs.flags["TODAY_NO_VALID_CLUSTER"] = (cs.stats["grade_counts"]["S"]
+                                          + cs.stats["grade_counts"]["A"] == 0)
+
+
+def apply_momentum(cs: ClusterSet, cfg: dict[str, Any]) -> ClusterSet:
+    """幅度引擎挂载后的可选严格过滤。
+
+    默认（strict_filter=false）完全不改评级：幅度只作位置标签与风险提示。
+    显式开启时，未通过「有一定涨幅幅度」确认的 S/A 群体降级为 B，并重排展示。
+    """
+    mcfg = cfg.get("_momentum") or {}
+    if not mcfg.get("enabled", True):
+        return cs
+    if mcfg.get("strict_filter", False):
+        target = str(mcfg.get("strict_demote_grade_to", "B"))
+        for c in cs.clusters:
+            if not c.get("move_confirmed", True) and c["grade"] in ("S", "A"):
+                c["grade"] = target
+                c["move_demoted"] = True
+        _rerank(cs, cfg)
     return cs

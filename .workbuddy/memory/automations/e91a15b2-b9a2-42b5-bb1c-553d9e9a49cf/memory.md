@@ -59,3 +59,11 @@
 - **微信未送达**：bridge_status session_active=false、token 23.75h（入站消息约昨日 11:50）；`acquire_token` 无新消息；`push(auto_acquire=true)` 被 SESSION_NOT_READY 本地拦截（未发出）。与 11-09 同因，未使用 FORCE_PUSH。
 - **兜底**：Agent Mail 发至 `stock1975@qq.com`（skip_confirmation=true），`queued=true`，正文含完整预警 + 微信恢复指引。
 - **待办提醒**：已连续 2 个交易日（11-09、11-10）因无新入站消息无法刷新 token。若用户希望恢复微信推送，需在手机微信给 ClawBot 发一条消息；否则 14:30 任务大概率同样走邮件兜底。
+
+### 2026-11-11 11:30（slot=1130）— 成功（微信恢复）
+- 脚本正常，股票池 5573 只，输出 `realtime_20261111.csv` / `etf_realtime_20261111.csv`（ETF 70 只）。
+- 关键读数：广度 51.8%（2771↑/2582↓），涨停 46 / 跌停 1，半日成交 9352 亿（预估全日 14432 亿），5日均 54.9% vs 20日均 47.7%（+7.2pp）✓改善。
+- 判定：市场广度✓通过；主线**纺织服饰**（连续强态 25 日，超额20日 11.9%）；短线赚钱效应✓通过（晋级率 14.4%、昨涨停均值 +2.48%、上涨比 64.4% 58/90，连续性✓）。
+- 推断 S4（持续 7 日），建议仓位 10%（标注「初步参考、非最终决策」）。
+- **微信推送成功**：bridge_status 显示 session_active=true、token 2.55h（今早有新入站消息）、push_count=3/10、credentials_stale=false；无需 acquire_token，直接 push → HTTP 200。连续 2 日邮件兜底后通道恢复正常，无需邮件兜底。
+- **经验**：用户手机给 bot 发消息后 token 新鲜度以 msg 为准，session_active=true 即可直推，不必额外 acquire_token。

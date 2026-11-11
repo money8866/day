@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from . import attribution_engine, cluster_engine, data_layer, feature_engine
-from . import linkage_engine, observation_engine, report_engine, residual_engine, snapshot_store
+from . import linkage_engine, momentum_engine, observation_engine
+from . import report_engine, residual_engine, snapshot_store, wave2_engine
 from .common import Timings, get_logger, setup_logging
 from .config import apply_overrides, ensure_dirs, load_config
 
@@ -62,6 +63,13 @@ def run_day(cfg: dict[str, Any], panel: data_layer.Panel, asof: str,
         with tm.measure("attribution"):
             driver_map = attribution_engine.analyze_clusters(cs, s, cfg, tag_maps)
             cs = cluster_engine.apply_driver_scores(cs, driver_map, cfg)
+        with tm.measure("momentum"):
+            mcfg = cfg.get("_momentum") or momentum_engine.load_config()
+            cs = momentum_engine.attach(cs, s, fs, mcfg)
+            cs = cluster_engine.apply_momentum(cs, cfg)
+        with tm.measure("wave2"):
+            wcfg = cfg.get("_wave2") or wave2_engine.load_config()
+            cs = wave2_engine.attach(cs, s, fs, wcfg)
         with tm.measure("observation"):
             obs = observation_engine.cross_validate(cs, cfg, asof, dates)
 
@@ -72,6 +80,13 @@ def run_day(cfg: dict[str, Any], panel: data_layer.Panel, asof: str,
             "features": fs.meta,
             "network": net.stats,
             "clusters": cs.stats,
+            "momentum": {"config": mcfg.get("_config_path", ""),
+                         "enabled": bool(mcfg.get("enabled", True)),
+                         "strict_filter": bool(mcfg.get("strict_filter", False))},
+            "wave2": {"config": wcfg.get("_config_path", ""),
+                      "enabled": bool(wcfg.get("enabled", True)),
+                      "strict_filter": bool(wcfg.get("strict_filter", False)),
+                      "status_counts": cs.stats.get("wave2_status_counts", {})},
             "no_future_data": True,
             "synthetic_data": False,
         }
@@ -98,8 +113,13 @@ def run_day(cfg: dict[str, Any], panel: data_layer.Panel, asof: str,
                 qdoc = json.loads(qpath.read_text(encoding="utf-8"))
                 qdoc["timings"] = tm.as_dict()
                 write_json(qpath, qdoc)
+                rpath = Path(cfg["paths"]["output_dir"]) / asof / "report.json"
+                if rpath.exists():
+                    rdoc = json.loads(rpath.read_text(encoding="utf-8"))
+                    rdoc["timings"] = tm.as_dict()
+                    write_json(rpath, rdoc)
             except (ValueError, OSError) as qe:
-                log.warning("质量报告耗时同步失败: %s", qe)
+                log.warning("报告耗时同步失败: %s", qe)
         snapshot_store.finish_run(cfg, asof, "OK", tm.as_dict(), quality, net.stats)
         log.info("[%s] 完成 %.1fs | 边 %d | 群体 %d | S/A=%d | %s",
                  asof, tm.total, len(net.edges), len(cs.clusters),
@@ -133,6 +153,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="覆盖任意配置，可多次；如 --set linkage.corr_threshold_20=0.60")
     ap.add_argument("--fast", action="store_true",
                     help="长历史回放时跳过日报渲染，只落网络快照（日报用 --date 单独重算）")
+    ap.add_argument("--momentum-config", help="指定 momentum_config.json（涨幅幅度引擎）")
+    ap.add_argument("--momentum-strict", action="store_true",
+                    help="启用『联动个股涨幅需达一定幅度』硬过滤（非默认口径，日报会标注）")
+    ap.add_argument("--wave2-config", help="指定 wave2_config.json（二波缩量介入引擎）")
+    ap.add_argument("--wave2-validate", action="store_true",
+                    help="验证『确认联动后等震荡缩量』是否优于第一波（复用 output/backtest/events.csv）")
     ap.add_argument("--log-level", default=None)
     ap.add_argument("--self-test", action="store_true", help="跑单元测试（合成数据，不写入日报）")
     ap.add_argument("--backtest", nargs=2, metavar=("START", "END"),
@@ -144,11 +170,28 @@ def main(argv: list[str] | None = None) -> int:
         return run_tests()
 
     cfg = apply_overrides(load_config(args.config), args.set)
+    # 幅度配置独立于发现参数指纹：它只影响位置标签/观察池/展示，不改变网络与群体发现。
+    mcfg = momentum_engine.load_config(args.momentum_config)
+    if args.momentum_strict:
+        mcfg["strict_filter"] = True
+    cfg["_momentum"] = mcfg
+    wcfg = wave2_engine.load_config(args.wave2_config)
+    cfg["_wave2"] = wcfg
     ensure_dirs(cfg)
     level = args.log_level or cfg["runtime"].get("log_level", "INFO")
     setup_logging(cfg["paths"]["log_dir"], level)
     log = get_logger("pipeline")
-    log.info("配置 %s 指纹 %s", cfg["_config_path"], cfg["_config_hash"])
+    log.info("配置 %s 指纹 %s | 幅度口径 %s strict=%s | 二波口径 %s",
+             cfg["_config_path"], cfg["_config_hash"],
+             mcfg["_config_path"], mcfg.get("strict_filter", False),
+             wcfg["_config_path"])
+
+    if args.wave2_validate:
+        import json
+        res = wave2_engine.validate(cfg, wcfg)
+        print(json.dumps({k: v for k, v in res.items() if k != "summary"},
+                         ensure_ascii=False, indent=2, default=str))
+        return 0 if res.get("status") == "OK" else 2
 
     if args.backtest:
         from . import backtest_engine

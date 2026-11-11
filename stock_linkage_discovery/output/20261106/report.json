@@ -3,7 +3,9 @@
   "flags": {
     "TODAY_NO_VALID_CLUSTER": false,
     "BASELINE_SNAPSHOT": false,
-    "_baseline_note": ""
+    "_baseline_note": "",
+    "MOMENTUM_STRICT_FILTER": false,
+    "WAVE2_STRICT_FILTER": false
   },
   "overview": {
     "raw_communities": 68,
@@ -31,6 +33,27 @@
     "pre_sector_clusters": 1,
     "new_edges_today": 2906,
     "history_available": true,
+    "move_state_counts": {
+      "DEEP_PULLBACK": 0,
+      "PULLBACK": 1,
+      "FLAT": 1,
+      "EARLY_MOVE": 2,
+      "EXTENDED": 4
+    },
+    "move_confirmed_clusters": 3,
+    "move_extended_clusters": 4,
+    "move_healthy_clusters": 2,
+    "move_strict_filter": false,
+    "move_strict_would_drop": 0,
+    "wave2_status_counts": {
+      "WAVE2_READY": 0,
+      "WAVE2_WAIT": 7,
+      "WAVE2_BROKEN": 0,
+      "WAVE2_EXPIRED": 1,
+      "NOT_CONFIRMED": 0,
+      "NO_DATA": 0
+    },
+    "wave2_ready_clusters": 0,
     "n_edges": 17154,
     "network_stats": {
       "universe_pairs": 11127403,
@@ -191,7 +214,36 @@
           "baseline": 0.0606,
           "overrep": 12.3724
         }
-      ]
+      ],
+      "move_state": "EXTENDED",
+      "move_confirmed": true,
+      "move_healthy": false,
+      "move_failed_checks": [],
+      "mean_move_5": 0.0546,
+      "mean_move_10": 0.0017,
+      "mean_move_20": 0.0617,
+      "moved_stocks": 3,
+      "moved_ratio": 0.75,
+      "extended_stocks": 0,
+      "leader_move_5": 0.0774,
+      "leader_follower_gap_5": 0.0304,
+      "move_note": "5日均值 +5.5% / 10日 +0.2% / 20日 +6.2%；有幅度成员 3/4，透支 0 只；领涨领先 +3.0%；位置 EXTENDED",
+      "wave2_status": "WAVE2_WAIT",
+      "wave2_confirmed": true,
+      "wave2_t0": "20261106",
+      "wave2_wait_days": 0,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 1.1406980451653888,
+      "wave2_first_wave_peak_vr": 1.5606,
+      "wave2_range_3": 0.0472,
+      "wave2_retrace": 0.0,
+      "wave2_unmet": [
+        "量能未缩到门槛",
+        "相对第一波峰值缩量不足",
+        "缩量未连续两日（单日脉冲不算洗盘）"
+      ],
+      "wave2_note": "确认日 20261106 起第 0 日；量比 1.14（第一波峰值 1.56），3日振幅 0.05，相对确认日 0.00；等待缩量中（缺：量能未缩到门槛、相对第一波峰值缩量不足、缩量未连续两日（单日脉冲不算洗盘））"
     },
     {
       "cluster_id": "C20261106-021",
@@ -311,7 +363,38 @@
           "baseline": 0.0123,
           "overrep": 40.6724
         }
-      ]
+      ],
+      "move_state": "EXTENDED",
+      "move_confirmed": false,
+      "move_healthy": false,
+      "move_failed_checks": [
+        "领涨领先仅 -1.0%，缺领涨-跟随梯度"
+      ],
+      "mean_move_5": 0.0923,
+      "mean_move_10": 0.007,
+      "mean_move_20": -0.055,
+      "moved_stocks": 4,
+      "moved_ratio": 1.0,
+      "extended_stocks": 0,
+      "leader_move_5": 0.0848,
+      "leader_follower_gap_5": -0.01,
+      "move_note": "5日均值 +9.2% / 10日 +0.7% / 20日 -5.5%；有幅度成员 4/4，透支 0 只；领涨领先 -1.0%；位置 EXTENDED",
+      "wave2_status": "WAVE2_WAIT",
+      "wave2_confirmed": true,
+      "wave2_t0": "20261106",
+      "wave2_wait_days": 0,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 1.9011751130540993,
+      "wave2_first_wave_peak_vr": 1.5225,
+      "wave2_range_3": 0.0456,
+      "wave2_retrace": 0.0,
+      "wave2_unmet": [
+        "量能未缩到门槛",
+        "相对第一波峰值缩量不足",
+        "缩量未连续两日（单日脉冲不算洗盘）"
+      ],
+      "wave2_note": "确认日 20261106 起第 0 日；量比 1.90（第一波峰值 1.52），3日振幅 0.05，相对确认日 0.00；等待缩量中（缺：量能未缩到门槛、相对第一波峰值缩量不足、缩量未连续两日（单日脉冲不算洗盘））"
     },
     {
       "cluster_id": "C20261016-057",
@@ -434,7 +517,36 @@
           "baseline": 0.0047,
           "overrep": 107.2273
         }
-      ]
+      ],
+      "move_state": "EXTENDED",
+      "move_confirmed": true,
+      "move_healthy": false,
+      "move_failed_checks": [],
+      "mean_move_5": 0.1105,
+      "mean_move_10": 0.1393,
+      "mean_move_20": 0.0897,
+      "moved_stocks": 4,
+      "moved_ratio": 1.0,
+      "extended_stocks": 0,
+      "leader_move_5": 0.1885,
+      "leader_follower_gap_5": 0.104,
+      "move_note": "5日均值 +11.0% / 10日 +13.9% / 20日 +9.0%；有幅度成员 4/4，透支 0 只；领涨领先 +10.4%；位置 EXTENDED",
+      "wave2_status": "WAVE2_EXPIRED",
+      "wave2_confirmed": false,
+      "wave2_t0": "20261016",
+      "wave2_wait_days": 15,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 1.4723385109151792,
+      "wave2_first_wave_peak_vr": 3.0062,
+      "wave2_range_3": 0.0384,
+      "wave2_retrace": 0.1311,
+      "wave2_unmet": [
+        "量能未缩到门槛",
+        "缩量未连续两日（单日脉冲不算洗盘）",
+        "相对确认日回撤过深或已再度拉升"
+      ],
+      "wave2_note": "确认日 20261016 起第 15 日；量比 1.47（第一波峰值 3.01），3日振幅 0.04，相对确认日 0.13；超过 10 日未出现合格缩量，本轮放弃"
     },
     {
       "cluster_id": "C20261106-063",
@@ -566,7 +678,40 @@
           "baseline": 0.0068,
           "overrep": 63.1875
         }
-      ]
+      ],
+      "move_state": "FLAT",
+      "move_confirmed": false,
+      "move_healthy": true,
+      "move_failed_checks": [
+        "有幅度成员仅 0/7 只",
+        "群体 5 日均值 +1.9% 未达启动幅度",
+        "领涨领先仅 +0.4%，缺领涨-跟随梯度"
+      ],
+      "mean_move_5": 0.0194,
+      "mean_move_10": -0.0253,
+      "mean_move_20": -0.176,
+      "moved_stocks": 0,
+      "moved_ratio": 0.0,
+      "extended_stocks": 0,
+      "leader_move_5": 0.0232,
+      "leader_follower_gap_5": 0.0045,
+      "move_note": "5日均值 +1.9% / 10日 -2.5% / 20日 -17.6%；有幅度成员 0/7，透支 0 只；领涨领先 +0.4%；位置 FLAT",
+      "wave2_status": "WAVE2_WAIT",
+      "wave2_confirmed": true,
+      "wave2_t0": "20261106",
+      "wave2_wait_days": 0,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 0.6181048438705088,
+      "wave2_first_wave_peak_vr": 0.6068,
+      "wave2_range_3": 0.0107,
+      "wave2_retrace": 0.0,
+      "wave2_unmet": [
+        "尚未出现放量第一波",
+        "相对第一波峰值缩量不足",
+        "缩量未连续两日（单日脉冲不算洗盘）"
+      ],
+      "wave2_note": "确认日 20261106 起第 0 日；量比 0.62（第一波峰值 0.61），3日振幅 0.01，相对确认日 0.00；等待缩量中（缺：尚未出现放量第一波、相对第一波峰值缩量不足、缩量未连续两日（单日脉冲不算洗盘））"
     },
     {
       "cluster_id": "C20261106-067",
@@ -689,7 +834,37 @@
           "baseline": 0.0568,
           "overrep": 17.6045
         }
-      ]
+      ],
+      "move_state": "EXTENDED",
+      "move_confirmed": true,
+      "move_healthy": false,
+      "move_failed_checks": [],
+      "mean_move_5": 0.0794,
+      "mean_move_10": -0.0284,
+      "mean_move_20": -0.0764,
+      "moved_stocks": 4,
+      "moved_ratio": 1.0,
+      "extended_stocks": 0,
+      "leader_move_5": 0.1023,
+      "leader_follower_gap_5": 0.0305,
+      "move_note": "5日均值 +7.9% / 10日 -2.8% / 20日 -7.6%；有幅度成员 4/4，透支 0 只；领涨领先 +3.1%；位置 EXTENDED",
+      "wave2_status": "WAVE2_WAIT",
+      "wave2_confirmed": true,
+      "wave2_t0": "20261106",
+      "wave2_wait_days": 0,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 0.9211391135171314,
+      "wave2_first_wave_peak_vr": 1.2918,
+      "wave2_range_3": 0.0289,
+      "wave2_retrace": 0.0,
+      "wave2_unmet": [
+        "量能未缩到门槛",
+        "尚未出现放量第一波",
+        "相对第一波峰值缩量不足",
+        "缩量未连续两日（单日脉冲不算洗盘）"
+      ],
+      "wave2_note": "确认日 20261106 起第 0 日；量比 0.92（第一波峰值 1.29），3日振幅 0.03，相对确认日 0.00；等待缩量中（缺：量能未缩到门槛、尚未出现放量第一波、相对第一波峰值缩量不足、缩量未连续两日（单日脉冲不算洗盘））"
     },
     {
       "cluster_id": "C20261106-017",
@@ -826,7 +1001,40 @@
           "baseline": 0.0515,
           "overrep": 13.8683
         }
-      ]
+      ],
+      "move_state": "EARLY_MOVE",
+      "move_confirmed": false,
+      "move_healthy": false,
+      "move_failed_checks": [
+        "有幅度成员仅 0/7 只",
+        "领涨领先仅 +0.2%，缺领涨-跟随梯度"
+      ],
+      "mean_move_5": 0.0304,
+      "mean_move_10": 0.0277,
+      "mean_move_20": -0.0336,
+      "moved_stocks": 0,
+      "moved_ratio": 0.0,
+      "extended_stocks": 0,
+      "leader_move_5": 0.0321,
+      "leader_follower_gap_5": 0.002,
+      "move_note": "5日均值 +3.0% / 10日 +2.8% / 20日 -3.4%；有幅度成员 0/7，透支 0 只；领涨领先 +0.2%；位置 EARLY_MOVE",
+      "wave2_status": "WAVE2_WAIT",
+      "wave2_confirmed": true,
+      "wave2_t0": "20261106",
+      "wave2_wait_days": 0,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 0.8954960544994635,
+      "wave2_first_wave_peak_vr": 1.2233,
+      "wave2_range_3": 0.0229,
+      "wave2_retrace": 0.0,
+      "wave2_unmet": [
+        "量能未缩到门槛",
+        "尚未出现放量第一波",
+        "相对第一波峰值缩量不足",
+        "缩量未连续两日（单日脉冲不算洗盘）"
+      ],
+      "wave2_note": "确认日 20261106 起第 0 日；量比 0.90（第一波峰值 1.22），3日振幅 0.02，相对确认日 0.00；等待缩量中（缺：量能未缩到门槛、尚未出现放量第一波、相对第一波峰值缩量不足、缩量未连续两日（单日脉冲不算洗盘））"
     },
     {
       "cluster_id": "C20261106-039",
@@ -947,7 +1155,39 @@
           "baseline": 0.0028,
           "overrep": 181.4615
         }
-      ]
+      ],
+      "move_state": "EARLY_MOVE",
+      "move_confirmed": false,
+      "move_healthy": false,
+      "move_failed_checks": [
+        "有幅度成员仅 1/4 只",
+        "领涨领先仅 -3.0%，缺领涨-跟随梯度"
+      ],
+      "mean_move_5": 0.0396,
+      "mean_move_10": -0.0346,
+      "mean_move_20": -0.075,
+      "moved_stocks": 1,
+      "moved_ratio": 0.25,
+      "extended_stocks": 0,
+      "leader_move_5": 0.0171,
+      "leader_follower_gap_5": -0.03,
+      "move_note": "5日均值 +4.0% / 10日 -3.5% / 20日 -7.5%；有幅度成员 1/4，透支 0 只；领涨领先 -3.0%；位置 EARLY_MOVE",
+      "wave2_status": "WAVE2_WAIT",
+      "wave2_confirmed": true,
+      "wave2_t0": "20261106",
+      "wave2_wait_days": 0,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 0.6103077584234746,
+      "wave2_first_wave_peak_vr": 0.9025,
+      "wave2_range_3": 0.0156,
+      "wave2_retrace": 0.0,
+      "wave2_unmet": [
+        "尚未出现放量第一波",
+        "相对第一波峰值缩量不足",
+        "缩量未连续两日（单日脉冲不算洗盘）"
+      ],
+      "wave2_note": "确认日 20261106 起第 0 日；量比 0.61（第一波峰值 0.90），3日振幅 0.02，相对确认日 0.00；等待缩量中（缺：尚未出现放量第一波、相对第一波峰值缩量不足、缩量未连续两日（单日脉冲不算洗盘））"
     },
     {
       "cluster_id": "C20261103-049",
@@ -1085,7 +1325,40 @@
           "baseline": 0.0901,
           "overrep": 6.3435
         }
-      ]
+      ],
+      "move_state": "PULLBACK",
+      "move_confirmed": false,
+      "move_healthy": true,
+      "move_failed_checks": [
+        "有幅度成员仅 1/7 只",
+        "群体 5 日均值 -1.6% 未达启动幅度",
+        "领涨领先仅 +1.2%，缺领涨-跟随梯度"
+      ],
+      "mean_move_5": -0.0161,
+      "mean_move_10": -0.0024,
+      "mean_move_20": -0.0045,
+      "moved_stocks": 1,
+      "moved_ratio": 0.1429,
+      "extended_stocks": 0,
+      "leader_move_5": -0.0058,
+      "leader_follower_gap_5": 0.0121,
+      "move_note": "5日均值 -1.6% / 10日 -0.2% / 20日 -0.5%；有幅度成员 1/7，透支 0 只；领涨领先 +1.2%；位置 PULLBACK",
+      "wave2_status": "WAVE2_WAIT",
+      "wave2_confirmed": true,
+      "wave2_t0": "20261103",
+      "wave2_wait_days": 3,
+      "wave2_entry_date": null,
+      "wave2_entry_wait": null,
+      "wave2_vr": 0.8967089700482667,
+      "wave2_first_wave_peak_vr": 1.3713,
+      "wave2_range_3": 0.0056,
+      "wave2_retrace": -0.0056,
+      "wave2_unmet": [
+        "量能未缩到门槛",
+        "相对第一波峰值缩量不足",
+        "缩量未连续两日（单日脉冲不算洗盘）"
+      ],
+      "wave2_note": "确认日 20261103 起第 3 日；量比 0.90（第一波峰值 1.37），3日振幅 0.01，相对确认日 -0.01；等待缩量中（缺：量能未缩到门槛、相对第一波峰值缩量不足、缩量未连续两日（单日脉冲不算洗盘））"
     }
   ],
   "members": [
@@ -1103,7 +1376,11 @@
       "ma_stack": 1.0,
       "ret_5": 0.0522,
       "trend": "多头/MA20上行",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0522,
+      "move_10": -0.0218,
+      "move_20": 0.0217,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1119,7 +1396,11 @@
       "ma_stack": 1.0,
       "ret_5": 0.031,
       "trend": "多头/MA20上行",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.031,
+      "move_10": 0.031,
+      "move_20": 0.054,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1135,7 +1416,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0578,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0578,
+      "move_10": -0.0081,
+      "move_20": -0.0046,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1151,7 +1436,11 @@
       "ma_stack": 1.0,
       "ret_5": 0.0774,
       "trend": "多头/MA20上行",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0774,
+      "move_10": 0.0058,
+      "move_20": 0.1757,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1167,7 +1456,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0375,
       "trend": "多头/MA20上行",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0375,
+      "move_10": 0.0236,
+      "move_20": -0.0178,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1183,7 +1476,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0168,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0168,
+      "move_10": 0.0055,
+      "move_20": -0.0492,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1199,7 +1496,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0466,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0466,
+      "move_10": 0.0212,
+      "move_20": -0.0587,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1215,7 +1516,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0119,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0119,
+      "move_10": 0.0047,
+      "move_20": -0.0619,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1231,7 +1536,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0321,
       "trend": "多头/MA20上行",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0321,
+      "move_10": 0.0796,
+      "move_20": 0.0167,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1247,7 +1556,11 @@
       "ma_stack": 1.0,
       "ret_5": 0.0411,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0411,
+      "move_10": 0.0198,
+      "move_20": -0.0235,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1263,7 +1576,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0268,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0268,
+      "move_10": 0.0394,
+      "move_20": -0.0409,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1279,7 +1596,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0684,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0684,
+      "move_10": -0.0229,
+      "move_20": -0.1033,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1295,7 +1616,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.1228,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.1228,
+      "move_10": 0.0113,
+      "move_20": -0.0699,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1311,7 +1636,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0848,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0848,
+      "move_10": 0.0116,
+      "move_20": -0.0169,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1327,7 +1656,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0933,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0933,
+      "move_10": 0.028,
+      "move_20": -0.0299,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1343,7 +1676,11 @@
       "ma_stack": 0.0,
       "ret_5": 0.0486,
       "trend": "弱势/结构破坏",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0486,
+      "move_10": -0.0443,
+      "move_20": -0.0552,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1359,7 +1696,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0533,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0533,
+      "move_10": 0.002,
+      "move_20": -0.0751,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1375,7 +1716,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0171,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0171,
+      "move_10": -0.0487,
+      "move_20": -0.091,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1391,7 +1736,11 @@
       "ma_stack": 0.0,
       "ret_5": 0.0394,
       "trend": "弱势/结构破坏",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0394,
+      "move_10": -0.0474,
+      "move_20": -0.0785,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1407,7 +1756,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.1885,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": 0.1885,
+      "move_10": 0.2153,
+      "move_20": 0.1218,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1423,7 +1776,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0679,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": 0.0679,
+      "move_10": 0.1066,
+      "move_20": 0.0701,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1439,7 +1796,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0954,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": 0.0954,
+      "move_10": 0.116,
+      "move_20": 0.0788,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1455,7 +1816,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0901,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": 0.0901,
+      "move_10": 0.1192,
+      "move_20": 0.0882,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1471,7 +1836,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0154,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0154,
+      "move_10": -0.0162,
+      "move_20": -0.1163,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1487,7 +1856,11 @@
       "ma_stack": 0.0,
       "ret_5": 0.0197,
       "trend": "弱势/结构破坏",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0197,
+      "move_10": -0.0207,
+      "move_20": -0.2457,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1503,7 +1876,11 @@
       "ma_stack": 0.0,
       "ret_5": 0.0232,
       "trend": "弱势/结构破坏",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0232,
+      "move_10": -0.0374,
+      "move_20": -0.2097,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1519,7 +1896,11 @@
       "ma_stack": 0.0,
       "ret_5": 0.0269,
       "trend": "弱势/结构破坏",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0269,
+      "move_10": -0.0545,
+      "move_20": -0.2421,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1535,7 +1916,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0197,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0197,
+      "move_10": -0.0,
+      "move_20": -0.0674,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1551,7 +1936,11 @@
       "ma_stack": 0.0,
       "ret_5": 0.008,
       "trend": "弱势/结构破坏",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.008,
+      "move_10": -0.0418,
+      "move_20": -0.1711,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1567,7 +1956,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0227,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0227,
+      "move_10": -0.0063,
+      "move_20": -0.1797,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1583,7 +1976,11 @@
       "ma_stack": 0.0,
       "ret_5": 0.062,
       "trend": "弱势/结构破坏",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": 0.062,
+      "move_10": -0.1265,
+      "move_20": -0.3238,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1599,7 +1996,11 @@
       "ma_stack": 0.6667,
       "ret_5": -0.0267,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": -0.0267,
+      "move_10": 0.0125,
+      "move_20": 0.0616,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1615,7 +2016,11 @@
       "ma_stack": 0.6667,
       "ret_5": -0.0382,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": -0.0382,
+      "move_10": 0.0311,
+      "move_20": 0.0668,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1631,7 +2036,11 @@
       "ma_stack": 0.6667,
       "ret_5": -0.0354,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": -0.0354,
+      "move_10": 0.0144,
+      "move_20": 0.0451,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1647,7 +2056,11 @@
       "ma_stack": 0.6667,
       "ret_5": -0.0349,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": -0.0349,
+      "move_10": 0.0091,
+      "move_20": 0.0222,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1663,7 +2076,11 @@
       "ma_stack": 0.6667,
       "ret_5": -0.0058,
       "trend": "多头/MA20上行",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": -0.0058,
+      "move_10": 0.054,
+      "move_20": 0.0847,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1679,7 +2096,11 @@
       "ma_stack": 0.3333,
       "ret_5": -0.0339,
       "trend": "均线纠缠/修复中",
-      "is_new_member": false
+      "is_new_member": false,
+      "move_5": -0.0339,
+      "move_10": -0.0115,
+      "move_20": 0.0118,
+      "move_tag": "FLAT"
     },
     {
       "asof": "20261106",
@@ -1695,7 +2116,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.1023,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.1023,
+      "move_10": -0.0324,
+      "move_20": -0.109,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1711,7 +2136,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0862,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0862,
+      "move_10": -0.0188,
+      "move_20": -0.0793,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1727,7 +2156,11 @@
       "ma_stack": 0.3333,
       "ret_5": 0.0653,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0653,
+      "move_10": -0.0265,
+      "move_20": -0.0881,
+      "move_tag": "MOVED"
     },
     {
       "asof": "20261106",
@@ -1743,7 +2176,11 @@
       "ma_stack": 0.6667,
       "ret_5": 0.0639,
       "trend": "均线纠缠/修复中",
-      "is_new_member": true
+      "is_new_member": true,
+      "move_5": 0.0639,
+      "move_10": -0.0358,
+      "move_20": -0.0293,
+      "move_tag": "MOVED"
     }
   ],
   "new_edges": [
@@ -7161,7 +7598,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.1885,
+      "move_10": 0.2153,
+      "move_20": 0.1218,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     },
     {
       "asof": "20261106",
@@ -7175,7 +7617,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.0679,
+      "move_10": 0.1066,
+      "move_20": 0.0701,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     },
     {
       "asof": "20261106",
@@ -7189,7 +7636,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": -0.0058,
+      "move_10": 0.054,
+      "move_20": 0.0847,
+      "move_tag": "FLAT",
+      "move_state": "PULLBACK"
     },
     {
       "asof": "20261106",
@@ -7203,7 +7655,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": 0.062,
+      "move_10": -0.1265,
+      "move_20": -0.3238,
+      "move_tag": "MOVED",
+      "move_state": "PULLBACK"
     },
     {
       "asof": "20261106",
@@ -7217,7 +7674,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": -0.0349,
+      "move_10": 0.0091,
+      "move_20": 0.0222,
+      "move_tag": "FLAT",
+      "move_state": "PULLBACK"
     },
     {
       "asof": "20261106",
@@ -7231,7 +7693,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.0774,
+      "move_10": 0.0058,
+      "move_20": 0.1757,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     },
     {
       "asof": "20261106",
@@ -7245,7 +7712,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.0578,
+      "move_10": -0.0081,
+      "move_20": -0.0046,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     },
     {
       "asof": "20261106",
@@ -7259,7 +7731,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": 0.0321,
+      "move_10": 0.0796,
+      "move_20": 0.0167,
+      "move_tag": "FLAT",
+      "move_state": "EARLY_MOVE"
     },
     {
       "asof": "20261106",
@@ -7273,7 +7750,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": 0.0466,
+      "move_10": 0.0212,
+      "move_20": -0.0587,
+      "move_tag": "FLAT",
+      "move_state": "EARLY_MOVE"
     },
     {
       "asof": "20261106",
@@ -7287,7 +7769,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.0848,
+      "move_10": 0.0116,
+      "move_20": -0.0169,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     },
     {
       "asof": "20261106",
@@ -7301,7 +7788,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.1228,
+      "move_10": 0.0113,
+      "move_20": -0.0699,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     },
     {
       "asof": "20261106",
@@ -7315,7 +7807,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": 0.0171,
+      "move_10": -0.0487,
+      "move_20": -0.091,
+      "move_tag": "FLAT",
+      "move_state": "EARLY_MOVE"
     },
     {
       "asof": "20261106",
@@ -7329,7 +7826,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": 0.0486,
+      "move_10": -0.0443,
+      "move_20": -0.0552,
+      "move_tag": "FLAT",
+      "move_state": "EARLY_MOVE"
     },
     {
       "asof": "20261106",
@@ -7343,7 +7845,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_WATCH",
-      "note": "仅联动观察，等待回踩或策略信号"
+      "note": "仅联动观察，等待回踩或策略信号",
+      "move_5": 0.0232,
+      "move_10": -0.0374,
+      "move_20": -0.2097,
+      "move_tag": "FLAT",
+      "move_state": "FLAT"
     },
     {
       "asof": "20261106",
@@ -7357,7 +7864,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认",
+      "move_5": 0.0197,
+      "move_10": 0.0,
+      "move_20": -0.0674,
+      "move_tag": "FLAT",
+      "move_state": "FLAT"
     },
     {
       "asof": "20261106",
@@ -7371,7 +7883,12 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.1023,
+      "move_10": -0.0324,
+      "move_20": -0.109,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     },
     {
       "asof": "20261106",
@@ -7385,39 +7902,50 @@
       "E08": "",
       "VSW": "",
       "conclusion": "LINKAGE_SETUP",
-      "note": "联动有效且技术形态改善，等待既有策略确认"
+      "note": "联动有效且技术形态改善，等待既有策略确认；所在群体整体涨幅已透支，需防追高",
+      "move_5": 0.0862,
+      "move_10": -0.0188,
+      "move_20": -0.0793,
+      "move_tag": "MOVED",
+      "move_state": "EXTENDED"
     }
   ],
   "risks": [
     {
       "cluster_id": "C20261106-003",
       "risks": [
-        "群体样本不足 / 低样本风险"
+        "群体样本不足 / 低样本风险",
+        "涨幅已透支：5日均值 +5.5% / 10日 +0.2% / 20日 +6.2%；有幅度成员 3/4，透支 0 只；领涨领先 +3.0%；位置 EXTENDED；实证该位置 T+10 超额为负，防追高"
       ]
     },
     {
       "cluster_id": "C20261106-021",
       "risks": [
         "群体样本不足 / 低样本风险",
-        "共同驱动不明确（可能只是统计联动或偶然同步）"
+        "共同驱动不明确（可能只是统计联动或偶然同步）",
+        "涨幅已透支：5日均值 +9.2% / 10日 +0.7% / 20日 -5.5%；有幅度成员 4/4，透支 0 只；领涨领先 -1.0%；位置 EXTENDED；实证该位置 T+10 超额为负，防追高"
       ]
     },
     {
       "cluster_id": "C20261016-057",
       "risks": [
-        "群体样本不足 / 低样本风险"
+        "群体样本不足 / 低样本风险",
+        "涨幅已透支：5日均值 +11.0% / 10日 +13.9% / 20日 +9.0%；有幅度成员 4/4，透支 0 只；领涨领先 +10.4%；位置 EXTENDED；实证该位置 T+10 超额为负，防追高",
+        "确认后超过最大等待日仍未出现合格缩量震荡，本轮二波逻辑失效"
       ]
     },
     {
       "cluster_id": "C20261106-063",
       "risks": [
+        "个股涨幅幅度不足（仅统计联动位置，非已启动群体）",
         "群体内部出现分化 / 联动衰减风险"
       ]
     },
     {
       "cluster_id": "C20261106-067",
       "risks": [
-        "群体样本不足 / 低样本风险"
+        "群体样本不足 / 低样本风险",
+        "涨幅已透支：5日均值 +7.9% / 10日 -2.8% / 20日 -7.6%；有幅度成员 4/4，透支 0 只；领涨领先 +3.1%；位置 EXTENDED；实证该位置 T+10 超额为负，防追高"
       ]
     }
   ],
@@ -7566,22 +8094,65 @@
       "decaying_clusters": 0,
       "pre_sector_clusters": 1,
       "new_edges_today": 2906,
-      "history_available": true
+      "history_available": true,
+      "move_state_counts": {
+        "DEEP_PULLBACK": 0,
+        "PULLBACK": 1,
+        "FLAT": 1,
+        "EARLY_MOVE": 2,
+        "EXTENDED": 4
+      },
+      "move_confirmed_clusters": 3,
+      "move_extended_clusters": 4,
+      "move_healthy_clusters": 2,
+      "move_strict_filter": false,
+      "move_strict_would_drop": 0,
+      "wave2_status_counts": {
+        "WAVE2_READY": 0,
+        "WAVE2_WAIT": 7,
+        "WAVE2_BROKEN": 0,
+        "WAVE2_EXPIRED": 1,
+        "NOT_CONFIRMED": 0,
+        "NO_DATA": 0
+      },
+      "wave2_ready_clusters": 0
+    },
+    "momentum": {
+      "config": "D:\\mystock\\stock_linkage_discovery\\momentum_config.json",
+      "enabled": true,
+      "strict_filter": false
+    },
+    "wave2": {
+      "config": "D:\\mystock\\stock_linkage_discovery\\wave2_config.json",
+      "enabled": true,
+      "strict_filter": false,
+      "status_counts": {
+        "WAVE2_READY": 0,
+        "WAVE2_WAIT": 7,
+        "WAVE2_BROKEN": 0,
+        "WAVE2_EXPIRED": 1,
+        "NOT_CONFIRMED": 0,
+        "NO_DATA": 0
+      }
     },
     "no_future_data": true,
     "synthetic_data": false
   },
   "timings": {
-    "universe": 0.0297,
-    "slice": 0.3085,
-    "residual": 0.9207,
-    "features": 9.6559,
-    "history": 3.7729,
-    "network": 14.4532,
-    "clusters": 1.4647,
-    "attribution": 0.1414,
-    "observation": 0.0664,
-    "total": 30.813
+    "universe": 0.0128,
+    "slice": 0.1167,
+    "residual": 0.3912,
+    "features": 3.8445,
+    "history": 0.6784,
+    "network": 7.3516,
+    "clusters": 0.5907,
+    "attribution": 0.0565,
+    "momentum": 0.0161,
+    "wave2": 0.0177,
+    "observation": 0.0323,
+    "total": 15.51,
+    "report": 0.265,
+    "store": 2.1363
   },
   "config_hash": "164d91af687915fa",
   "disclaimer": "联动强度不等于买入信号；不修改既有策略逻辑；无未来数据；无模拟数据冒充实盘结果"
