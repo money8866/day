@@ -5,6 +5,9 @@
     "min_excess_20d": 0.0,
     "min_excess_60d": 5.0,
     "rank_top_n": 8,
+    "rank_mode": "excess20",
+    "rank_weights": {"ex1": 0.35, "ex5": 0.35, "ex20": 0.20, "ex60": 0.10},
+    "_rank_note": "2026-11-16 回放（_bt_mainline_rank_eval.py，187日/前后半段分割）：short_term 切换率25.3%→66.7%，但验证段>8%命中16.1%→11.1%、训练升验证降（过拟合迹象），8组权重网格无一在两段同时不劣于旧口径。故默认保持 excess20，short_term 仅作开关保留。",
     "_v103_note": "★ V10.3：2.0→0.0 / 3.0→5.0。依据：验证段(后89天) F1 从 13.3 提升到 24.4（旧口径在训练段 29.2、验证段仅 13.3，严重过拟合退化）。"
   },
   "trend": {
@@ -32,7 +35,8 @@
   "mainline": {
     "min_days_strong": 2,
     "min_industries": 1,
-    "require_excess": true
+    "require_excess": true,
+    "strong_days_buffer": 120
   },
   "_v103_history": [
     {

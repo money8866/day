@@ -74,7 +74,11 @@ ETF_POOL = {
     "环保":       ["512580.SH", "159628.SZ"],
     "钢铁":       ["515210.SH", "516150.SH", "168203.SZ"],
     "轻工制造":   ["561070.SZ"],
-    "纺织服饰":   ["516130.SH"],
+    # ★ 2026-11-16 更正：原误标为「纺织服饰」。tushare fund_basic 核对：
+    #   516130.SH = 华宝中证消费龙头ETF（中证消费龙头指数，成分以白酒/家电/食品为主），
+    #   与纺织服饰无关；且 A 股 ETF 市场并不存在纺织服饰行业 ETF。
+    #   为不改变行业数 / ETF 数 / nav 序列 / 等权基准（保住历史回测口径），此处仅正名。
+    "消费龙头":   ["516130.SH"],
     "公用事业":   ["561560.SH", "159611.SZ"],
 }
 # ★ 行业归属说明（全部经 tushare fund_basic 逐一核对 benchmark 修正）：
@@ -118,7 +122,7 @@ ETF_NAMES = {
     "159869.SZ": "旅游ETF", "517110.SH": "教育ETF",
     "159718.SZ": "美妆ETF", "512580.SH": "环保ETF", "159628.SZ": "环保ETF",
     "515210.SH": "钢铁ETF", "516150.SH": "钢铁ETF", "561070.SZ": "轻工ETF",
-    "516130.SH": "纺织ETF", "561560.SH": "公用事业ETF",
+    "516130.SH": "消费龙头ETF", "561560.SH": "公用事业ETF",
     "561330.SH": "有色矿业ETF", "168204.SZ": "煤炭指数",
     "168203.SZ": "钢铁指数", "561360.SH": "油气产业ETF",
     "159806.SZ": "新能源车ETF", "159697.SZ": "能源ETF",
@@ -147,6 +151,16 @@ DEFAULT_CONFIG = {
         "min_excess_20d": 0.0,
         "min_excess_60d": 5.0,
         "rank_top_n": 8,
+        # ★ 2026-11-16 新增主线排序口径：
+        #   excess20   = 旧口径，按 20 日超额排序。弱市里防御/低波动行业长期霸榜、
+        #                切换迟钝（2026-11 连续多日主线都是同一只消费龙头 ETF）。
+        #   short_term = 当日 / 5 / 20 / 60 日相对强弱的横截面百分位加权，突出当下动能。
+        #   ★ 2026-11-16 回放结论（_bt_mainline_rank_eval.py，187 个交易日 / 前后半段分割）：
+        #     short_term 切换率 25.3%→66.7%，但训练段升、验证段降（>8% 命中 16.1%→11.1%），
+        #     有过拟合迹象；8 组权重网格无一在两段同时不劣于旧口径。
+        #     → 默认保持 excess20；short_term 仅作为已验证过的开关保留，勿直接切默认。
+        "rank_mode": "excess20",
+        "rank_weights": {"ex1": 0.35, "ex5": 0.35, "ex20": 0.20, "ex60": 0.10},
         "_v103_note": "★ V10.3：min_excess_20d 2.0→0.0、min_excess_60d 3.0→5.0。"
                       "依据：2026 全年 4984 个「行业×交易日」样本，用未来 20 日相对基准超额 >5% "
                       "作事实标签，参数网格搜索 + 前后半段分割验证。"
@@ -199,6 +213,12 @@ DEFAULT_CONFIG = {
         "min_days_strong": 2,
         "min_industries": 1,
         "require_excess": True,
+        # ★ 2026-11-16：days_strong 回溯缓冲（原硬编码 25）。
+        #   原实现 need=max(ma60,amt_window)+25=85，循环到 i<60 即 break
+        #   → 计数硬上限 25，任何持续 >25 日的主线都被截断成「25 日」。
+        #   实测 20261116 真实连续 47 日。放大到 120 后上限 =120，且不影响判定条件本身。
+        "strong_days_buffer": 120,
+        "_buffer_note": "days_strong 只用于展示与 min_days_strong 门禁，放大窗口不改变 passed 判定。",
     },
     "volatility": {
         "_note": "市场波动率代理 —— 用于组合风险预算的止损距离（不依赖选股数据）",
@@ -274,8 +294,17 @@ def fetch_etf_history(start_date: str = "20210101", end_date: str = None,
         if d is None or len(d) == 0:
             continue
         d = d.sort_values("trade_date").reset_index(drop=True)
+        # ★ 2026-11-16：nav 基数自动续接库内最后净值。
+        #   原实现恒以 100 起算，只拉增量（start_date 晚于库内首日）时 nav 会从 100
+        #   重新起跳，与历史序列断成两截 → ret20/ret60/超额全部失真。
+        #   全量拉取（start_date=20210101）时库内无更早记录，base=100，行为完全不变；
+        #   增量拉取时 base=库中 start_date 前一交易日 nav，累乘后与历史无缝衔接。
+        prev = conn.execute(
+            "SELECT nav FROM etf_daily WHERE ts_code=? AND trade_date<? "
+            "ORDER BY trade_date DESC LIMIT 1", (code, str(start_date))).fetchone()
+        base = float(prev[0]) if prev and prev[0] is not None else 100.0
         # ★ 复权净值：pct_chg 累乘
-        nav = 100.0 * (1.0 + d["pct_chg"].fillna(0.0) / 100.0).cumprod()
+        nav = base * (1.0 + d["pct_chg"].fillna(0.0) / 100.0).cumprod()
         rows = []
         for j in range(len(d)):
             rows.append((
@@ -470,7 +499,11 @@ def detect_mainlines(trade_date: str, cfg: dict = None,
     # ★ 结果缓存：同一交易日重复调用时直接返回
     #   （V10.1 一天内会多次调用 check_mainline，回放 198 天 × 多次调用
     #     每次重算全历史 → 实测 SIGTERM 超时）
-    cache_key = (str(trade_date), id(panel))
+    # ★ 2026-11-16：缓存键纳入排序口径与 days_strong 窗口，
+    #   否则同一进程内切换配置（如回放对比两种口径）会命中旧结果。
+    cache_key = (str(trade_date), id(panel),
+                 cfg["relative_strength"].get("rank_mode", "excess20"),
+                 cfg.get("mainline", {}).get("strong_days_buffer", 120))
     if cache_key in _RESULT_CACHE:
         return _RESULT_CACHE[cache_key]
 
@@ -509,6 +542,9 @@ def detect_mainlines(trade_date: str, cfg: dict = None,
     bench_ma20 = _ma(bench_nav, tr["ma20_window"])
     bench_ret20 = _ret(bench_nav, 20)
     bench_ret60 = _ret(bench_nav, 60)
+    # ★ 短期相对强弱基准（short_term 排序口径用）
+    bench_ret1 = _ret(bench_nav, 1)
+    bench_ret5 = _ret(bench_nav, 5)
 
     details = {}
     for ind, s in series.items():
@@ -521,11 +557,14 @@ def detect_mainlines(trade_date: str, cfg: dict = None,
 
         ma20 = _ma(nav, tr["ma20_window"])
         ma60 = _ma(nav, tr["ma60_window"])
+        ret1 = _ret(nav, 1)
         ret5 = _ret(nav, 5)
         ret20 = _ret(nav, 20)
         ret60 = _ret(nav, 60)
         ex20 = (ret20 - bench_ret20) if (ret20 is not None and bench_ret20 is not None) else None
         ex60 = (ret60 - bench_ret60) if (ret60 is not None and bench_ret60 is not None) else None
+        ex1 = (ret1 - bench_ret1) if (ret1 is not None and bench_ret1 is not None) else None
+        ex5 = (ret5 - bench_ret5) if (ret5 is not None and bench_ret5 is not None) else None
 
         amt_ma = _ma(amt, mf["amt_window"])
         amt_ratio = (amt[-1] / amt_ma) if (amt_ma and amt_ma > 0) else None
@@ -609,6 +648,8 @@ def detect_mainlines(trade_date: str, cfg: dict = None,
             "ret60": round(ret60, 2) if ret60 is not None else None,
             "excess20": round(ex20, 2) if ex20 is not None else None,
             "excess60": round(ex60, 2) if ex60 is not None else None,
+            "excess1": round(ex1, 2) if ex1 is not None else None,
+            "excess5": round(ex5, 2) if ex5 is not None else None,
             "above_ma20": (ma20 is not None and cur > ma20),
             "above_ma60": (ma60 is not None and cur > ma60),
             "dd20": round(dd20, 2) if dd20 is not None else None,
@@ -623,10 +664,34 @@ def detect_mainlines(trade_date: str, cfg: dict = None,
         }
 
     # ---- 排名 + 主线判定 ----
-    def _rank_key(ind):
-        d = details[ind]
-        return (d["excess20"] if d["excess20"] is not None else -999,
-                d["excess60"] if d["excess60"] is not None else -999)
+    rank_mode = rs.get("rank_mode", "excess20")
+    if rank_mode == "short_term":
+        # ★ 2026-11-16：横截面百分位排名。ex1 通常 ±2%、ex60 可达 ±20%，
+        #   直接用原始值加权会被长周期量纲主导，先转成 0~1 分位再合成。
+        #   权重突出当日/5 日动能，但保留 20/60 日趋势分，避免纯噪声追涨。
+        keys = ["excess1", "excess5", "excess20", "excess60"]
+        w = rs.get("rank_weights", {}) or {}
+        weights = {"excess1": float(w.get("ex1", 0.35)),
+                   "excess5": float(w.get("ex5", 0.35)),
+                   "excess20": float(w.get("ex20", 0.20)),
+                   "excess60": float(w.get("ex60", 0.10))}
+        raw = pd.DataFrame(
+            {k: {ind: (d.get(k) if d.get(k) is not None else -999)
+                 for ind, d in details.items()} for k in keys})
+        pct = raw.rank(pct=True)
+        for ind, d in details.items():
+            d["rank_score"] = round(float(sum(weights[k] * pct.loc[ind, k]
+                                              for k in keys)), 4)
+
+        def _rank_key(ind):
+            d = details[ind]
+            return (d["rank_score"],
+                    d["excess20"] if d["excess20"] is not None else -999)
+    else:
+        def _rank_key(ind):
+            d = details[ind]
+            return (d["excess20"] if d["excess20"] is not None else -999,
+                    d["excess60"] if d["excess60"] is not None else -999)
 
     ranked = sorted(details.keys(), key=_rank_key, reverse=True)
     top_n = rs["rank_top_n"]
@@ -659,6 +724,7 @@ def detect_mainlines(trade_date: str, cfg: dict = None,
         "details": details,
         "missing": False,
         "note": "",
+        "rank_mode": rank_mode,
         "bench": {
             "ret20": round(bench_ret20, 2) if bench_ret20 is not None else None,
             "ret60": round(bench_ret60, 2) if bench_ret60 is not None else None,
@@ -680,13 +746,15 @@ def _count_strong_days(ind_series: pd.DataFrame, detail: dict,
       否则循环第一步就因「历史不足」break，days_strong 恒为 1
       （原实现用 tail(30) 而 ma60_window=60 → 必然恒 1）。
     """
-    cache_key = (id(ind_series), str(trade_date))
+    buf = int(cfg.get("mainline", {}).get("strong_days_buffer", 120))
+    cache_key = (id(ind_series), str(trade_date), buf)
     if cache_key in _STRONG_DAYS_CACHE:
         return _STRONG_DAYS_CACHE[cache_key]
     ma20w = cfg["trend"]["ma20_window"]
     ma60w = cfg["trend"]["ma60_window"]
     amtw = cfg["money_flow"]["amt_window"]
-    need = max(ma60w, amtw) + 25
+    # ★ 2026-11-16：缓冲由配置给出（默认 120），原硬编码 25 会让计数顶格饱和。
+    need = max(ma60w, amtw) + buf
     sub = ind_series[ind_series["trade_date"] <= trade_date].tail(need)
     if len(sub) < max(ma60w, amtw) + 1:
         return 1
@@ -694,8 +762,14 @@ def _count_strong_days(ind_series: pd.DataFrame, detail: dict,
     amt = sub["amount"].values
     # ★ bench_nav 与 nav 对齐：bench_nav 是「截止 td 的全量」，
     #   而 nav 是「末尾 need 行」→ 必须同步截尾，否则索引错位。
+    #   ★ 窗口放大后 bench 可能比 nav 更短（行业上市晚导致 minlen 偏小），
+    #     此时必须把 nav/amt 同步截到 bench 长度，否则 bench_nav[i] 越界。
     if bench_nav is not None:
-        bench_nav = np.asarray(bench_nav)[-len(nav):]
+        bench_nav = np.asarray(bench_nav)
+        if len(bench_nav) < len(nav):
+            nav = nav[-len(bench_nav):]
+            amt = amt[-len(bench_nav):]
+        bench_nav = bench_nav[-len(nav):]
     tr = cfg["trend"]
     rs = cfg["relative_strength"]
     mf = cfg["money_flow"]

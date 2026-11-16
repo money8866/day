@@ -464,10 +464,13 @@ def _calc_tracking(bars, pick_date, base_close, stop_price, target_price, rules=
     rules（可选，来自 stock_pick.indicators JSON，缺省行为与旧版完全一致）：
       time_stop_days  时间止损：第 N 个交易日收盘仍 ACTIVE → EXPIRED，
                       hit_date = 第 N 个交易日（N < TRACK_WINDOW 时生效）。
+      stop_mode       止损判定口径：'intraday'(默认，盘中最低价触及即止损)
+                      | 'close'(收盘价跌破失效位才止损，用于指令写明"收盘跌破"的策略)
     """
     if bars is None or bars.empty or not base_close:
         return None
     rules = rules or {}
+    stop_mode = str(rules.get('stop_mode') or 'intraday').lower()
     time_stop_days = rules.get('time_stop_days')
     try:
         time_stop_days = int(time_stop_days) if time_stop_days else 0
@@ -491,14 +494,23 @@ def _calc_tracking(bars, pick_date, base_close, stop_price, target_price, rules=
 
     status, hit_date = 'ACTIVE', None
     dates = after['trade_date'].values
+    # 止损/止盈按「先发生者」判定（旧版先查止损，止盈在前也会被记成 STOP_HIT）
+    stop_pos = target_pos = None
     if stop_price:
-        hit = after[after['low'].astype(float) <= stop_price]
-        if len(hit):
-            status, hit_date = 'STOP_HIT', str(hit['trade_date'].iloc[0])
-    if status != 'STOP_HIT' and target_price:
-        hit = after[after['high'].astype(float) >= target_price]
-        if len(hit):
-            status, hit_date = 'TARGET_HIT', str(hit['trade_date'].iloc[0])
+        if stop_mode == 'close':
+            mask = after['close'].astype(float) < stop_price
+        else:
+            mask = after['low'].astype(float) <= stop_price
+        if mask.any():
+            stop_pos = int(after.index[mask][0])
+    if target_price:
+        mask = after['high'].astype(float) >= target_price
+        if mask.any():
+            target_pos = int(after.index[mask][0])
+    if stop_pos is not None and (target_pos is None or stop_pos <= target_pos):
+        status, hit_date = 'STOP_HIT', str(dates[stop_pos])
+    elif target_pos is not None:
+        status, hit_date = 'TARGET_HIT', str(dates[target_pos])
     if status == 'ACTIVE' and 0 < time_stop_days < TRACK_WINDOW and n >= time_stop_days:
         status, hit_date = 'EXPIRED', str(dates[time_stop_days - 1])
     if status == 'ACTIVE' and n >= TRACK_WINDOW:

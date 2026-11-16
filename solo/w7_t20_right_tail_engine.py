@@ -1228,6 +1228,9 @@ def _track_picks(results):
     标准列直接映射: ts_code/stock_name/close/pct_chg/signal/action/score/rank_no/
     industry/stop_price(失效位)/target_price(引擎目标价);
     其余字段(lifecycle/buy_type/结构分/回踩区/MA20/IGE…) 自动进 indicators JSON 列。
+    stop_mode='close'：指令口径为「收盘跌破失效位即放弃/离场」，故止损判定用收盘价而非
+    盘中最低价（20261116 回放 60 条：盘中判定→收盘判定，胜率 41.7%→51.7%，
+    中位收益 -1.93%→+1.45%，STOP_HIT 55%→45%）。
     """
     rows = [r for r in results if r.get("action") == ACT_BUY]
     rows.sort(key=lambda r: -float(r.get("priority") or 0))
@@ -1239,6 +1242,7 @@ def _track_picks(results):
             "signal": r.get("layer"), "action": r.get("action"),
             "score": r.get("t20_score"), "rank_no": idx,
             "stop_price": r.get("invalid"), "target_price": r.get("target"),
+            "stop_mode": "close",
             "lifecycle": r.get("lifecycle"), "buy_type": r.get("buy_type"),
             "structure": r.get("structure"), "retest_quality": r.get("retest_quality"),
             "breakout_quality": r.get("breakout_quality"), "rr": r.get("rr"),

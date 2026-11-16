@@ -76,3 +76,12 @@
 - **微信未送达**：bridge_status session_active=false、token 58.91h（入站消息约 11-11）、token_near_expiry=true、push_count **9/10** quota_warning；`acquire_token` 35s 内「本轮无新消息」；push 被 SESSION_NOT_READY 本地拦截（未发出）。未用 FORCE_PUSH（配额已近上限，避免影响 14:30 任务）。
 - **兜底**：Agent Mail 发至 `stock1975@qq.com`（skip_confirmation=true），`queued=true`，正文含完整预警 + 微信恢复指引。
 - **待办**：距上次成功微信推送（11-11）已隔 1 个交易日无新入站消息。恢复微信需用户手机给 ClawBot 发一条消息；否则 14:30 任务同样走邮件兜底。建议留意 token 已 2.45 天、quick 临近 7 天刷新阈值。
+
+### 2026-11-16 11:30（slot=1130）— 成功（微信直推，无需刷新）
+- 脚本正常，股票池 5571 只（停牌 0），输出 `realtime_20261116.csv` / `etf_realtime_20261116.csv`（ETF 70 只）。
+- 关键读数：广度 33.4%（1785↑/3564↓），涨停 28 / 跌停 14，半日成交 9012 亿（预估全日 13908 亿），5日均 41.6% vs 20日均 46.1%（-4.5pp）✗未改善。
+- 判定：市场广度✗未过（改善方向✗／底线✓）；主线纺织服饰（连续强态 25 日，超额20日 8.9%）；短线赚钱效应✓通过（晋级率 21.6%、昨涨停均值 +1.48%、上涨比 56.8% 21/37，连续性✓连续 1 日）。
+- 前日对照 20261113：广度 13.9%、涨停 37、跌停 45、建议仓位 5%、状态 S3（持续 1 日）→ 当前推断回落 **S2**，建议仓位 **15%**（时点折扣已计入，标注「初步参考、非最终决策」）。注意状态降档但仓位数值反而抬升，属脚本口径输出，如实呈现未作解读。
+- 盘后仓位基准不可用（基准日 20261103 距今 13 自然日 > max_age_days 7）→ 未额外收紧。
+- **微信推送成功**：bridge_status session_active=true、token 0.73h（basis=msg，今早有新入站消息）、push_count=1/10、credentials_stale=false、quota_warning=false → 无需 acquire_token，直接 push → HTTP 200。跨周末后通道正常，未用邮件兜底。
+- **经验**：token 新鲜度以入站消息真实时刻为准；只要 session_active=true 且无配额告警即可直推，跨周末不必默认走兜底。
