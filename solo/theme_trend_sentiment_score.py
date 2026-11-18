@@ -718,10 +718,10 @@ START_DATE = (datetime.strptime(TRADE_DATE, "%Y%m%d") - timedelta(days=N_DAYS + 
 print(f"[Init] 交易日: {TRADE_DATE}  K线区间: {START_DATE} ~ {TRADE_DATE}")
 
 
-def cache_get(name, **kwargs):
+def cache_get(name, cache_date=None, **kwargs):
     key = "_".join([name] + [f"{k}_{v}" for k, v in sorted(kwargs.items())])
     safe = key.replace("/", "_").replace(":", "_")
-    cache_key = f"tsc_{safe}_{TRADE_DATE}"
+    cache_key = f"tsc_{safe}_{cache_date or TRADE_DATE}"
     
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -746,10 +746,10 @@ def cache_get(name, **kwargs):
     return None
 
 
-def cache_set(name, data, expire_hours=None, **kwargs):
+def cache_set(name, data, expire_hours=None, cache_date=None, **kwargs):
     key = "_".join([name] + [f"{k}_{v}" for k, v in sorted(kwargs.items())])
     safe = key.replace("/", "_").replace(":", "_")
-    cache_key = f"tsc_{safe}_{TRADE_DATE}"
+    cache_key = f"tsc_{safe}_{cache_date or TRADE_DATE}"
     
     # 默认永不过期（expire_hours 为 None 或 <=0 时）
     if expire_hours and expire_hours > 0:
@@ -802,10 +802,39 @@ def get_dc_members():
         return pd.DataFrame()
 
     print("[DC] 调用 Tushare dc_index / dc_member 拉取板块成份股...")
-    concept_df = pro.dc_index(trade_date=TRADE_DATE, idx_type="概念板块")
-    time.sleep(0.15)
-    industry_df = pro.dc_index(trade_date=TRADE_DATE, idx_type="行业板块")
-    time.sleep(0.15)
+    # 东财板块数据不要求当日最新：当日未发布（dc_index 报「指定数据不存在」或返回空表）时，
+    # 按交易日历向前回退，优先复用前一交易日的本地缓存，最多回看 5 个交易日
+    dc_date = TRADE_DATE
+    concept_df = industry_df = None
+    for _ in range(6):
+        try:
+            concept_df = pro.dc_index(trade_date=dc_date, idx_type="概念板块")
+            time.sleep(0.15)
+            industry_df = pro.dc_index(trade_date=dc_date, idx_type="行业板块")
+            if concept_df is not None and not concept_df.empty and industry_df is not None and not industry_df.empty:
+                break
+            concept_df = industry_df = None
+            err = "dc_index 返回空数据"
+        except Exception as e:
+            concept_df = industry_df = None
+            err = e
+
+        prev_date = get_prev_trade_date(dc_date)
+        if not prev_date or prev_date == dc_date:
+            raise Exception(f"[DC] {dc_date} 及更早交易日的东财板块数据均不可用: {err}")
+
+        cached_prev = cache_get("dc_all_members", cache_date=prev_date)
+        if cached_prev is not None and "is_industry" in cached_prev.columns:
+            print(f"[DC] {dc_date} 板块数据不可用（{err}），直接使用前一交易日 {prev_date} 的缓存数据")
+            return cached_prev
+
+        print(f"[DC] {dc_date} 板块数据不可用（{err}），回退到前一交易日 {prev_date}")
+        dc_date = prev_date
+
+    if concept_df is None or industry_df is None:
+        raise Exception(f"[DC] 东财板块数据不可用（已回退至 {dc_date}）")
+    if dc_date != TRADE_DATE:
+        print(f"[DC] 使用 {dc_date} 的东财板块数据（{TRADE_DATE} 当日数据未就绪）")
     
     # 建立 board code -> 是否行业板块 的映射（替代靠名字猜测）
     industry_board_codes = set(industry_df["ts_code"].tolist())
@@ -819,7 +848,7 @@ def get_dc_members():
     total = len(codes)
     for i, code in enumerate(codes):
         try:
-            m = pro.dc_member(trade_date=TRADE_DATE, ts_code=code)
+            m = pro.dc_member(trade_date=dc_date, ts_code=code)
             if m is not None and not m.empty:
                 m["concept_name"] = m["ts_code"].map(name_map)
                 m["is_industry"] = code in industry_board_codes
@@ -839,7 +868,7 @@ def get_dc_members():
         time.sleep(1)
         for code in missing_codes[:]:
             try:
-                m = pro.dc_member(trade_date=TRADE_DATE, ts_code=code)
+                m = pro.dc_member(trade_date=dc_date, ts_code=code)
                 if m is not None and not m.empty:
                     m["concept_name"] = m["ts_code"].map(name_map)
                     m["is_industry"] = code in industry_board_codes
@@ -856,7 +885,7 @@ def get_dc_members():
     if not all_members:
         return pd.DataFrame()
     df = pd.concat(all_members, ignore_index=True).drop_duplicates(subset=["con_code", "concept_name"])
-    cache_set("dc_all_members", df)
+    cache_set("dc_all_members", df, cache_date=dc_date)
     print(f"[DC] 拉取完成: {len(df)} 条")
     return df
 

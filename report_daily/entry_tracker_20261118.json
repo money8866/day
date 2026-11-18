@@ -20,20 +20,20 @@
   "relief_n": 12
  },
  "sentiment": {
-  "up": 0.0,
-  "zb": 0.0,
-  "zt": 0,
+  "up": 23.6,
+  "zb": 38.7,
+  "zt": 38,
   "height": 4
  },
  "level1": {
   "up_gt55": false,
-  "zb_lt25": true,
+  "zb_lt25": false,
   "mainline_strong": false,
   "l1_pass": false
  },
  "level2": {
   "up_gt60": false,
-  "zb_lt20": true,
+  "zb_lt20": false,
   "zt_gt60": false,
   "top1_gt80": false,
   "l2_pass": false

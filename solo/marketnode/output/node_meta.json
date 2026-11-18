@@ -2460,7 +2460,14 @@
     "node_type":"N6",
     "first_detected":"20261117",
     "confirmed_date":"20261117",
-    "invalidated_date":null,
+    "invalidated_date":"20261118",
     "trigger_reason":"FEEDBACK_STRONG_NEG;LADDER_SHRINK;BREADTH_BAD"
+  },
+  {
+    "node_type":"N1",
+    "first_detected":"20261118",
+    "confirmed_date":"20261118",
+    "invalidated_date":null,
+    "trigger_reason":"ZT_DEEP_LOW;DT_SURGE;PROMO_WEAK"
   }
 ]

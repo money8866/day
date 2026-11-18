@@ -1,60 +1,73 @@
 {
  "trade_date": "20261118",
- "built_at": "2026-11-18T19:04:03",
+ "built_at": "2026-11-18T22:57:44",
  "v10": {
   "_file": "d:\\mystock\\solo\\cache_backbone_tushare\\market_regime_v10_20261118.txt",
-  "state": "S1",
-  "state_full": "S1 正常",
-  "state_days": 1,
+  "state": "S2",
+  "state_full": "S2 市场退潮",
+  "state_days": 2,
   "node_type": "无（无）",
   "confidence": "中",
-  "breadth_ratio": null,
-  "breadth_percentile": null,
-  "zt_count": null,
-  "dt_count": null,
-  "dt_prev": null,
-  "broken_rate": null,
-  "promotion_rate": null,
+  "breadth_ratio": 24.2,
+  "breadth_percentile": 18.4,
+  "zt_count": 38,
+  "dt_count": 42,
+  "dt_prev": 73,
+  "broken_rate": 38.7,
+  "promotion_rate": 20.6,
   "strong_mean": null,
   "strong_up_ratio": null,
-  "strong_count": null,
-  "amount": null,
-  "amount_vs_prev": null,
-  "amount_vs_ma5": null,
-  "amount_vs_ma20": null,
+  "strong_count": 34,
+  "amount": 13800.0,
+  "amount_vs_prev": -6.0,
+  "amount_vs_ma5": -16.5,
+  "amount_vs_ma20": -17.8,
   "smallcap_vs_large": null,
-  "target_position": null
+  "target_position": 30,
+  "index_rows": [
+   {
+    "name": "创业板指",
+    "close": 2311.62,
+    "pct": 0.85,
+    "ma20": 2491.24,
+    "ma60": 2983.42,
+    "ret5": -10.13,
+    "ret20": -14.22,
+    "pos250": 0.9,
+    "dd_pos": 86.0
+   }
+  ]
  },
  "v101": {
   "_file": "d:\\mystock\\solo\\cache_backbone_tushare\\market_regime_v101_20261118.txt",
-  "state": "S1",
-  "state_days": 1,
-  "authority_max": 60,
-  "suggested_position": 60,
-  "full_auth": "FULL_REVIEW（证据不足，需观察）",
+  "state": "S2",
+  "state_days": 2,
+  "authority_max": 30,
+  "suggested_position": 30,
+  "full_auth": "FULL_DENIED（不允许满仓）",
   "modules_passed": {
-   "指数趋势": false,
+   "指数趋势": true,
    "市场广度": false,
    "短线赚钱效应": false,
    "主线持续性": true
   },
-  "mainline_text": "消费龙头：连续强态 47 日｜超额20日 10.1%｜超额60日 17.4%｜近20日 6.4%｜量能 0.61倍",
+  "mainline_text": "消费龙头：连续强态 49 日｜超额20日 11.1%｜超额60日 21.9%｜近20日 6.5%｜量能 1.09倍",
   "portfolio_risk_pct": 0.51,
-  "risk_budget_pct": 4.5
+  "risk_budget_pct": 2.0
  },
  "state_row": {
   "trade_date": "20261118",
-  "state": "S1",
+  "state": "S2",
   "prev_state": "S2",
-  "consecutive_days": 1,
+  "consecutive_days": 2,
   "confidence": "中",
   "reasons": [
-   "近7日窗口内环境票 4 票，切换至 正常"
+   "维持 市场退潮"
   ],
   "triggers": [],
   "node_type": "无",
-  "pending_target": "",
-  "pending_days": 0,
+  "pending_target": "S2",
+  "pending_days": 4,
   "vote_history": [
    "",
    "S4",
@@ -72,12 +85,6 @@
   "v101_path": "d:\\mystock\\solo\\cache_backbone_tushare\\market_regime_v101_20261118.txt"
  },
  "breadth_series": [
-  {
-   "d": "20261014",
-   "ratio": 17.881278538812786,
-   "up": 979,
-   "down": 4496
-  },
   {
    "d": "20261015",
    "ratio": 7.764535933550018,
@@ -221,8 +228,53 @@
    "ratio": 24.352617079889807,
    "up": 1326,
    "down": 4119
+  },
+  {
+   "d": "20261118",
+   "ratio": 24.179049715648503,
+   "up": 1318,
+   "down": 4133
   }
  ],
- "limit_up_list": [],
- "limit_up_count": 0
+ "limit_up_list": [
+  "000158.SZ",
+  "000410.SZ",
+  "000707.SZ",
+  "000815.SZ",
+  "000889.SZ",
+  "002042.SZ",
+  "002148.SZ",
+  "002194.SZ",
+  "002197.SZ",
+  "002272.SZ",
+  "002403.SZ",
+  "002463.SZ",
+  "002685.SZ",
+  "002771.SZ",
+  "002843.SZ",
+  "002916.SZ",
+  "002929.SZ",
+  "002955.SZ",
+  "300324.SZ",
+  "300991.SZ",
+  "301391.SZ",
+  "301396.SZ",
+  "600156.SH",
+  "600162.SH",
+  "600186.SH",
+  "600238.SH",
+  "600336.SH",
+  "600405.SH",
+  "600410.SH",
+  "600839.SH",
+  "603220.SH",
+  "603324.SH",
+  "603629.SH",
+  "603657.SH",
+  "603887.SH",
+  "603985.SH",
+  "688316.SH",
+  "688757.SH"
+ ],
+ "limit_up_count": 38
 }
