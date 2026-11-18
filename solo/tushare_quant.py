@@ -7193,13 +7193,11 @@ def markdown_to_email_html(markdown_text, title="每日复盘", subtitle=""):
     body = _inline_email_styles(_wrap_email_tables(body))
     sub = f'<div class="s" style="font-size:18px;opacity:.92;margin-top:6px;">{subtitle}</div>' if subtitle else ""
     gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # 20261118 修复：Agent Mail CLI 会剥掉 <!DOCTYPE>/<html>/<head>/<meta>/<body>
+    # 外壳，却把 <title>/<style> 留在最前面 → QQ 后端解析不到合法 body → 全文被转义
+    # 成纯文本显示源码。改为以 <div> 开头、<style> 内嵌（内联样式仍保留作客户端保底）。
     return (
-        '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{title}</title>\n<style>{_MAIL_CSS}</style>\n</head>\n"
-        '<body style="margin:0;padding:0;background:#eef2f7;-webkit-text-size-adjust:100%;'
-        'font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',\'Microsoft YaHei\',Arial,sans-serif;'
-        'font-size:22px;line-height:1.8;color:#1f2937;">\n'
+        '<div><style>\n' + _MAIL_CSS + '\n</style>\n'
         '<div class="wrap" style="padding:14px;">\n'
         '<div class="hd" style="background:#1677ff;border-radius:14px;padding:18px 16px;'
         'margin-bottom:14px;color:#ffffff;">\n'
@@ -7210,7 +7208,7 @@ def markdown_to_email_html(markdown_text, title="每日复盘", subtitle=""):
         f"{body}\n</div>\n"
         '<div class="ft" style="text-align:center;color:#94a3b8;font-size:17px;line-height:1.7;'
         f'padding:14px 8px 4px;">生成时间 {gen_time}<br>本邮件由量化系统自动推送，仅供参考，不构成投资建议</div>\n'
-        "</div>\n</body>\n</html>"
+        "</div></div>"
     )
 
 

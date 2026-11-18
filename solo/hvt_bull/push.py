@@ -148,6 +148,34 @@ tbody tr:nth-child(even) { background:#f8fafc; }
 .tbl td:last-child, .tbl th:last-child { white-space:normal; min-width:180px; }
 """
 
+# 20261118 修复：QQ 邮箱对单封邮件里表格的总量有上限（实测约 60 行 / ~9KB），
+# 一旦超限，后端 HTML 解析会失败 → 整封邮件回退成纯文本、标签被转义后显示源码。
+# 因此邮件正文中超过该行数的大表必须截断；完整明细仍保留在报告 .md 中。
+_MAX_EMAIL_TABLE_ROWS = 45
+
+
+def _cap_email_tables(html: str, max_rows: int = _MAX_EMAIL_TABLE_ROWS) -> str:
+    """把超过 max_rows 行（不含表头）的 <table> 截断为「表头 + 前 max_rows 行 + 省略提示行」。"""
+    import re
+    pat = re.compile(
+        r'(<table>\s*<thead>.*?</thead>\s*<tbody>)(.*?)(</tbody>\s*</table>)', re.S
+    )
+
+    def _repl(m):
+        head, body, tail = m.groups()
+        rows = re.findall(r'<tr\b.*?</tr>', body, re.S)
+        if len(rows) <= max_rows:
+            return m.group(0)
+        kept = ''.join(rows[:max_rows])
+        omitted = len(rows) - max_rows
+        note = (
+            '<tr><td colspan="99" style="text-align:center;color:#64748b;font-size:18px;">'
+            f'… 其余 {omitted} 行已省略，完整明细见当日报告 .md</td></tr>'
+        )
+        return head + kept + note + tail
+
+    return pat.sub(_repl, html)
+
 
 def _md_to_email_html(md_text: str, title: str, subtitle: str = '') -> str:
     """markdown → 邮件 HTML 正文：卡片式排版、正文 22px、移动端优先。
@@ -163,19 +191,23 @@ def _md_to_email_html(md_text: str, title: str, subtitle: str = '') -> str:
         md_text,
         extras=['tables', 'fenced-code-blocks', 'strike', 'task_list']
     )
+    # 大表截断（须在套 .tbl 容器之前），避免超 QQ 邮箱表格行数上限 → 整封邮件显示源码
+    body = _cap_email_tables(body)
     # 每个表格套一层可横向滚动容器
     body = re.sub(r'<table>', '<div class="tbl"><table>', body).replace('</table>', '</table></div>')
     sub = f'<div class="s">{subtitle}</div>' if subtitle else ''
     gen_time = datetime.now().strftime('%Y-%m-%d %H:%M')
+    # 20261118 修复：Agent Mail CLI 会剥掉 <!DOCTYPE>/<html>/<head>/<meta>/<body>
+    # 外壳，却把 <title>/<style> 留在最前面 → QQ 后端解析不到合法 body → 全文被转义
+    # 成纯文本显示源码。改为以 <div> 开头、<style> 内嵌，确保被识别为 HTML 并正常渲染
+    # （实测 QQ 端会把 class 选择器作用域到 .qmbox .agentbox 下，卡片样式正常生效）。
     return (
-        '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="UTF-8">\n'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f'<title>{title}</title>\n<style>{_MAIL_CSS}</style>\n</head>\n<body>\n'
+        '<div><style>\n' + _MAIL_CSS + '\n</style>\n'
         '<div class="wrap">\n'
         f'<div class="hd"><div class="t">{title}</div>{sub}</div>\n'
         f'<div class="card">\n{body}\n</div>\n'
         f'<div class="ft">生成时间 {gen_time}<br>本邮件由 HVT-BULL 量化系统自动推送，仅供参考，不构成投资建议</div>\n'
-        '</div>\n</body>\n</html>'
+        '</div></div>'
     )
 
 
