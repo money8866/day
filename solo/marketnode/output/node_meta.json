@@ -2453,7 +2453,14 @@
     "node_type":"N1",
     "first_detected":"20261112",
     "confirmed_date":"20261113",
-    "invalidated_date":null,
+    "invalidated_date":"20261117",
     "trigger_reason":"ZT_DEEP_LOW;PROMO_WEAK"
+  },
+  {
+    "node_type":"N6",
+    "first_detected":"20261117",
+    "confirmed_date":"20261117",
+    "invalidated_date":null,
+    "trigger_reason":"FEEDBACK_STRONG_NEG;LADDER_SHRINK;BREADTH_BAD"
   }
 ]

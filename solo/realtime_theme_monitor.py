@@ -2114,6 +2114,8 @@ class RealtimeThemeMonitor:
                 yesterday_trend_score = None
                 print(f"[平滑] 昨日分数转换失败: {yesterday_data}")
         else:
+            # 无基准(返回 '?' 或 None)时必须置 None, 否则字符串会进入下方乘法导致 TypeError
+            yesterday_trend_score = None
             print(f"[平滑] 无昨日基准: yesterday_data={yesterday_data}")
         
         # ── 1. 提取指数趋势分(直接使用,不再额外修正) ──
