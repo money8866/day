@@ -7172,6 +7172,29 @@ def _inline_email_styles(html):
                   html, flags=re.S | re.I)
 
 
+# 20261118 修复：QQ 邮箱对单封邮件里表格的总量有上限（实测约 60 行 / ~9KB），
+# 一旦超限后端 HTML 解析失败 → 整封邮件回退成纯文本、标签被转义后显示源码。
+# 邮件正文中超过该行数的大表须截断，完整明细仍在报告 .md / PDF 附件中。
+_MAX_EMAIL_TABLE_ROWS = 45
+
+
+def _cap_email_tables(html, max_rows=_MAX_EMAIL_TABLE_ROWS):
+    """把超过 max_rows 行（不含表头）的 <table> 截断为「表头 + 前 max_rows 行 + 省略提示行」。"""
+    pat = re.compile(r"(<table>\s*<thead>.*?</thead>\s*<tbody>)(.*?)(</tbody>\s*</table>)", re.S)
+
+    def _repl(m):
+        head, body, tail = m.groups()
+        rows = re.findall(r"<tr\b.*?</tr>", body, re.S)
+        if len(rows) <= max_rows:
+            return m.group(0)
+        kept = "".join(rows[:max_rows])
+        note = ('<tr><td colspan="99" style="text-align:center;color:#64748b;font-size:18px;">'
+                "… 其余 %d 行已省略，完整明细见当日报告 .md / PDF 附件</td></tr>" % (len(rows) - max_rows))
+        return head + kept + note + tail
+
+    return pat.sub(_repl, html)
+
+
 def _wrap_email_tables(html):
     """给每个 <table> 套一层可横向滚动容器：手机端宽表左右滑动看，不挤压列宽、不撑破版心。"""
     return (html.replace("<table>", '<div style="%s"><table>' % _TBL_WRAP_STYLE)
@@ -7190,7 +7213,7 @@ def markdown_to_email_html(markdown_text, title="每日复盘", subtitle=""):
         _prep_email_markdown(_highlight_position_values(markdown_text)),
         extras=["tables", "fenced-code-blocks", "strike", "task_list"]
     )
-    body = _inline_email_styles(_wrap_email_tables(body))
+    body = _inline_email_styles(_wrap_email_tables(_cap_email_tables(body)))
     sub = f'<div class="s" style="font-size:18px;opacity:.92;margin-top:6px;">{subtitle}</div>' if subtitle else ""
     gen_time = datetime.now().strftime("%Y-%m-%d %H:%M")
     # 20261118 修复：Agent Mail CLI 会剥掉 <!DOCTYPE>/<html>/<head>/<meta>/<body>
