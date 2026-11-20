@@ -115,6 +115,23 @@
 - 风险提示：高量滞涨为近期最广（42 子主题 / 13 目录，仅化工未触发）；AI(4251亿,-6.19%)+半导体(3060亿,-7.63%) 合计 7311 亿约占全市场 65%，但两目录合计仅 4 家涨停、半导体 0 涨停；晶圆代工与IDM(2753亿,-7.74%)、AI算力芯片(1814亿)、功率半导体(1754亿)、传感器(-8.04%/宽度2%) 量价背离最深
 - 无需重试/失败通知。
 
+## 2026-11-20 第十三次执行：成功（含环境故障修复）
+- ⚠ 首次跑步骤1 数据失真：K线指标=0（全部股票5日/连板/成交额为0）。诊断发现非"当日数据未就绪"（单只 pro.daily 能取到 20261120），而是**venv 依赖退化**：loguru 缺失→DataFetcher 加载失败；tushare_quant 缺 sqlalchemy→批量预取不可用；退化到 `pro.daily(ts_code="逗号拼接多股")` 路径恒返回 0 行（单只正常、多只必空），并把 2804 只股票误写入今日 failed_stocks 黑名单
+- 修复：venv `pip install loguru sqlalchemy`（sqlalchemy 已装，tushare_quant 仍缺 markdown2 但属可选加速）；清理 cache.db 中 `fail_date LIKE '20261120%' AND fail_count<=2` 的误标记记录（删 2770 条，保留多次确认的真停牌股）
+- 重跑步骤1：成功（12min，DataFetcher 单只拉取 184877 行 K线 / 2769 只动态指标 / 2806 只市值，恢复正常水平）
+- 步骤2 热度报告：成功，输出 theme3_heat_20261120.{html,json,csv}
+- 步骤3 PDF：成功（PowerShell html2pdf.ps1，2,498,959 字节 ≈ 2.5MB）
+- 步骤4 邮件：已发 stock1975@qq.com，主题「【主题热度日报】20261120」，附 PDF+CSV（file_refs、skip_confirmation=true、body_format=HTML）；ListMessages(sent) 核验 msg_WkJUEw1oTRnJa13fYQ2dLFOspouLTn4GKu16AVH_UG2iog has_attachments=true
+- 当日市场：涨停 31 家，最高 4 板，总成交 9426 亿；阶段分布 一级目录 发酵1（AI 45.8）/蓄势6/退潮7；Top 子主题 晶圆代工与IDM 47.2 / 高速铜连接 43.2 / 功率半导体 40.2
+- 风险提示：37 子主题触发高量滞涨（近期最广），Top10 全部命中；AI(3480亿,宽度7%)+半导体(2593亿) 合计6073亿约占全市场64%但仅12家涨停、中位5日 -7%~-18%，AI文化娱乐 -18.0% 最深
+- 无需发失败通知；本次走了"环境修复+重跑"而非等待30分钟（因根因是确定性依赖缺失，等待无意义）
+- 经验：若日后步骤1又出现 K线指标=0，先查 venv 的 loguru/tushare_quant 是否完好 + pro.daily 多股拼接是否返回0，再决定是否等30分钟
+
+## 2026-11-20 17:30 定时触发：幂等跳过（未重跑/未重发）
+- 检查发现当日产物齐全（16:36 成分股 / 16:37 热度 HTML+JSON+CSV+PDF），且 ListMessages(sent) 核验 16:38 已发含附件邮件至 stock1975@qq.com（msg_WkJUEw1oTRnJa13fYQ2dLFOspouLTn4GKu16AVH_UG2iog）
+- 属同日重复触发，按"每交易日一封"口径跳过步骤1-4，仅向用户复述当日报告要点并交付已有 PDF/CSV，避免重复邮件
+- 经验：每次触发先查当日产物时间戳 + sent 邮件，若已有成功发送则幂等跳过
+
 ## 注意事项
 - 步骤1 常规耗时 5-10 分钟，Bash 前台 120s 会超时自动转后台，需用 TaskOutput 等待完成
 - PDF 转换必须用 PowerShell 工具（Bash 沙箱内 Edge 子进程被回收）

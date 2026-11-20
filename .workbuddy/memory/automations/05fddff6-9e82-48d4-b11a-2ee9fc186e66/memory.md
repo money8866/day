@@ -2,7 +2,15 @@
 
 > 仅记录高层执行结果供后续运行参考；不放报告正文，不写用户日志/记事体系。
 
-## 2026-11-16（本次）
+## 2026-11-20（本次）
+- 主命令 `python -X utf8 -m zz2000.daily --push` 用 `C:/Users/kongx/AppData/Local/Python/bin/python.exe` 执行成功，exit 0。
+- RESULT JSON：`mail_sent=true`（Agent Mail CLI `{"ok":true,"data":{"queued":true}}`），脚本自身投递成功；未重复发信、未走 mcp 兜底。收件人已核验 `zz2000/config.py:32` → `MAIL_TO='stock1975@qq.com'`。
+- 数据时点由 20261113 推进到 **20261116**（今日 20261120 周五为交易日，17:20 当日收盘数据未落库；报告已标注「本报告是 20261116 的收盘信号，不是 20261120 的行情」）。`prev_date=20261113`。
+- **信号不变**：`signal_unchanged=true`，动作 **HOLD**，目标敞口 **5%**，delta **0.0**，`baseline_origin=live`；底仓 5% / 趋势仓 0% / 波段 0%。`unknowns=[]`（fund_div=NO_DIV_RECORD 为口径标注，非 UNKNOWN）。
+- ETF `563300.SH` 收盘 **1.211 元（-3.28%）**，成交额 7.09 亿；指数 2636.87（-3.22%）。均线空头排列（MA20/60/120 = 1.265/1.369/1.425，斜率均负）；系统性风险触发（跌停 71>=50）；情绪过滤 4 项中 3 项 FAIL（上涨占比 20.4%<45%、涨停 29<30、跌停 71>40），仅昨涨停次日 +0.99%>-1% PASS；波段 A/B/C 三形态均未命中；单日金叉/追涨抑制未命中。
+- 产物：`zz2000/reports/ZZ2000_Daily_20261116.md` / `.html`；HTML 校验通过（20px 基准、红涨绿跌 `#d9342b`/`#0f9d58`、无外链 CSS/JS、含免责声明与「信号不变」字段）。台账 8 个交易日，只记录建议与基准点位，未报告超额。未写 journal/ 或任何每日笔记。
+
+## 2026-11-16（历史）
 - 主命令 `python -X utf8 -m zz2000.daily --push` 用 `C:/Users/kongx/AppData/Local/Python/bin/python.exe` 执行成功，exit 0。
 - RESULT JSON：`mail_sent=true`（Agent Mail CLI `{"ok":true,"data":{"queued":true}}`），脚本自身投递成功；未重复发信、未走 mcp 兜底。收件人已核验 `zz2000/config.py` → `MAIL_TO='stock1975@qq.com'`。
 - 数据时点由 20261111 推进到 **20261113**（今日 20261116 周一为交易日，17:20 当日收盘数据未落库；报告已标注「本报告是 20261113 的收盘信号，不是 20261116 的行情」）。`prev_date=20261112`。
