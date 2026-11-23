@@ -47,6 +47,15 @@
   "dedup": {
     "min_days_between_same_node": 3
   },
+  "guard": {
+    "n6_heat_lookback": 5,
+    "n6_heat_min_pct": 70.0,
+    "n5_lookback": 3
+  },
+  "confirm": {
+    "require_nodes": ["N1", "N2", "N3", "N4", "N5"],
+    "downgrade_unconfirmed": ["N1", "N2", "N3", "N4"]
+  },
   "confidence": {
     "require_fields": ["zt_count", "dt_count", "board1", "board2", "board3", "max_board",
       "promo12", "promo23", "zhaban_rate", "zt_y_pcnt", "lb_y_pcnt",

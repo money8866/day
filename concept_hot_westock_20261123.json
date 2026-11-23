@@ -1,0 +1,96 @@
+{
+ "date": "20261123",
+ "snapshot": "2026-11-23 15:45:00",
+ "rows": [
+  {
+   "rank": 1,
+   "name": "华为机器人",
+   "symbol": "pt02GN2398",
+   "zdf": 10.98,
+   "rankdelta": 0,
+   "members": 6,
+   "zt": 3,
+   "zt_names": [
+    "亿嘉和",
+    "兆威机电",
+    "柯力传感"
+   ],
+   "max_lbc": 1
+  },
+  {
+   "rank": 8,
+   "name": "人形机器人",
+   "symbol": "pt02GN2238",
+   "zdf": 5.92,
+   "rankdelta": 0,
+   "members": 481,
+   "zt": 51,
+   "zt_names": [
+    "崇达技术",
+    "鸣志电器",
+    "北特科技",
+    "豪鹏科技"
+   ],
+   "max_lbc": 3
+  },
+  {
+   "rank": 22,
+   "name": "物理AI",
+   "symbol": "pt02GN2442",
+   "zdf": 9.62,
+   "rankdelta": 0,
+   "members": 12,
+   "zt": 1,
+   "zt_names": [
+    "凡拓数创"
+   ],
+   "max_lbc": 2
+  },
+  {
+   "rank": 28,
+   "name": "机器人概念",
+   "symbol": "pt02003640",
+   "zdf": 4.37,
+   "rankdelta": 4,
+   "members": 1230,
+   "zt": 67,
+   "zt_names": [
+    "飞亚达",
+    "华是科技",
+    "光洋股份",
+    "天奇股份"
+   ],
+   "max_lbc": 3
+  },
+  {
+   "rank": 36,
+   "name": "共封装光模块(CPO）",
+   "symbol": "pt02GN2211",
+   "zdf": 4.61,
+   "rankdelta": 1,
+   "members": 205,
+   "zt": 7,
+   "zt_names": [
+    "克来机电",
+    "世运电路",
+    "中京电子",
+    "振邦智能"
+   ],
+   "max_lbc": 3
+  },
+  {
+   "rank": 46,
+   "name": "猪肉",
+   "symbol": "pt02003882",
+   "zdf": 3.03,
+   "rankdelta": -5,
+   "members": 36,
+   "zt": 2,
+   "zt_names": [
+    "邦基科技",
+    "金新农"
+   ],
+   "max_lbc": 2
+  }
+ ]
+}

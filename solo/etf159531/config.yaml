@@ -1,0 +1,126 @@
+# =============================================================================
+# 159531（南方中证2000ETF）每日盘后动态仓位管理系统
+# 所有阈值均在此配置，代码中不写死。仓位一律使用 0~1 的小数。
+# =============================================================================
+
+project:
+  name: "ETF159531 动态仓位管理"
+  version: "1.0.0"
+  timezone: "Asia/Shanghai"
+  db_path: "data/etf159531.db"
+  report_dir: "reports"
+  log_dir: "logs"
+
+data:
+  etf_code: "159531.SZ"
+  etf_name: "南方中证2000ETF"
+  index_code: "932000.CSI"
+  index_name: "中证2000"
+  # auto = 首次运行按 fund_basic 的 list_date 全量拉取
+  start_date: "auto"
+  incremental_days: 10       # 每次增量至少回补的自然日（内部再按交易日扩展）
+  min_history_days: 260      # 正式信号所需最少交易日数（MA250 参与辅助分析）
+  max_retry: 3
+  retry_backoff_sec: 15
+  retry_backoff_factor: 2
+  tushare_min_interval_ms: 200
+  adj_ratio_tolerance: 0.01  # 复权因子相对上一交易日允许的漂移
+
+trend:
+  ma_windows: [5, 10, 20, 60, 120, 250]
+  confirm_days: 2            # 连续两个交易日同侧才确认该均线方向
+  # 三条均线（MA20/MA60/MA120）中被确认在上方的条数 -> 基础仓位
+  layers:
+    0: 0.00
+    1: 0.20
+    2: 0.40
+    3: 0.65
+
+volatility:
+  target: 0.12               # 目标年化波动率（小数，不是 12）
+  floor_effective_vol: 0.18  # effective_vol = max(vol20, vol60, 0.18)
+  ann_factor: 252
+  windows: [20, 60]
+
+oversold:
+  rsi_short: 6
+  rsi_long: 14
+  rsi_trigger: 20            # RSI6 <= 20
+  dev_ma20: -0.08            # 复权收盘 / MA20 - 1 <= -8%
+  confirm_window: 10         # 触发后 10 个交易日内必须完成初步确认
+  rsi_rebound_level: 30      # RSI6 由 <=30 上穿 30
+  ma_short: 5
+  ma_mid: 10
+  confirm_days: 2
+  weight_step1: 0.05
+  weight_step2: 0.10
+  exit_hold_days: 10         # 首次激活后持有 10 个交易日
+  exit_rsi: 65
+  cooldown_days: 20          # 事件退出后的冷却期
+
+crisis:
+  dev_ma20: -0.08
+  vol20_threshold: 0.35
+  probe_max: 0.10            # 危机中反弹确认后允许的战术试探上限
+
+risk:
+  max_position: 0.65
+  # 账户回撤（取绝对值）达到阈值 -> 仓位上限
+  drawdown_tiers:
+    - { dd: 0.08, cap: 0.40 }
+    - { dd: 0.12, cap: 0.25 }
+    - { dd: 0.16, cap: 0.10 }
+    - { dd: 0.18, cap: 0.00 }
+  breaker:
+    cooldown_days: 10        # 触发 18% 熔断后的冷静期
+    restart_max: 0.10        # 冷静期后可重启的最大仓位
+    restart_ma: 20
+    restart_confirm_days: 3
+    restart_vol_max: 0.35
+    step2_days: 10           # 重启后至少 10 个交易日再评估
+    step2_ma: 60
+    step2_confirm_days: 3
+    step2_max: 0.25
+    release_dd: 0.12         # 回撤改善到 12% 以内才解除恢复状态
+
+trading:
+  lot_size: 100              # ETF 最小交易单位
+  weekly_rebalance: true     # 每周最后一个交易日再平衡
+  min_trade_gap: 0.05        # 目标仓位变化不足 5 个百分点不交易
+  reference_price: "close"   # 估算用参考价：close（当日未复权收盘）
+  commission: 0.0005
+  slippage: 0.0005
+
+account:
+  dir: "account"
+  snapshot_file: "snapshot.csv"
+  cashflow_file: "cashflows.csv"
+  trades_file: "trades.csv"
+  # 未提供 snapshot.csv 时自动进入「仅市场信号模式」
+
+backtest:
+  initial_cash: 1000000
+  cash_yield: 0.0            # 现金年化收益假设（保守取 0）
+  commission: 0.0005
+  slippage: 0.0005
+  fixed_weight: 0.30
+  vol_targets: [0.10, 0.12, 0.14, 0.16]
+  ma_sets:
+    - [20, 60]
+    - [20, 120]
+    - [20, 60, 120]
+  cost_stress: [0.0005, 0.001, 0.002]
+  rolling_window: 60
+  stress_periods:
+    - { name: "2024年初小微盘冲击", start: "20240101", end: "20240229" }
+    - { name: "2025上半年", start: "20250101", end: "20250630" }
+    - { name: "2025下半年", start: "20250701", end: "20251231" }
+    - { name: "2026样本外", start: "20260101", end: "latest" }
+
+report:
+  html: true
+  keep_days: 0               # 0 = 永久保留
+
+scheduler:
+  hour: 18
+  minute: 30

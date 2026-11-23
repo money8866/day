@@ -38,6 +38,10 @@ class MarketNodeEngine:
         self.pmin = cfg["percentile"]["min_history"]
         self.feat = feat.copy()
         self._compute_derived()
+        self._sig_cache = None
+        self._raw_cache = {}
+        self._judge_cache = {}
+        self._base = None
 
     # ------------------------------------------------------------------
     def _compute_derived(self):
@@ -72,9 +76,11 @@ class MarketNodeEngine:
     # 单信号判定
     # ------------------------------------------------------------------
     def _signals(self):
+        if self._sig_cache is not None:
+            return self._sig_cache
         f = self.feat
         th = self.th
-        return {
+        self._sig_cache = {
             "cold": f["pct_zt_count"] <= th["zt_low_pct"],
             "deep_cold": f["pct_zt_count"] <= th["zt_deep_low_pct"],
             "hot": f["pct_zt_count"] >= th["zt_extreme_pct"],
@@ -91,18 +97,18 @@ class MarketNodeEngine:
             "index_weak": f["index_pct"] < 0,
             "small_good": f["small_pct"] > 0,
         }
+        return self._sig_cache
 
     # ------------------------------------------------------------------
-    # 单日节点检测
+    # 单日原始判定（不含 2 日确认）；n6_ok / n5_ok 为前置保护开关
     # ------------------------------------------------------------------
-    def detect_date(self, trade_date):
-        """返回当日节点判定结果 dict。trade_date 需为字符串。"""
-        trade_date = str(trade_date)
+    def _judge(self, trade_date, n6_ok=True, n5_ok=True):
+        key = (trade_date, bool(n6_ok), bool(n5_ok))
+        if key in self._judge_cache:
+            return self._judge_cache[key]
         f = self.feat
         if trade_date not in f.index:
-            return {"trade_date": trade_date, "node_type": None, "reason_codes": [],
-                    "sentiment_state": "常态", "market_state": "观察",
-                    "node_score": 0.0, "confidence": "低", "detail": {}}
+            return {"node_type": None, "sub_state": None, "node_score": 0.0, "reason_codes": []}
         s = f.loc[trade_date]
         sg = {k: bool(v.loc[trade_date]) if not pd.isna(v.loc[trade_date]) else False
               for k, v in self._signals().items()}
@@ -128,8 +134,8 @@ class MarketNodeEngine:
         sub_state = None
         score = 0.0
 
-        # ---- N6 退潮确认 ----
-        if (sg["feedback_strong_bad"] or (sg["feedback_bad"] and sg["breadth_bad"] and zhaban_jump > th["divergence_zhaban_jump"])) \
+        # ---- N6 退潮确认（前置：前段需处于进攻/高潮，避免弱势中误报退潮）----
+        if n6_ok and (sg["feedback_strong_bad"] or (sg["feedback_bad"] and sg["breadth_bad"] and zhaban_jump > th["divergence_zhaban_jump"])) \
                 and (max_board_d1 < 0 or sg["breadth_bad"]):
             node_type = "N6"
             reason = ["FEEDBACK_STRONG_NEG", "LADDER_SHRINK", "BREADTH_BAD"]
@@ -158,8 +164,8 @@ class MarketNodeEngine:
                 reason.append("FEEDBACK_NEG")
             score = max(0.0, 100.0 - val("pct_zt_count") if pd.notna(val("pct_zt_count")) else 0.0)
 
-        # ---- N5 极度高潮 ----
-        elif sg["hot"]:
+        # ---- N5 极度高潮（前置：近 3 日无冰点，避免冰点反弹被标为高潮）----
+        elif n5_ok and sg["hot"]:
             node_type = "N5"
             reason = ["ZT_EXTREME"]
             score = val("pct_zt_count") if pd.notna(val("pct_zt_count")) else 90.0
@@ -201,27 +207,89 @@ class MarketNodeEngine:
             reason = ["MAINLINE_EXPAND"]
             score = val("pct_above_ma20_ratio") if pd.notna(val("pct_above_ma20_ratio")) else 60.0
 
-        # ---- 情绪子状态 & 市场状态 ----
-        if node_type is None:
-            sentiment_state = "常态"
-            market_state = "观察"
-        else:
-            sentiment_state, market_state = self._state_from_node(node_type, sub_state, trade_date)
-
-        confidence, missing = self._confidence(trade_date)
-
-        return {
-            "trade_date": trade_date,
+        res = {
             "node_type": node_type,
             "sub_state": sub_state,
+            "node_score": round(float(score), 1),
+            "reason_codes": reason,
+        }
+        self._judge_cache[key] = res
+        return res
+
+    # ------------------------------------------------------------------
+    # 前置保护：N6 需前段处于进攻/高潮；N5 需近 3 日无冰点
+    # ------------------------------------------------------------------
+    def _ensure_base(self):
+        """预计算全序列「无前置保护」节点（只用当日及历史数据），供前置判断引用。"""
+        if self._base is None:
+            self._base = {td: self._judge(td)["node_type"] for td in self.feat.index}
+
+    def _raw(self, trade_date):
+        self._ensure_base()
+        td = str(trade_date)
+        if td in self._raw_cache:
+            return self._raw_cache[td]
+        idx = list(self.feat.index)
+        i = idx.index(td)
+        guard = self.cfg.get("guard", {})
+        n6_look = int(guard.get("n6_heat_lookback", 5))
+        n6_min = float(guard.get("n6_heat_min_pct", 70.0))
+        n5_look = int(guard.get("n5_lookback", 3))
+        # N6 前置：前 n6_look 日须出现过高潮（涨停分位峰值达标），避免弱势中误报退潮
+        peak = self.feat["pct_zt_count"].iloc[max(0, i - n6_look):i].dropna()
+        n6_ok = bool(len(peak)) and float(peak.max()) >= n6_min
+        # N5 前置：近 n5_look 日不得出现冰点
+        lo = max(0, i - n5_look)
+        n5_ok = not any(self._base[idx[k]] == "N1" for k in range(lo, i))
+        r = self._judge(td, n6_ok=n6_ok, n5_ok=n5_ok)
+        self._raw_cache[td] = r
+        return r
+
+    # ------------------------------------------------------------------
+    # 对外：节点判定（含连续 2 日确认；进攻状态需确认后才给出）
+    # ------------------------------------------------------------------
+    def detect_date(self, trade_date):
+        """返回当日节点判定结果 dict。
+
+        confirmed = 节点已成立：需连续 2 日同节点；N6 退潮确认自带确认语义，单日即成立。
+        """
+        td = str(trade_date)
+        f = self.feat
+        if td not in f.index:
+            return {"trade_date": td, "node_type": None, "confirmed": False,
+                    "sub_state": None, "sentiment_state": "常态", "market_state": "观察",
+                    "node_score": 0.0, "confidence": "低", "reason_codes": [],
+                    "invalidation_conditions": "", "missing_fields": []}
+        raw = self._raw(td)
+        nt = raw["node_type"]
+        idx = list(f.index)
+        i = idx.index(td)
+        prev_nt = self._raw(idx[i - 1])["node_type"] if i > 0 else None
+        need_confirm = self.cfg.get("confirm", {}).get("require_nodes", ["N1", "N2", "N3", "N4", "N5"])
+        confirmed = bool(nt) and (nt not in need_confirm or nt == prev_nt)
+        downgrade = self.cfg.get("confirm", {}).get("downgrade_unconfirmed", ["N1", "N2", "N3", "N4"])
+
+        if nt is None:
+            sentiment_state, market_state = "常态", "观察"
+        else:
+            sentiment_state, market_state = self._state_from_node(nt, raw["sub_state"], td)
+            # 未确认节点只给「观察」：避免单日冲高/单日急跌带来的一日游调仓
+            if nt in downgrade and not confirmed:
+                market_state = "观察"
+
+        confidence, missing = self._confidence(td)
+        return {
+            "trade_date": td,
+            "node_type": nt,
+            "confirmed": confirmed,
+            "sub_state": raw["sub_state"],
             "sentiment_state": sentiment_state,
             "market_state": market_state,
-            "node_score": round(float(score), 1),
+            "node_score": raw["node_score"],
             "confidence": confidence,
-            "reason_codes": reason,
-            "invalidation_conditions": self.invalidation_conditions(node_type),
+            "reason_codes": raw["reason_codes"],
+            "invalidation_conditions": self.invalidation_conditions(nt),
             "missing_fields": missing,
-            "detail": d,
         }
 
     # ------------------------------------------------------------------
@@ -394,6 +462,7 @@ class MarketNodeEngine:
                 state_txt += "（持平）"
 
         # 定性解读
+        unconfirmed = bool(cn) and not cur["confirmed"]
         if cn and pn and cn != pn:
             summary = f"节点由 {pn} 切换为 {cn}"
         elif cn and cn == pn:
@@ -404,6 +473,8 @@ class MarketNodeEngine:
             summary = f"节点 {pn} 结束，回到常态"
         else:
             summary = "连续处于常态，无节点信号"
+        if unconfirmed:
+            summary += "（单日信号，待次日确认）"
         if cn:
             if improved > worsened:
                 summary += "，指标边际改善"
@@ -438,26 +509,32 @@ class MarketNodeEngine:
     # 回填历史节点（去重）
     # ------------------------------------------------------------------
     def backfill(self):
+        """回填节点历史：只记录「连续 2 日成立」的确认节点，单日冲高仅作情绪子状态。
+
+        first_detected 回溯到确认日的前一日（同节点首次出现日），
+        confirmed_date 为确认日，invalidated_date 为节点结束日。
+        """
         records = []
         meta = []
         active_idx = -1
         last_record_idx = {}
         cooldown = self.cfg["dedup"]["min_days_between_same_node"]
+        idx = list(self.feat.index)
 
-        for i, td in enumerate(self.feat.index):
+        for i, td in enumerate(idx):
             r = self.detect_date(td)
             nt = r["node_type"]
+            ok = bool(nt) and bool(r.get("confirmed"))
 
-            if nt is None:
+            # 未确认（含单日冲高）：不落节点；已有节点视为结束
+            if not ok:
                 if active_idx >= 0 and meta[active_idx]["invalidated_date"] is None:
                     meta[active_idx]["invalidated_date"] = td
                 active_idx = -1
                 continue
 
-            # 同节点延续：更新确认日期
+            # 同节点延续
             if active_idx >= 0 and nt == records[active_idx]["node_type"]:
-                if meta[active_idx]["confirmed_date"] is None:
-                    meta[active_idx]["confirmed_date"] = td
                 continue
 
             # 冷却期抑制同类型重复记录
@@ -470,8 +547,9 @@ class MarketNodeEngine:
             if active_idx >= 0 and meta[active_idx]["invalidated_date"] is None:
                 meta[active_idx]["invalidated_date"] = td
 
+            first = idx[i - 1] if i > 0 and self._raw(idx[i - 1])["node_type"] == nt else td
             record = {
-                "trade_date": td,
+                "trade_date": td,   # 记录确认日，保证该行的状态/强度与实际执行日一致
                 "node_type": nt,
                 "market_state": r["market_state"],
                 "sentiment_state": r["sentiment_state"],
@@ -483,17 +561,13 @@ class MarketNodeEngine:
             records.append(record)
             meta.append({
                 "node_type": nt,
-                "first_detected": td,
-                "confirmed_date": None,
+                "first_detected": first,
+                "confirmed_date": td,
                 "invalidated_date": None,
                 "trigger_reason": ";".join(r["reason_codes"]),
             })
             last_record_idx[nt] = i
             active_idx = len(records) - 1
-
-        for m in meta:
-            if m["confirmed_date"] is None:
-                m["confirmed_date"] = m["first_detected"]
 
         hist = pd.DataFrame(records, columns=[
             "trade_date", "node_type", "market_state", "sentiment_state",

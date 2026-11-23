@@ -72,10 +72,11 @@ def main():
     detect = engine.detect_date(trade_date)
     detect["dynamics"] = engine.node_dynamics(trade_date)
 
-    # 是否为新节点日（对比前一交易日节点）
+    # 是否为新节点日（需连续 2 日确认，未确认只标「待确认」）
     prev_node = engine.detect_date(feat.index[feat.index.get_loc(trade_date) - 1]).get("node_type") \
         if feat.index.get_loc(trade_date) > 0 else None
-    is_new = detect["node_type"] is not None and detect["node_type"] != prev_node
+    confirmed = bool(detect.get("confirmed"))
+    is_new = detect["node_type"] is not None and confirmed and detect["node_type"] != prev_node
 
     path, md = write_report(detect, feat, cfg)
 
@@ -83,7 +84,12 @@ def main():
     print(f"\n===== A股大盘节点日报 {trade_date} =====")
     if detect["node_type"]:
         nm = NODE_NAME[detect["node_type"]]
-        tag = "新节点日" if is_new else "延续中"
+        if not confirmed:
+            tag = "待确认(单日信号，状态只给观察)"
+        elif is_new:
+            tag = "新节点日(已确认)"
+        else:
+            tag = "延续中"
         print(f"当前节点: {detect['node_type']} {nm}（{tag}）")
     else:
         print("当前节点: 无新节点")

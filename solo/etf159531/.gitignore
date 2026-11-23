@@ -1,0 +1,19 @@
+# 环境与凭证
+.env
+.env.*
+!.env.example
+
+# 运行数据与产物
+data/
+reports/
+logs/
+account/snapshot.csv
+account/cashflows.csv
+account/trades.csv
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/

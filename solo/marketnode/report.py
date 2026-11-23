@@ -112,7 +112,10 @@ def generate_daily_report(detect, feat, cfg):
     td = detect["trade_date"]
     r = feat.loc[td]
     nt = detect["node_type"]
+    confirmed = bool(detect.get("confirmed"))
     cur_node = f"{nt} {NODE_NAME[nt]}" if nt else "无新节点"
+    if nt and not confirmed:
+        cur_node += "（待确认）"
 
     lines = []
     lines.append("# A股大盘节点日报")
@@ -155,7 +158,11 @@ def generate_daily_report(detect, feat, cfg):
         reason_txt = "短线情绪与市场广度均未触发节点阈值，处于常态。"
     lines.append(f"**判断理由：** {reason_txt}")
     lines.append("")
-    lines.append(f"**下一步：** {NEXT_ACTION[detect['market_state']]}")
+    if nt and not confirmed:
+        next_txt = "等待确认（未确认节点只给观察——进攻与防守都需连续 2 日成立）"
+    else:
+        next_txt = NEXT_ACTION[detect['market_state']]
+    lines.append(f"**下一步：** {next_txt}")
     lines.append("")
     inval = detect.get("invalidation_conditions") or "—"
     lines.append(f"**失效条件：** {inval}")

@@ -332,6 +332,11 @@ W7_T0_BREAK_VOLR = 2.20     # 类型B 突破日放量：量 ≥ 2.20×前20日�
 #   标定（类型B 按当日量比分层）：≥1.4 → T+3 -0.09%（n=111）；≥1.8 → n=52 仍为负；
 #   ≥2.2 → T+3 超额 +2.83%/T+10 +1.56%（n=29）；≥2.6 → +3.36%/+3.13%（n=20）。
 #   突破日的量能必须「显著放大」才算真突破——温和放量（1.2~1.8×）在统计上不构成有效确认。
+#   20261122 P5 对照回测（全市场 2024-01-02~2026-11-19、349 抽样日、5217 只，仅改本值 2.2→1.8）：
+#     基线 2.2：B n=55，T+3/5/10 超额 +0.52%/+1.66%/+0.92%，胜率 45.5%/52.7%，失效 27.3%；
+#     放宽 1.8：B n=145，T+3/5/10 超额 -0.02%/+0.15%/+0.47%，胜率 40.7%/47.6%，失效 29.7%；
+#     增量 90 条（突破量比 1.80~2.19，均值 1.95）：T+3/5/10 超额 -0.35%/-0.79%/+0.19%、胜率 37.8%
+#     → 短期为负期望、且淹没原 2.2 档的正超额，**不落地**，维持 2.20。
 W7_T0_BREAK_CLOSE_POS = 70  # 类型B 突破日收盘位置 ≥70（收在当日振幅上1/3）
 W7_T0_BREAK_SHADOW = 0.35   # 类型B 突破日上影 ≤35%（收在高位，非冲高回落）
 W7_T0_MIN_AMOUNT = 50000.0  # 流动性下限：当日成交额 ≥ 50000 千元（amount 单位＝千元 → 5000 万元）
@@ -344,14 +349,33 @@ W7_T0_MIN_BASE_SCORE = 40.0  # 兜底分下限：HVT-V3 BaseScore ≥40（替代
 #     类型B  RECOVERY T+10 +0.53% / RANGE -2.45% / BULL +0.04%
 #   BEAR 阻断类型A 的依据最强且有独立证据（跟踪库 202610 现役门控 55 个信号 T+3 -3.19%，
 #   同期上证 -4.29% 仍为负超额），故默认阻断；
-#   RANGE 虽同样偏弱，但样本仅 300 只（占全市场 6%）且 2024 年该环境下类型A 反而为正
-#   （T+10 超额 +1.02%），跨期不一致 → 不作硬阻断，仅在报告中提示，按此开关可一键启用。
-W7_REGIME_BLOCK_TYPE_A = ("BEAR",)   # 阻断类型A 的市场环境集合；加入 "RANGE" 可启用震荡市过滤
+#   RANGE 当时因样本仅 300 只（占全市场 6%）且 2024 年为正（T+10 +1.02%）未硬阻断；
+#   20261122 全市场长区间回测推翻该结论（详见下方 W7_GATE_REGIME_RANGE），RANGE 改为不产可操作信号。
+W7_REGIME_BLOCK_TYPE_A = ("BEAR",)   # 阻断类型A 的市场环境集合（RANGE 由下方 W7_GATE_REGIME_RANGE 单独控制）
 # 20261031 补：类型B 在 BEAR 下同样负期望（全市场回测 20260803~20261028，new 口径 4 个 BEAR 日
 #   20261015/1022/1027/1028 共 20 条信号全部为 T0_REBREAK，T+3 超额 -6.79%、胜率 0%），
 #   而旧门只拦类型A → 类型B 在熊市全放行。BEAR 环境下突破追高的期望更差（高波动+普跌），
-#   故默认把 BEAR 也加入类型B 的阻断集合；RANGE 仍不放（类型B 的 RANGE 证据与类型A 一样跨期不一致）。
+#   故默认把 BEAR 也加入类型B 的阻断集合；RANGE 由 W7_GATE_REGIME_RANGE 统一阻断两类（20261122）。
 W7_REGIME_BLOCK_TYPE_B = ("BEAR",)   # 阻断类型B（T0_REBREAK）的市场环境集合
+# 20261122 RANGE（震荡市）门控（P0，全市场长区间回测后新增）：
+#   标定（全市场 2024-01-02~2026-11-19，抽样 349 个交易日 × 5217 只，逐日 as-of，前复权，
+#   超额=个股−上证/中证1000）——类型A 在 RANGE 下 n=747：
+#     T+3 超额 -0.51% / T+5 -1.25% / T+10 -1.49%，胜率 41.2%，失效位触达率 72.6%；
+#     分年 T+5/T+10 三年全负（2024 -1.01/-1.49、2025 -1.55/-1.87、2026 -0.89/-0.85），
+#     与 20261028 小样本（300 只，2024 年为正）结论相反——长区间未复现跨期不一致，
+#     故 RANGE 升级为「不产可操作信号」（仍写入报告「过滤观察」节留档，便于后续复查）。
+#   剔除 RANGE 后类型A n=2171：T+3 -0.21%、T+5 -0.12%、T+10 +0.32%（由负转正）。
+#   关闭本开关即恢复 20261028 口径（RANGE 仅在报告提示、不阻断）。
+W7_GATE_REGIME_RANGE = True
+# 20261122 P2 事件级去重（全市场回测：2918 条类型A 信号 → 2089 个 (code,t0_date) 事件，1.40× 重复）：
+#   同一 (code, t0_date, state) 事件在连续回踩日内会被重复落库/推送，等于把同一笔交易重复计数。
+#   在落库与下游 JSON 层去重：窗口 W7_DEDUP_DAYS 个交易日内同键只保留评分最高一条。
+W7_DEDUP_DAYS = 5
+# 20261122 P4 报告层仓位系数（不改选股口径）：T0 后 ≤W7_T0_AGE_WARN 日的买点失效位触达率偏高
+#   （回测：距 T0 3~5 日 75.0%、6~10 日 73.9%，11~20 日 60.5%、21~40 日 50.4%），
+#   展示层给 0.5 仓位系数并在执行块内标注；>W7_T0_AGE_WARN 日维持 1.0。
+W7_T0_AGE_WARN = 10
+W7_T0_AGE_POS_COEF = 0.5
 # 20261002 阈值标定（全市场总市值 ≥80 亿 2078 只，2026-09 全月）：命中 40 只 / 66 次，
 # 9/11 全市场 7 只、9/30 当日 3 只 → 属可人工复核规模；301080 全历史仅 7/29、9/11 两次（均事后成立）。
 # V5.2 质量过滤（20260917 加入三条；20260930 复检后只保留①，②③废止）。
@@ -2543,6 +2567,14 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
     pull_low = finite(base.get("pull_low"), 0.0) or None    # 类型B 防线（回踩低点）
     # 20261028：当日成交额（千元，daily_cache.amount 口径）——流动性下限判定用
     amount = finite(df.iloc[last].get("amount"), 0.0) if "amount" in df.columns else 0.0
+    # 20261122 P4：距 T0 交易日数（报告层仓位系数用；不改选股口径）。
+    # 全市场回测：T0 后 ≤10 日的买点失效位触达率 73.9%~75.0%，显著高于 >10 日的 50.4%~60.5%。
+    t0_date_txt = str(base.get("t0_date") or "")
+    t0_age = -1
+    if t0_date_txt:
+        _hit = df.index[df["trade_date"].astype(str) == t0_date_txt]
+        if len(_hit):
+            t0_age = int(last - int(_hit[-1]))
     return {"code": code, "name": name, "industry": industry or "未覆盖", "state": state,
             "close": finite(latest_bar.close, 0.0), "pressure": pressure,
             "ma20": finite(latest_bar.ma_bfq_20, 0.0), "volr": volr, "shake_vr20": shake_vr20,
@@ -2558,6 +2590,7 @@ def analyze(code, name, industry, df, anchors, reader=None, mkt=None, sector_str
             "t0_open": t0_open, "t0_close": t0_close, "pull_low": pull_low,
             "t0_date": base.get("t0_date") or "",
             "t0_vol": finite(base.get("t0_vol"), 0.0),
+            "t0_age": t0_age,
             "pull_low_date": base.get("pull_low_date") or "",
             "pull_bars": int(finite(base.get("pull_bars"), 0.0)),
             "pull_vol_ratio": finite(base.get("pull_vol_ratio"), 0.0),
@@ -2584,9 +2617,9 @@ def w7_quality_gate(x):
          弱市里低吸形态的 T+3/T+10 实测为负
          （202610 现役门控 55 个信号 T+3 -3.19%、同期上证 -4.29% 仍为负超额）；
          BEAR 下类型B 同样全负（全市场回测 4 个 BEAR 日 20 条 T0_REBREAK，T+3 超额 -6.79%、胜率 0%，
-         20261031 补入）；RANGE（震荡市）两类均**不硬拦**——标定显示 RANGE 下类型A T+10 超额
-         -1.58%、类型B -2.45%，但 2024 年 RANGE 下类型A 反而为正（T+10 +1.02%），跨期不一致
-         → 只在报告里提示控制仓位，不阻断（把 "RANGE" 加进 W7_REGIME_BLOCK_TYPE_A/B 可一键启用）；
+         20261031 补入）；RANGE（震荡市）20261122 起同样不产可操作买点（开关 W7_GATE_REGIME_RANGE，
+         全市场 2024-2026 回测 n=747：T+5 -1.25%/T+10 -1.49% 超额、胜率 41.2%、
+         失效位触达 72.6%，T+5/T+10 三年全负；被拦下的仍写入报告「过滤观察」节留档）；
          BULL 下两类均为正（类型A +1.59%），全环境放行；
       ⑥ 结构内生门：类型A 的信号日收盘须 ≥ T0 开盘价、类型B 的收盘须 > T0 收盘价
          （两条均已内生于探测器，此处只做兜底复核，防止探测器口径被改动后失效）。
@@ -2607,6 +2640,10 @@ def w7_quality_gate(x):
                        f"（流动性不足，实盘难成交）")
     # ⑤ 市场环境门
     _regime = x.get("market_regime")
+    if W7_GATE_REGIME_RANGE and _regime == "RANGE":
+        return False, ("市场环境RANGE（震荡市：全市场回测 n=747，T+5 -1.25%/T+10 -1.49% 超额、"
+                       "胜率 41.2%、失效位触达 72.6%，T+5/T+10 三年全负），"
+                       "本日不产可操作买点，仅保留观察")
     if (_regime in W7_REGIME_BLOCK_TYPE_A
             and x.get("state") == "T0_PULLBACK_HOLD"):
         return False, (f"市场环境{_regime}（弱市低吸形态期望为负："
@@ -2688,7 +2725,11 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
     lines = [f"# W7 二波·两类统一信号（今日可操作 · C池等待）\n\n交易日：{date}　|　候选总数：{len(results)}"]
     lines.append(f"类型分布：CORE={n_core}　MID={n_mid}　EXT={n_ext}　DISTRIBUTION={n_dist}（DISTRIBUTION=派发风险，仅观察不进可操作榜）")
     if mkt_regime:
-        if mkt_regime in W7_REGIME_BLOCK_TYPE_A and mkt_regime in W7_REGIME_BLOCK_TYPE_B:
+        if W7_GATE_REGIME_RANGE and mkt_regime == "RANGE":
+            _regime_txt = ("震荡市门控已启用：全市场回测 RANGE 下类型A n=747，T+5/T+10 超额 "
+                           "-1.25%/-1.49%、胜率 41.2%、失效位触达 72.6%，T+5/T+10 三年全负，"
+                           "本日两类信号均不产可操作买点（被拦标的见文末「过滤观察」）")
+        elif mkt_regime in W7_REGIME_BLOCK_TYPE_A and mkt_regime in W7_REGIME_BLOCK_TYPE_B:
             _regime_txt = ("熊市环境：低吸形态期望为负（标定 T+10 超额 -1.58%），"
                            "突破追高同样全负（回测 BEAR 日类型B T+3 超额 -6.79%、胜率 0%），"
                            "本日两类信号均不产")
@@ -2698,8 +2739,9 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
         elif mkt_regime in W7_REGIME_BLOCK_TYPE_B:
             _regime_txt = "熊市突破追高全负（T+3 超额 -6.79%），本日只保留类型A 低吸"
         else:
-            _regime_txt = ("两类信号均可参与；震荡市下低吸形态历史偏弱（RANGE T+10 超额 -1.58%），"
-                           "建议控制仓位")
+            _regime_txt = ("两类信号均可参与"
+                           + ("" if W7_GATE_REGIME_RANGE else
+                              "；震荡市下低吸形态历史偏弱（RANGE T+10 超额 -1.58%），建议控制仓位"))
         lines.append(f"市场环境：{mkt_regime}（{mkt_regime}：指数 r20/r60 判定。{_regime_txt}）")
     lines.append(f"今日可操作（当日买点）＝ {n_action} 只：类型A 回踩止跌低吸 {n_typeA} 只 + 类型B 回踩后突破T0收盘 {n_typeB} 只；"
                  f"其余 {len(waiting)} 只等待型仅入 C 池观察不逐列展示。")
@@ -2708,6 +2750,8 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
                  f"成交额下限 {W7_T0_MIN_AMOUNT / 10:.0f} 万元（微盘票实盘难成交）；"
                  f"{'/'.join(W7_REGIME_BLOCK_TYPE_A)} 环境下类型A 不产（标定：弱市低吸 T+10 超额为负）；"
                  f"{'/'.join(W7_REGIME_BLOCK_TYPE_B)} 环境下类型B 不产（回测：BEAR 日类型B T+3 超额 -6.79%、胜率 0%）；"
+                 + (f"RANGE 震荡市两类均不产（全市场回测 n=747：T+5/T+10 超额 -1.25%/-1.49%，三年全负）；"
+                    if W7_GATE_REGIME_RANGE else "") +
                  f"买点档 WATCH（三因子 0 命中）与非执行区（TRIGGER_WATCH/PULLBACK_WATCH）不落库。"
                  f"被过滤标的见文末「过滤观察」。）")
     cnt_state = {}
@@ -2758,6 +2802,11 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
             out.append(f"距触发：{dist * 100:.2f}%")
         out.append(f"MA20：{x['ma20']:.2f}")
         out.append(f"量比：×{x['volr']:.1f}")
+        _age = x.get("t0_age")
+        if isinstance(_age, int) and 0 <= _age <= W7_T0_AGE_WARN:
+            # 20261122 P4：仅展示层提示，不改选股口径与执行状态
+            out.append(f"仓位系数：×{W7_T0_AGE_POS_COEF:g}（T0 后 {_age} 日，"
+                       f"≤{W7_T0_AGE_WARN} 日买点失效位触达率 73.9%~75.0%，历史偏高）")
         out.append(f"IGE_ADJ：{_ige_tag(x)}")
         out.append(f"W7总分：{x['score']:.1f}")
         out.append("")
@@ -2872,7 +2921,9 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
                      "T0 日收盘价＝向上突破目标位。"
                      "类型A（T0_PULLBACK_HOLD）买点＝当日止跌位（现价即买点区），回踩守住 T0 开盘价上方后出现止跌信号；"
                      "类型B（T0_REBREAK）买点＝收盘突破 T0 日收盘价当日。"
-                     "量比≥3 的巨量日不追、只等回踩。")
+                     "量比≥3 的巨量日不追、只等回踩。"
+                     f"仓位系数：T0 后 ≤{W7_T0_AGE_WARN} 日的买点按 ×{W7_T0_AGE_POS_COEF:g} 计"
+                     "（全市场回测该窗口失效位触达率 73.9%~75.0%，11~20 日降至 60.5%、21~40 日 50.4%）。")
         lines.append("")
         lines.append("失效位（V5.3 修订）：类型A＝收盘跌破 T0 开盘价；类型B＝收盘跌破突破前回踩低点；"
                      "其余＝MA20（留 3% 容差，未超容差归 PULLBACK_WATCH）；"
@@ -2961,6 +3012,60 @@ def markdown(results, date, theme_meta=None, rb_extra=None):
     return "\n".join(lines) + "\n"
 
 
+def _dedup_events(date, actionable):
+    """20261122 P2 事件级去重：同一 (code, t0_date, state) 在 W7_DEDUP_DAYS 个交易日内
+    只保留评分最高的一条（当日批次内同键亦去重）。
+
+    全市场回测：类型A 2918 条信号对应 2089 个 (code,t0_date) 事件，1.40× 重复——
+    回踩持续期间同一事件会逐日重复落库/推送，跟踪池把它当多笔交易统计，虚增样本。
+    只读取历史，不修改既有记录；被去重掉的下游 JSON 与跟踪表均不再写入。
+    """
+    def _key(x):
+        return (str(x.get("code") or ""), str(x.get("t0_date") or ""), str(x.get("state") or ""))
+
+    # ① 当日批次内同键只留评分最高
+    best = {}
+    for x in actionable:
+        k = _key(x)
+        if k not in best or finite(x.get("score"), 0.0) > finite(best[k].get("score"), 0.0):
+            best[k] = x
+    # ② 与近 W7_DEDUP_DAYS 个交易日的已落库记录比对
+    try:
+        import stock_pick_db as sdb
+        with sdb.get_conn() as conn:
+            prev_dates = [str(r[0]) for r in conn.execute(
+                "SELECT DISTINCT pick_date FROM stock_pick WHERE strategy_id=? AND pick_date<? "
+                "ORDER BY pick_date DESC LIMIT ?",
+                (W7_AB_STRATEGY_ID, date, W7_DEDUP_DAYS)).fetchall()]
+            hist_best = {}
+            if prev_dates:
+                ph = ",".join("?" * len(prev_dates))
+                for ts_code, signal, score, ind in conn.execute(
+                        f"SELECT ts_code, signal, score, indicators FROM stock_pick "
+                        f"WHERE strategy_id=? AND pick_date IN ({ph})",
+                        [W7_AB_STRATEGY_ID] + prev_dates):
+                    try:
+                        t0 = str((json.loads(ind) or {}).get("t0_date") or "") if ind else ""
+                    except (TypeError, ValueError):
+                        t0 = ""
+                    hk = (str(ts_code or ""), t0, str(signal or ""))
+                    hist_best[hk] = max(hist_best.get(hk, -1e9), finite(score, 0.0))
+    except Exception as exc:
+        print(f"[w7] P2 事件去重跳过（读取跟踪库失败）: {exc}", flush=True)
+        return list(best.values())
+    kept = []
+    for k, x in best.items():
+        prev = hist_best.get(k)
+        if prev is not None and prev >= finite(x.get("score"), 0.0):
+            continue
+        kept.append(x)
+    n_drop = len(actionable) - len(kept)
+    if n_drop:
+        print(f"[w7] P2 事件去重: {len(actionable)} → {len(kept)} 只（同 (code,t0_date,state) "
+              f"{W7_DEDUP_DAYS} 日窗口内去重 {n_drop} 只）", flush=True)
+    return kept
+
+
 def sync_downstream(date, results, output, rb_extra=None):
     """V5.1 同步：把过滤后的「今日可操作（当日买点）」信号写给下游。
     1) 写 w7_today_action_{date}.json（report_daily）供 tushare_quant 汇总引用；
@@ -2979,9 +3084,12 @@ def sync_downstream(date, results, output, rb_extra=None):
     # V5.2 质量过滤：与报告「今日可操作榜」同口径，被拦下的标的既不落跟踪表也不进下游 JSON
     n_before = len(actionable)
     actionable = [x for x in actionable if w7_quality_gate(x)[0]]
+    n_gate = len(actionable)
+    if n_before != n_gate:
+        print(f"[w7] V5.2 质量过滤: {n_before} → {n_gate} 只（拦下 {n_before - n_gate} 只）", flush=True)
+    # 20261122 P2：同 (code,t0_date,state) 事件窗口去重（落库/下游 JSON 同口径）
+    actionable = _dedup_events(date, actionable)
     actionable.sort(key=v52_sort_key)
-    if n_before != len(actionable):
-        print(f"[w7] V5.2 质量过滤: {n_before} → {len(actionable)} 只（拦下 {n_before - len(actionable)} 只）", flush=True)
     act_cn = {"T0_PULLBACK_HOLD": "类型A-回踩止跌低吸",
               "T0_REBREAK": "类型B-回踩后突破T0收盘",
               "SECOND_WAVE": "二波买点", "BREAKOUT_CONFIRM": "放量突破确认",
@@ -3006,6 +3114,10 @@ def sync_downstream(date, results, output, rb_extra=None):
             # 20261028 统一两类信号：T0 两个价位 + 回踩低点 + 止跌形态 + 成交额 + 市场环境
             "t0_open": x.get("t0_open"), "t0_close": x.get("t0_close"),
             "t0_date": x.get("t0_date"),
+            # 20261122 P4：距 T0 交易日数 + 展示层仓位系数（≤10 日 ×0.5，其余 ×1.0）
+            "t0_age": x.get("t0_age"),
+            "position_coef": (W7_T0_AGE_POS_COEF if isinstance(x.get("t0_age"), int)
+                              and 0 <= x["t0_age"] <= W7_T0_AGE_WARN else 1.0),
             "pull_low": x.get("pull_low"), "pull_low_date": x.get("pull_low_date"),
             "pull_bars": x.get("pull_bars"),
             "pull_vol_ratio": round(float(x.get("pull_vol_ratio") or 0), 3),

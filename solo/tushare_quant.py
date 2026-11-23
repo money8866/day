@@ -665,8 +665,11 @@ def _load_marketnode_block(trade_date):
         return ""
 
     nt = det.get("node_type")
+    confirmed = bool(det.get("confirmed"))
     node_txt = f"{nt} {NODE_NAME[nt]}" if nt else "无新节点"
-    is_new = bool(nt) and nt != prev_nt
+    if nt and not confirmed:
+        node_txt += "（待确认）"
+    is_new = bool(nt) and confirmed and nt != prev_nt
     codes = det.get("reason_codes") or []
     reasons = "、".join(f"{c}({REASON_TEXT.get(c, c)})" for c in codes) if codes else "—"
     # 判断理由：去掉与节点名同义的首项，避免「冰点修复——冰点修复、…」
@@ -694,7 +697,7 @@ def _load_marketnode_block(trade_date):
         *dyn_lines,
         f"触发原因: {reasons}",
         f"判断理由: {reason_line}",
-        f"下一步: {NEXT_ACTION.get(det['market_state'], '—')}",
+        f"下一步: {('等待确认（未确认节点只给观察，需连续 2 日成立）' if (nt and not confirmed) else NEXT_ACTION.get(det['market_state'], '—'))}",
         f"失效条件: {det.get('invalidation_conditions') or '—'}",
     ]
     if det.get("missing_fields"):
