@@ -1,11 +1,11 @@
 {
-  "last_rebalance_date": "2026-10-30",
+  "last_rebalance_date": "2026-11-26",
   "holding_code": "512690",
   "holding_name": "酒",
-  "buy_price": 0.432,
-  "score_at_buy": 87.06,
-  "momentum_at_buy": 5.88,
-  "rsi_at_buy": 57.3,
-  "ige_at_buy": 55.11727196683169,
-  "rebalance_count": 11
+  "buy_price": 0.43,
+  "score_at_buy": 87.65,
+  "momentum_at_buy": 4.62,
+  "rsi_at_buy": 33.33,
+  "ige_at_buy": 55.654772798213536,
+  "rebalance_count": 12
 }
