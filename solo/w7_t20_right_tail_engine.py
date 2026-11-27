@@ -23,13 +23,6 @@ from w7_second_wave_engine import (
     safe_mean,
 )
 
-# 选股记录与跟踪库(幂等落库, 供 update_tracking 回填 T+N 表现)
-try:
-    from stock_pick_db import DB_PATH as PICK_DB_PATH, record_picks
-except Exception:
-    PICK_DB_PATH = None
-    record_picks = None
-
 from sli import reader as sli_reader
 from sli.classify import TYPE_PRIORITY_V2
 
@@ -1220,43 +1213,6 @@ def markdown(results, date, regime, gate_level, universe_n, sli_meta=None):
     return "\n".join(lines)
 
 
-def _track_picks(results):
-    """当日可买信号(action=BUY, 即 PRIMARY_BUY 层)转成 stock_pick_db 落库记录。
-
-    V5.1 收口：仅落当日买点，CONFIRMED_NEXT 的 WAIT_CONFIRM/WAIT_RETEST/WAIT_BREAKOUT
-    属等待观察态，不再进跟踪表与飞书，避免与「W7 二波/突破当日买点」的可买口径混淆。
-    标准列直接映射: ts_code/stock_name/close/pct_chg/signal/action/score/rank_no/
-    industry/stop_price(失效位)/target_price(引擎目标价);
-    其余字段(lifecycle/buy_type/结构分/回踩区/MA20/IGE…) 自动进 indicators JSON 列。
-    stop_mode='close'：指令口径为「收盘跌破失效位即放弃/离场」，故止损判定用收盘价而非
-    盘中最低价（20261116 回放 60 条：盘中判定→收盘判定，胜率 41.7%→51.7%，
-    中位收益 -1.93%→+1.45%，STOP_HIT 55%→45%）。
-    """
-    rows = [r for r in results if r.get("action") == ACT_BUY]
-    rows.sort(key=lambda r: -float(r.get("priority") or 0))
-    out = []
-    for idx, r in enumerate(rows, 1):
-        out.append({
-            "ts_code": r["code"], "stock_name": r["name"], "industry": r.get("industry"),
-            "close": r.get("close"), "pct_chg": r.get("pct_chg"),
-            "signal": r.get("layer"), "action": r.get("action"),
-            "score": r.get("t20_score"), "rank_no": idx,
-            "stop_price": r.get("invalid"), "target_price": r.get("target"),
-            "stop_mode": "close",
-            "lifecycle": r.get("lifecycle"), "buy_type": r.get("buy_type"),
-            "structure": r.get("structure"), "retest_quality": r.get("retest_quality"),
-            "breakout_quality": r.get("breakout_quality"), "rr": r.get("rr"),
-            "zone_low": r.get("zone_low"), "zone_high": r.get("zone_high"),
-            "breakout_price": r.get("breakout_price"), "ma20": r.get("ma20"),
-            "atr": r.get("atr"), "near_res": r.get("near_res"),
-            "chain_steps": r.get("chain_steps"), "priority": r.get("priority"),
-            "top_pick": bool(r.get("top_pick")), "event_date": r.get("event_date"),
-            "ige_adj": r.get("ige_adj"), "ige_mix": r.get("ige_mix"),
-            "sli_leader": bool(r.get("sli_leader")),
-        })
-    return out
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default="")
@@ -1339,18 +1295,7 @@ def main():
     os.makedirs(os.path.dirname(output), exist_ok=True)
     with open(output, "w", encoding="utf-8") as fh:
         fh.write(text)
-    # 接入 stock_pick_db 跟踪(幂等, 失败不阻塞报告): 每日 PRIMARY_BUY/CONFIRMED_NEXT 落库,
-    # 之后由 python stock_pick_db.py tracking 按失效位/目标价回填 T+N 表现与胜率
-    if record_picks is not None:
-        try:
-            if PICK_DB_PATH:
-                os.makedirs(os.path.dirname(PICK_DB_PATH), exist_ok=True)
-            db_rows = _track_picks(results)
-            db_n = record_picks("w7_t20", "W7 T20 右尾跟踪", db_rows, pick_date=date)
-            print(f"[t20] stock_pick_db 写入 {db_n}/{len(db_rows)} 条 "
-                  f"(strategy=w7_t20 pick_date={date})", flush=True)
-        except Exception as exc:
-            print(f"[t20] stock_pick_db 写入失败(不影响报告): {exc}", flush=True)
+    # 20261127 用户口径：w7_t20 不再写跟踪库（历史 62 条保留只读，不再新增）
     layer_counts = {}
     for r in results:
         layer_counts[r["layer"]] = layer_counts.get(r["layer"], 0) + 1

@@ -2,7 +2,7 @@
 """W7 新口径（类型A/类型B）统一复查工具。
 
 用途：跟踪库样本积累到一定量后，一次性复盘新口径信号的真实表现。
-  - 数据源：picks_db/stock_picks.db  strategy_id='w7_ab'（与旧口径 w7_hvt 隔离）
+  - 数据源：picks_db/stock_picks.db  strategy_id='w7_ab_hvt'（右侧突破口径，与低吸口径 w7_ab、旧口径 w7_hvt 隔离）
   - 收益口径：base_close = 选股日收盘价（stock_pick_db 全局口径），T+N = 选股日之后第 N 个交易日收盘
   - 超额口径：相对上证指数（000001.SH）同期收益，逐笔对齐交易日
 
@@ -14,7 +14,7 @@
 
 用法：
   python _w7_ab_review.py                # 输出到控制台
-  python _w7_ab_review.py --md           # 同时写 report_daily/w7_ab_review_YYYYMMDD.md
+  python _w7_ab_review.py --md           # 同时写 report_daily/w7_ab_hvt_review_YYYYMMDD.md
   python _w7_ab_review.py --min-n 30     # 样本量不足时给出醒目提示（默认 30）
 """
 import argparse
@@ -28,15 +28,15 @@ SOLO = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(SOLO, "picks_db", "stock_picks.db")
 CACHE_DB = r"D:\mystock\cache_daily\stock_data.db"
 REPORT_DIR = os.path.join(SOLO, "report_daily")
-STRATEGY_ID = "w7_ab"
+STRATEGY_ID = "w7_ab_hvt"
 INDEX_CODE = "000001.SH"
 HORIZONS = (1, 3, 5, 10, 20)
-TYPE_CN = {"T0_PULLBACK_HOLD": "类型A-缩量回踩止跌低吸",
-           "T0_REBREAK": "类型B-回踩后突破T0收盘"}
+TYPE_CN = {"T0_PULLBACK_HOLD": "类型A-回踩后突破T0最高价",
+           "T0_REBREAK": "类型B-放量突破T0最高价"}
 
 
 def load_rows():
-    """读 w7_ab 的落库记录 + 跟踪结果 + indicators 结构字段。"""
+    """读 w7_ab_hvt 的落库记录 + 跟踪结果 + indicators 结构字段。"""
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     try:
         rows = con.execute("""
@@ -179,8 +179,8 @@ def build_report(rows, idx, min_n):
     L.append("")
     L.append("| 类型 | 说明 |")
     L.append("| -- | -- |")
-    L.append("| T0_PULLBACK_HOLD | 类型A-缩量回踩至T0开盘价上方，出现止跌信号 |")
-    L.append("| T0_REBREAK | 类型B-回踩后突破T0日收盘价 |")
+    L.append("| T0_PULLBACK_HOLD | 类型A-回踩后收盘突破T0最高价×1.01，且当日量≥1.2×20日均量 |")
+    L.append("| T0_REBREAK | 类型B-回踩后放量收盘突破T0最高价×1.01 |")
     L.append("")
     for h in (3, 10):
         blocks = group_stats(rows, idx, lambda r: r["signal"], "类型", h)
@@ -252,9 +252,9 @@ def main():
     rows = load_rows()
     idx = load_index()
     if not rows:
-        print("[w7_ab_review] w7_ab 无记录，退出")
+        print(f"[w7_ab_review] {STRATEGY_ID} 无记录，退出")
         return 0
-    print(f"[w7_ab_review] 新口径信号 {len(rows)} 条，跨度 "
+    print(f"[w7_ab_review] {STRATEGY_ID} 信号 {len(rows)} 条，跨度 "
           f"{rows[0]['pick_date']} ~ {rows[-1]['pick_date']}")
     for h in HORIZONS:
         b = stat_block(rows, idx, "全部", h)
@@ -263,7 +263,7 @@ def main():
                   f"中位 {b['median']}% 超额均值 {b.get('ex_avg', '-')}%")
     if args.md:
         os.makedirs(REPORT_DIR, exist_ok=True)
-        p = os.path.join(REPORT_DIR, f"w7_ab_review_{date.today().strftime('%Y%m%d')}.md")
+        p = os.path.join(REPORT_DIR, f"{STRATEGY_ID}_review_{date.today().strftime('%Y%m%d')}.md")
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(build_report(rows, idx, args.min_n))
         print(f"[w7_ab_review] 报告已写: {p}")

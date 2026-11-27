@@ -78,10 +78,11 @@ python solo\volume_surge_select.py
 echo =============================================
 python solo\tushare_quant.py
 
-echo [Step 5.25/7] W7 二波新口径信号 (T0锚定·类型A缩量回踩止跌 / 类型B回踩突破)...
+echo [Step 5.25/7] W7 二波右侧突破口径 (T0锚定·类型A回踩后突破T0最高 / 类型B放量突破)...
 echo =============================================
 REM 依赖 daily_cache（tushare_quant 已写入当日行情），故必须排在其后。
-REM 引擎自身会落 stock_pick_db(strategy=w7_ab, replace=True)，信号随报告同步入库。
+REM 引擎自身会落 stock_pick_db(strategy=w7_ab_hvt, replace=True)，信号随报告同步入库。
+REM w7_ab（低吸旧口径）/ w7_hvt（更旧口径）仅保留历史只读，不再写入。
 REM 全市场扫描较慢（约十几分钟），失败不阻塞后续步骤。
 python solo\w7_second_wave_engine.py
 echo.
@@ -150,7 +151,7 @@ echo =============================================
 echo [Step 8.5/7] 选股库跟踪收益回填 (T+1/3/5/10/20)...
 echo =============================================
 REM 回填 pick_tracking（收益/胜率/最大回撤/止损命中），须在 sync_db 之前，
-REM 否则同步到云端的是缺 T+N 的半成品。新口径 w7_ab 与其它策略一并回填。
+REM 否则同步到云端的是缺 T+N 的半成品。w7_ab_hvt 与其它策略一并回填。
 python solo\stock_pick_db.py tracking
 echo.
 

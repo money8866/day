@@ -2,7 +2,15 @@
 
 > 仅记录高层执行结果供后续运行参考；不放报告正文，不写用户日志/记事体系。
 
-## 2026-11-26（本次）
+## 2026-11-27（本次）
+- 主命令 `python -X utf8 -m zz2000.daily --push` 用 `C:/Users/kongx/AppData/Local/Python/bin/python.exe` 执行成功，exit 0。
+- RESULT JSON：`mail_sent=true`（Agent Mail CLI `{"ok":true,"data":{"queued":true}}`），脚本自身投递成功；未重复发信、未走 mcp 兜底。
+- 数据时点由 20261125 推进到 **20261126**（今日 20261127 周五为交易日，17:20 当日收盘未落库；报告已标注「本报告是 20261126 的收盘信号，不是 20261127 的行情」）。`prev_date=20261125`。
+- **信号不变**：`signal_unchanged=true`，动作 **HOLD**，目标敞口 5%→**5%**，delta **0.0**，`baseline_origin=live`；底仓 5% / 趋势仓 0% / 波段仓 0%。`unknowns=[]`。
+- ETF `563300.SH` 收盘 **1.083 元（+0.56%）**，成交额 6.11 亿；指数 2343.85（-0.06%）。均线空头排列（MA20/60/120 = 1.200/1.330/1.394，斜率均负）；系统性风险触发（指数20日 -13.49%<=-8%）→ 底仓 5%、趋势仓 0%。情绪过滤 4 项中上涨占比 31.7%<45% FAIL，其余 3 项 PASS；波段 A/B/C 均未命中；单日金叉/追涨抑制未命中。
+- 产物：`zz2000/reports/ZZ2000_Daily_20261126.md` / `.html`；台账 13 个交易日，只记录建议与基准点位，未报告超额。未写 journal/ 或任何每日笔记。
+
+## 2026-11-26（历史）
 - 主命令 `python -X utf8 -m zz2000.daily --push` 用 `C:/Users/kongx/AppData/Local/Python/bin/python.exe` 执行成功，exit 0。
 - RESULT JSON：`mail_sent=true`（Agent Mail CLI `{"ok":true,"data":{"queued":true}}`），脚本自身投递成功；未重复发信、未走 mcp 兜底。
 - 数据时点由 20261124 推进到 **20261125**（今日 20261126 周四为交易日，17:20 当日收盘未落库；报告已标注「本报告是 20261125 的收盘信号，不是 20261126 的行情」）。`prev_date=20261124`。

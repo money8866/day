@@ -10459,7 +10459,9 @@ def run(target_date=None, simple_mode=False):
     # =========================
     def _load_w7_today_action(trade_date: str) -> str:
         r"""读取 w7_today_action_{date}.json（W7 HVT-V3 引擎 V5.1 过滤后「今日可操作·当日买点」）。
-        20261028 起统一为两类：T0_PULLBACK_HOLD(类型A-缩量回踩止跌低吸)/T0_REBREAK(类型B-回踩后突破T0收盘)。
+        20261127 起统一为两类右侧突破买点：
+          T0_PULLBACK_HOLD(类型A-回踩后收盘突破T0最高价×1.01，且当日量≥1.2×20日均量)
+          T0_REBREAK(类型B-放量突破T0最高价×1.01)，失效位=max(结构位×0.98, 现价-1.2×ATR14)，收盘口径跟踪。
         （旧九态 BREAKOUT_RETEST/MIDLINE_HOLD/SHAKEOUT_HOLD/RIGHT_BOTTOM/SQUAT_SHRINK 等已不再产出可操作买点。）
         JSON 缺失时回退解析当日 w7_second_wave md「## 今日可操作榜」同名表格。
         """
